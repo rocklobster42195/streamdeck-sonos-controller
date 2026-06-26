@@ -16,7 +16,6 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { VolumeInfo } from "../sonos/SonosTypes";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
-import { get } from "http";
 
 /**
  * Settings for {@link SonosDialVolume}.
@@ -173,8 +172,7 @@ export class SonosDialVolume extends SingletonAction<SonosSettings> {
                 value: state.isMuted ? 'Muted' : `${volume}%`,
                 icon: state.isMuted
                     ? "imgs/actions/sonos-dial-volume/volume-mute-cccccc.png"
-                    : `${getIconByVolume(volume)}.png`,                
-               //icon: `${generateFaderSvg(volume, state.isMuted ?? false, "#CCCCCC")}`,
+                    : `${getIconByVolume(volume)}.png`,
                indicator: { value: volume },
             });
         }

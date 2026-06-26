@@ -113,19 +113,10 @@ export class MarqueeAnimator {
             if (state.offset < 0) state.offset = 0;
             if (state.offset > maxOffset) state.offset = maxOffset;
 
-            // Log every 10th tick to avoid spam
-            if (tickCount % 10 === 0) {
-                console.log(`[MarqueeAnimator] tick=${tickCount}, offset=${state.offset}, width=${state.width}, maxOffset=${maxOffset}, shouldScroll=${state.shouldScroll}`);
-            }
-
             if (state.renderCallback) {
                 state.renderCallback();
-            } else {
-                console.warn(`[MarqueeAnimator] No renderCallback for context ${context}`);
             }
         }, 80);
-
-        console.log(`[MarqueeAnimator] Interval started for context ${context}, shouldScroll=${state.shouldScroll}, width=${state.width}, available=${state.availableWidth}`);
     }
 
     public render(context: string, x: number, y: number, width: number, height: number): string {

@@ -8,8 +8,7 @@ import { SonosPlayFavoriteAction } from "./actions/sonos-play-favorite";
 import { SonosKeyVolumeAction } from "./actions/sonos-key-volume";
 import { SonosDialTrack } from "./actions/sonos-dial-track";
 
-// We can enable "trace" logging so that all messages between the Stream Deck, and the plugin are recorded. When storing sensitive information
-streamDeck.logger.setLevel("debug"); // "trace" | "debug" | "info" | "warn" | "error" | "silent"
+streamDeck.logger.setLevel("info");
 
 // Register the actions that this plugin supports.
 streamDeck.actions.registerAction(new SonosTogglePlay());

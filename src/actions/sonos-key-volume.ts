@@ -49,8 +49,6 @@ export class SonosKeyVolumeAction extends SingletonAction<SonosKeyVolumeSettings
         switch (command) {
             case 'mute':
                 iconFile = generateFaderSvg(volume, isMuted, "#CCCCCC");
-                    //? `${basePath}volume-mute-cccccc.png` 
-                    //: `${basePath}volume-high-cccccc.png`;
                 break;
             case 'vol-up':
                 iconFile = `${basePath}volume-plus-cccccc.png`;

@@ -66,23 +66,10 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         const controller = this.controllers.get(context);
         if (!controller || !settings) return;
 
-        streamDeck.logger.info(`[${context}] State: ${transportState}, newCover: ${newCover ? "yes" : "no"}`);
-
         if (transportState === "PLAYING") {
-            // Nutze newCover wenn vorhanden, ansonsten verwende currentCover, ansonsten versuche zu holen
-            let cover = newCover;
-            if (!cover) {
-                const storedCover = this.currentCover.get(context);
-                if (storedCover) {
-                    cover = storedCover;
-                    streamDeck.logger.debug(`[${context}] Using stored cover`);
-                } else {
-                    cover = await controller.getCurrentTrackCover();
-                    streamDeck.logger.debug(`[${context}] Loaded fresh cover: ${cover ? "yes" : "no"}`);
-                }
-            }
-            
-            // Speichere die aktuelle Cover für zukünftige Verwendung (nur wenn vorhanden)
+            // Use provided cover, otherwise fall back to locally cached cover.
+            // Never fetch from network here — that races with trackInfoCallback.
+            const cover = newCover || this.currentCover.get(context) || undefined;
             if (cover) this.currentCover.set(context, cover);
             
             streamDeck.logger.debug(`[${context}] showTrackTitle: ${settings.showTrackTitle}, showCoverArt: ${settings.showCoverArt}, cover available: ${cover ? "yes" : "no"}`);
@@ -141,11 +128,9 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         const action = ev.action;
         const settings = ev.payload.settings;
 
-        // Cleanup alter Controller
         if (this.controllers.has(context)) {
             const oldController = this.controllers.get(context)!;
             oldController.unregisterTransportStateCallback(context);
-            oldController.unregisterCoverCallback(context);
             oldController.unregisterTrackInfoCallback(context);
             this.controllers.delete(context);
         }
@@ -162,18 +147,12 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             const controller = await sonosDeviceManager.getController(settings.deviceIp);
             this.controllers.set(context, controller);
 
-            // Callback für Status-Änderungen (Play/Pause)
+            // Transport state changes (play/pause/stop)
             controller.registerTransportStateCallback(context, (state) => {
                 this.handleTransportStateChange(context, state);
             });
 
-            // Callback für Cover-Änderungen (nächster Song)
-            controller.registerCoverCallback(context, async (cover) => {
-                const state = await controller.getTransportState();
-                await this.handleTransportStateChange(context, state, cover);
-            });
-
-            // Callback für Track-Info-Änderungen (wichtig für Radiostationen!)
+            // Track info changes — this is the only cover update path
             controller.registerTrackInfoCallback(context, (trackInfo) => {
                 this.onTrackInfoChanged(context, trackInfo);
             });
@@ -189,21 +168,11 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             // Initialen Status setzen
             const state = await controller.getTransportState();
             
-            // Wenn PLAYING, Track-Info + Cover gleich laden BEVOR wir rendern
-            if (state === "PLAYING") {
-                if (!this.currentCover.has(context)) {
-                    const track = await controller.getCurrentTrack();
-                    if (track) {
-                        streamDeck.logger.info(`[${context}] Initial track loaded: ${track.Title}`);
-                    }
-                    const initialCover = await controller.getCurrentTrackCover();
-                    if (initialCover) {
-                        this.currentCover.set(context, initialCover);
-                        streamDeck.logger.info(`[${context}] Initial cover loaded`);
-                    } else {
-                        streamDeck.logger.warn(`[${context}] Initial cover NOT available`);
-                    }
-                }
+            // Prime the cover cache before first render.
+            // For radio stations this often returns undefined — trackInfoCallback fills it later.
+            if (state === "PLAYING" && !this.currentCover.has(context)) {
+                const initialCover = await controller.getCurrentTrackCover();
+                if (initialCover) this.currentCover.set(context, initialCover);
             }
             
             await this.handleTransportStateChange(context, state);
@@ -232,7 +201,6 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         const controller = this.controllers.get(context);
         if (controller) {
             controller.unregisterTransportStateCallback(context);
-            controller.unregisterCoverCallback(context);
             controller.unregisterTrackInfoCallback(context);
             if (ev.payload.settings.deviceIp) {
                 sonosDeviceManager.releaseController(ev.payload.settings.deviceIp);
