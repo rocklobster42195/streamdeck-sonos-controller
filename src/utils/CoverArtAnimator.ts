@@ -21,9 +21,10 @@ export class CoverArtAnimator {
 
     public updateImage(context: string, newImage: string | undefined) {
         const state = this.animationStates.get(context);
-        if (!state) {
-            return;
-        }
+        if (!state) return;
+
+        // Keep the current cover visible while the next one is still loading.
+        if (newImage === undefined && state.currentImage) return;
 
         if (newImage !== state.currentImage) {
             state.oldImage = state.currentImage;

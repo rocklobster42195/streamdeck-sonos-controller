@@ -16,7 +16,7 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { CoverArtAnimator } from "../utils/CoverArtAnimator";
-import { titleAnimator } from "../utils/TitleAnimator"; // ADDED
+import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
 
@@ -25,10 +25,10 @@ import { TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
  */
 type SonosSettings = {
     deviceIp?: string;
-    showTrackTitle?: boolean; // ADDED
-    showCoverArt?: boolean; // ADDED
-    fontColor?: string; // ADDED
-    fontSize?: number; // ADDED
+    showTrackTitle?: boolean;
+    showCoverArt?: boolean;
+    fontColor?: string;
+    fontSize?: number;
     marqueeSpeed?: number;
     marqueePause?: number;
     enableMarquee?: boolean;
@@ -64,6 +64,10 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         const state = this.states.get(context);
         const animator = this.animators.get(context);
         if (state && animator) {
+            // Preserve the visible cover when the new track event carries no art (e.g. radio news).
+            if (!trackInfo.albumArtDataUri && state.trackInfo?.albumArtDataUri) {
+                trackInfo = { ...trackInfo, albumArtDataUri: state.trackInfo.albumArtDataUri };
+            }
             state.trackInfo = trackInfo;
             animator.updateImage(context, trackInfo.albumArtDataUri);
             // Update marquee text (title) using truncation preview + delayed full scroll
@@ -171,19 +175,14 @@ async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEv
 
     this.cleanupInstance(context);
 
-    // Animator initialisieren (wichtig für später, falls wir scrollen wollen)
     const animator = new CoverArtAnimator();
     this.animators.set(context, animator);
     animator.start(context, () => this.renderDial(context));
 
-    // Marquee initialisieren (transparent scroll text) only when titles should be shown
-        // Marquee initialisieren (transparent scroll text) — always start so it can decide whether to scroll
-        marqueeAnimator.start(context, () => this.renderDial(context), { text: '', fontSize: ev.payload.settings.fontSize ?? 14, fontColor: ev.payload.settings.fontColor ?? '#FFFFFF', speed: ev.payload.settings.marqueeSpeed, pauseDuration: ev.payload.settings.marqueePause, availableWidth: 100 });
+    marqueeAnimator.start(context, () => this.renderDial(context), { text: '', fontSize: ev.payload.settings.fontSize ?? 14, fontColor: ev.payload.settings.fontColor ?? '#FFFFFF', speed: ev.payload.settings.marqueeSpeed, pauseDuration: ev.payload.settings.marqueePause, availableWidth: 100 });
 
-    // Standard-State setzen
     this.states.set(context, { volume: 0, isMuted: false });
 
-    // Erstes Rendern (zeigt "Sonos / Bereit")
     await this.renderDial(context);
 
     if (!deviceIp) {
@@ -194,12 +193,9 @@ async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEv
         const controller = await sonosDeviceManager.getController(deviceIp);
         this.controllers.set(context, controller);
 
-        // Callbacks registrieren (für Updates WÄHREND es läuft)
         controller.registerVolumeCallback(context, (volumeInfo) => this.onVolumeInfoChanged(context, volumeInfo));
         controller.registerTrackInfoCallback(context, (trackInfo) => { void this.onTrackInfoChanged(context, trackInfo); });
 
-        // --- DATEN SOFORT HOLEN (WICHTIG!) ---
-        // Wir warten nicht auf ein Event, wir holen den Status JETZT.
         const [vol, track] = await Promise.all([
             controller.getVolume(),
             controller.getCurrentTrack()
@@ -212,11 +208,9 @@ async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEv
         if (track) {
             state.trackInfo = track;
             
-            // Cover separat holen, wie in deinem Schnipsel
             const cover = await controller.getCurrentTrackCover();
                 if (cover) {
                     state.trackInfo.albumArtDataUri = cover;
-                    // Dem Animator das Bild geben
                     animator.updateImage(context, cover);
                     // Update marquee text now that track is known (always update marquee state)
                     const settings = this.settingsMap.get(context);
@@ -237,7 +231,6 @@ async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEv
                 }
         }
 
-        // Jetzt mit echten Daten rendern
         await this.renderDial(context);
 
     } catch (e) {
@@ -342,34 +335,23 @@ private async renderDial(context: string): Promise<void> {
         return;
     }
 
-    // Daten aus dem State (jetzt hoffentlich gefüllt durch onInstanceUpdate)
     const title = state.trackInfo?.Title || "Sonos";
-    const artist = state.trackInfo?.Artist || "Bereit";
+    const artist = state.trackInfo?.Artist || "Ready";
     const coverImg = state.trackInfo?.albumArtDataUri || "";
-    
-    // --- FADER (TORTE) ---
+
     let faderImg = generateFaderSvg(state.volume, state.isMuted, "#CCCCCC");
-    
-    // Encoding Check (damit es nicht kaputt geht)
+
     if (faderImg.trim().startsWith('<svg')) {
         faderImg = `data:image/svg+xml;base64,${Buffer.from(faderImg).toString('base64')}`;
     }
 
-    // --- COVER ART ---
-    // Cover maximal groß (rechts), Lauftext nutzt Platz zwischen Rand und Cover
-    const coverSvgTag = coverImg 
+    const coverSvgTag = coverImg
         ? `<image href="${coverImg}" x="115" y="5" width="85" height="95" preserveAspectRatio="xMidYMid slice" rx="5" />`
         : `<rect x="115" y="5" width="85" height="95" fill="#222222" rx="5" />`;
 
-    // --- MASTER SVG ---
-    // Layout $A0 = 200x100 Pixel
     const finalSvg = `
         <svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
-            <!-- Hintergrund -->
             <rect width="200" height="100" fill="black" />
-
-            <!-- Text Oben Links -->
-            <!-- Ein großer clipPath für alle Texte: x=10 bis x=110 (100px breit), 15px Abstand zum Cover -->
             <defs>
                 <clipPath id="textClipArea"><rect x="10" y="5" width="100" height="50" /></clipPath>
             </defs>
@@ -391,21 +373,14 @@ private async renderDial(context: string): Promise<void> {
                     return titleFrag + artistFrag;
                 })()}
             </g>
-            <!-- spacer between text area and cover to ensure gap -->
             <rect x="110" y="5" width="5" height="50" fill="black" />
             ${coverSvgTag}
-            <!-- FADER (TORTE) -->
-            <!-- KORREKTUR: Wir machen es quadratisch (50x50), damit die Torte rund bleibt! -->
-            <!-- Positioniert unten links -->
             <image href="${faderImg}" x="10" y="45" width="50" height="50" />
-
-            <!-- COVER RECHTS -->
         </svg>
     `.trim();
 
     const finalImage = `data:image/svg+xml;base64,${Buffer.from(finalSvg).toString('base64')}`;
 
-    // Update senden
     await action.setFeedback({
         "full-canvas": finalImage,
         "icon": "", 
@@ -414,7 +389,6 @@ private async renderDial(context: string): Promise<void> {
     });
 }
 
-// Hilfsfunktion (falls noch nicht vorhanden)
 private escapeXml(unsafe: string): string {
     return unsafe.replace(/[<>&"']/g, (c) => {
         switch (c) {

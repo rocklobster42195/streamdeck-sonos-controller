@@ -43,7 +43,6 @@ export class TitleAnimator {
     private font: opentype.Font | undefined;
     private fontLoadPromise: Promise<void> | undefined;
 
-    // Design-Parameter
     private readonly START_X = 18;       
     private readonly TRIGGER_X = 72;     
     private readonly MAX_BOX_OPACITY = 0.3;
@@ -70,7 +69,7 @@ export class TitleAnimator {
         }
 
         if (!foundPath) {
-            streamDeck.logger.error(`[TitleAnimator] Font nicht gefunden. Suche in: ${pathsToTry.join(', ')}`);
+            streamDeck.logger.error(`[TitleAnimator] Font not found. Searched: ${pathsToTry.join(', ')}`);
             return;
         }
 
@@ -78,9 +77,9 @@ export class TitleAnimator {
             const data = fs.readFileSync(foundPath);
             const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
             this.font = opentype.parse(arrayBuffer);
-            streamDeck.logger.info(`[TitleAnimator] ✅ Font geladen: ${this.font.names.fontFamily.en}`);
+            streamDeck.logger.info(`[TitleAnimator] Font loaded: ${this.font.names.fontFamily.en}`);
         } catch (err) {
-            streamDeck.logger.error(`[TitleAnimator] Parse Fehler: ${err}`);
+            streamDeck.logger.error(`[TitleAnimator] Font parse error: ${err}`);
         }
     }
 
@@ -105,7 +104,6 @@ export class TitleAnimator {
         const state = this.animationStates.get(context);
         if (!state) return;
 
-        // Crossfade Logik bei Bildwechsel
         if (newOptions.backgroundImage !== state.options.backgroundImage) {
             state.isFading = true;
             state.fadeOpacity = 0;
@@ -113,7 +111,6 @@ export class TitleAnimator {
             state.options.backgroundImage = newOptions.backgroundImage;
         }
 
-        // Textwechsel Logik
         if (newOptions.text !== state.options.text) {
             state.options.text = newOptions.text;
             const fontSize = state.options.fontSize || 13;
@@ -141,7 +138,6 @@ export class TitleAnimator {
             const speed = state.options.speed || 1.1;
             const pauseTicksMax = state.options.pauseDuration || 40;
 
-            // Hintergrund Crossfade
             if (state.isFading) {
                 state.fadeOpacity += 0.1;
                 if (state.fadeOpacity >= 1) {
@@ -172,7 +168,6 @@ export class TitleAnimator {
                 case AnimPhase.SCROLL_OPAQUE:
                     if (state.shouldScroll) {
                         state.offset += speed;
-                        // Heck-Trigger bei 54px
                         const currentTailX = this.START_X - state.offset + state.textWidth;
                         if (currentTailX <= this.TRIGGER_X) {
                             state.phase = AnimPhase.SCROLL_AND_FADE_OUT;
@@ -239,7 +234,6 @@ export class TitleAnimator {
             ? (this.START_X - offset) 
             : this.START_X + ((this.TRIGGER_X - this.START_X) - state.textWidth) / 2;
 
-        // Hintergrund mit Crossfade-Unterstützung
         let bgHtml = '';
         if (isFading && oldBackgroundImage && options.backgroundImage) {
             bgHtml = `

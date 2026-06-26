@@ -15,9 +15,6 @@ import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { generateFaderSvg } from "../sonos/utils";
 
-/**
- * Settings for {@link SonosKeyVolumeAction}.
- */
 type SonosKeyVolumeSettings = {
     deviceIp?: string;
     command?: 'mute' | 'vol-up' | 'vol-down' | 'vol-preset';
@@ -27,19 +24,13 @@ type SonosKeyVolumeSettings = {
     showPreset?: boolean;
 };
 
-/**
- * An action that provides volume controls for a Sonos device.
- */
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-key-volume" })
-export class SonosKeyVolumeAction extends SingletonAction<SonosKeyVolumeSettings> {
+export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private initializedHash: Map<string, string> = new Map();
     private timers: Map<string, NodeJS.Timeout> = new Map();
     private longPressExecuted: Map<string, boolean> = new Map();
 
-    /**
-     * Updates the icon based on the mute state.
-     */
     private async updateIcon(action: any, volume: number, isMuted: boolean, command?: 'mute' | 'vol-up' | 'vol-down' | 'vol-preset') {
         if (!action) return;
 
@@ -92,9 +83,6 @@ export class SonosKeyVolumeAction extends SingletonAction<SonosKeyVolumeSettings
         }
     }
 
-    /**
-     * Central method for initializing and updating the action instance.
-     */
     private async onInstanceUpdate(ev: WillAppearEvent<SonosKeyVolumeSettings> | DidReceiveSettingsEvent<SonosKeyVolumeSettings>): Promise<void> {
         const { action, payload } = ev;
         const context = action.id;

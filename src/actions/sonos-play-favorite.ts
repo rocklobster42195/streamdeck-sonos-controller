@@ -27,7 +27,7 @@ type SonosFavoriteSettings = {
 };
 
 @action({ UUID: "de.boriskemper.sonos-controller.play-favorite" })
-export class SonosPlayFavoriteAction extends SingletonAction<SonosFavoriteSettings> {
+export class SonosPlayFavorite extends SingletonAction<SonosFavoriteSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
 
     private async onInstanceUpdate(ev: WillAppearEvent<SonosFavoriteSettings> | DidReceiveSettingsEvent<SonosFavoriteSettings>): Promise<void> {
@@ -35,7 +35,6 @@ export class SonosPlayFavoriteAction extends SingletonAction<SonosFavoriteSettin
         const context = action.id;
         const { deviceIp, favorite, showTitle } = payload.settings;
 
-        // Controller Cleanup
         if (this.controllers.has(context)) {
             sonosDeviceManager.releaseController(this.controllers.get(context)!.deviceIp);
             this.controllers.delete(context);
@@ -56,11 +55,9 @@ export class SonosPlayFavoriteAction extends SingletonAction<SonosFavoriteSettin
             const favObject = JSON.parse(favorite) as Favorite;
             const coverArt = sonosFavoritesCache.getCoverArt(favObject.AlbumArtUri);
 
-            // Stream Deck Standard Titel immer leeren
-            await action.setTitle(""); 
+            await action.setTitle("");
 
             if (showTitle) {
-                // Starte die ausgelagerte Animation
                 titleAnimator.start(action, {
                     text: favObject.Title,
                     backgroundImage: coverArt,
@@ -74,7 +71,7 @@ export class SonosPlayFavoriteAction extends SingletonAction<SonosFavoriteSettin
             }
 
         } catch (e) {
-            streamDeck.logger.error(`Fehler in onInstanceUpdate [${context}]:`, e);
+            streamDeck.logger.error(`Error in onInstanceUpdate [${context}]:`, e);
             await action.setTitle("Error");
         }
     }
@@ -89,8 +86,6 @@ export class SonosPlayFavoriteAction extends SingletonAction<SonosFavoriteSettin
 
     override async onWillDisappear(ev: WillDisappearEvent<SonosFavoriteSettings>): Promise<void> {
         const context = ev.action.id;
-        
-        // Animation stoppen
         titleAnimator.stop(context);
 
         const controller = this.controllers.get(context);
@@ -115,7 +110,7 @@ export class SonosPlayFavoriteAction extends SingletonAction<SonosFavoriteSettin
             await controller.playFavorite(favObject);
             action.showOk();
         } catch (e) {
-            streamDeck.logger.error("Fehler beim Abspielen des Favoriten:", e);
+            streamDeck.logger.error("Error playing favorite:", e);
             action.showAlert();
         }
     }

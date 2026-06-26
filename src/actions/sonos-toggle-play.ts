@@ -22,9 +22,9 @@ type SonosSettings = {
     deviceIp?: string;
     showDeviceName?: boolean;
     showCoverArt?: boolean;
-    showTrackTitle?: boolean; // Neu: Laufschrift für den aktuellen Titel
+    showTrackTitle?: boolean;
     fontColor?: string;
-    fontSize?: number;        // Neu: Schriftgröße für die Laufschrift
+    fontSize?: number;
 };
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-toggle-play" })
@@ -33,31 +33,24 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
     private currentSettings: Map<string, SonosSettings> = new Map();
     private currentCover: Map<string, string | undefined> = new Map();
 
-    /**
-     * Verarbeitet Track-Info-Änderungen (für Cover von Radiostationen und Alben)
-     */
     private onTrackInfoChanged(context: string, trackInfo: TrackInfo): void {
         const newCover = trackInfo.albumArtDataUri || undefined;
         const oldCover = this.currentCover.get(context) || undefined;
-        
-        streamDeck.logger.debug(`[${context}] onTrackInfoChanged: ${trackInfo.Title}, cover: ${newCover ? "yes" : "none"}`);
-        
-        // Nur wenn die Cover sich geändert hat
-        if (newCover !== oldCover) {
-            this.currentCover.set(context, newCover);
-            // Trigger handleTransportStateChange um View zu aktualizieren
-            const controller = this.controllers.get(context);
-            if (controller) {
-                controller.getTransportState().then(state => {
-                    this.handleTransportStateChange(context, state, newCover);
-                });
-            }
+
+        // Skip when the same real cover is already showing.
+        if (newCover && newCover === oldCover) return;
+        // Skip when no new art arrives but a cached cover is already visible.
+        if (!newCover && oldCover) return;
+
+        if (newCover) this.currentCover.set(context, newCover);
+        const controller = this.controllers.get(context);
+        if (controller) {
+            controller.getTransportState().then(state => {
+                this.handleTransportStateChange(context, state, newCover);
+            });
         }
     }
 
-    /**
-     * Aktualisiert die Anzeige (Bild & Animation) basierend auf dem Transport-Status.
-     */
     private async handleTransportStateChange(context: string, transportState: string, newCover?: string): Promise<void> {
         const action = streamDeck.actions.getActionById(context);
         if (!action) return;
@@ -67,15 +60,18 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         if (!controller || !settings) return;
 
         if (transportState === "PLAYING") {
-            // Use provided cover, otherwise fall back to locally cached cover.
-            // Never fetch from network here — that races with trackInfoCallback.
-            const cover = newCover || this.currentCover.get(context) || undefined;
+            let cover = newCover || this.currentCover.get(context) || undefined;
+            if (!cover) {
+                // Cover cache empty — happens when the plugin starts/restarts during a radio news
+                // segment with no art. Try once to fetch from the controller (which derives the
+                // station logo from the stream URI, stable even during news).
+                try { cover = await controller.getCurrentTrackCover() || undefined; } catch {}
+            }
             if (cover) this.currentCover.set(context, cover);
             
             streamDeck.logger.debug(`[${context}] showTrackTitle: ${settings.showTrackTitle}, showCoverArt: ${settings.showCoverArt}, cover available: ${cover ? "yes" : "no"}`);
 
             if (settings.showTrackTitle) {
-                // Titel abrufen
                 const track = await controller.getCurrentTrack();
                 const title = track?.Title
                     ? `${track.Title}${track.Artist ? ` [${track.Artist}]` : ""}`
@@ -83,7 +79,6 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
 
                 const animOptions = {
                     text: title,
-                    // Nur Cover wenn verfügbar UND showCoverArt = true, ansonsten kein Background
                     backgroundImage: (settings.showCoverArt && cover) ? cover : undefined,
                     fontColor: settings.fontColor || "#cccccc",
                     fontSize: settings.fontSize ? settings.fontSize : 13,
@@ -94,22 +89,17 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                 if (titleAnimator.isRunning(context)) {
                     titleAnimator.update(context, { text: title, backgroundImage: animOptions.backgroundImage });
                 } else {
-                    // Animation starten (Animator übernimmt das setImage)
                     titleAnimator.start(action, animOptions);
                 }
             } else {
-                // Statische Anzeige ohne Animation
                 titleAnimator.stop(context);
                 if (settings.showCoverArt && cover) {
-                    streamDeck.logger.info(`[${context}] Setting static cover image`);
                     await action.setImage(cover);
                 } else {
-                    streamDeck.logger.info(`[${context}] Setting fallback play button`);
                     await action.setImage("imgs/actions/sonos-toggle-play/play-circle-cccccc.png");
                 }
             }
         } else {
-            // Musik pausiert oder gestoppt -> Animation aus
             titleAnimator.stop(context);
 
             switch (transportState) {
@@ -157,7 +147,6 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                 this.onTrackInfoChanged(context, trackInfo);
             });
 
-            // Titel-Anzeige (Gerätename)
             if (settings.showDeviceName) {
                 const zoneAttributes = await controller.getZoneAttributes();
                 await action.setTitle(zoneAttributes.CurrentZoneName);
@@ -165,7 +154,6 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                 await action.setTitle("");
             }
 
-            // Initialen Status setzen
             const state = await controller.getTransportState();
             
             // Prime the cover cache before first render.

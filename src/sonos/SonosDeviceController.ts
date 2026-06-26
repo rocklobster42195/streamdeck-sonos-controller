@@ -12,9 +12,6 @@ export class SonosDeviceController {
   public sonosDevice: SonosDevice; 
 
   private volumeInfoCallbacks: Map<string, (volumeInfo: VolumeInfo) => void> = new Map();
-  private titleCallbacks: Map<string, (title: string) => void> = new Map();
-  private artistCallbacks: Map<string, (artist: string) => void> = new Map();
-  private coverCallbacks: Map<string, (cover: string) => void> = new Map();
   private transportStateCallbacks: Map<string, (transportState: string) => void> = new Map();
   private playModeCallbacks: Map<string, (playMode: string) => void> = new Map();
   private trackInfoCallbacks: Map<string, (trackInfo: TrackInfo) => void> = new Map();
@@ -27,6 +24,8 @@ export class SonosDeviceController {
   private currentMute: boolean = false;
   private currentAlbumArtUri: string = '';
   private currentTrack: TrackInfo | undefined;
+  // Only ever set when a cover is successfully loaded; never cleared by track events with no art.
+  private lastKnownCover: string | undefined;
 
   constructor(deviceIp: string) {
     this.deviceIp = deviceIp;
@@ -46,9 +45,6 @@ export class SonosDeviceController {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
     this.cancelSubscriptions();
     this.volumeInfoCallbacks.clear();
-    this.titleCallbacks.clear();
-    this.artistCallbacks.clear();
-    this.coverCallbacks.clear();
     this.transportStateCallbacks.clear();
     this.playModeCallbacks.clear();
     this.trackInfoCallbacks.clear();
@@ -255,12 +251,6 @@ export class SonosDeviceController {
   // --- Callbacks ---
   registerVolumeCallback(id: string, callback: (volumeInfo: VolumeInfo) => void): void { this.volumeInfoCallbacks.set(id, callback); }
   unregisterVolumeCallback(id: string): void { this.volumeInfoCallbacks.delete(id); }
-  registerTitleCallback(id: string, callback: (title: string) => void): void { this.titleCallbacks.set(id, callback); }
-  unregisterTitleCallback(id: string): void { this.titleCallbacks.delete(id); }
-  registerArtistCallback(id: string, callback: (artist: string) => void): void { this.artistCallbacks.set(id, callback); }
-  unregisterArtistCallback(id: string): void { this.artistCallbacks.delete(id); }
-  registerCoverCallback(id: string, callback: (cover: string) => void): void { this.coverCallbacks.set(id, callback); }
-  unregisterCoverCallback(id: string): void { this.coverCallbacks.delete(id); }
   registerTransportStateCallback(id: string, callback: (transportState: string) => void): void { this.transportStateCallbacks.set(id, callback); }
   unregisterTransportStateCallback(id: string): void { this.transportStateCallbacks.delete(id); }
   registerPlayModeCallback(id: string, callback: (playMode: string) => void): void { this.playModeCallbacks.set(id, callback); }
@@ -307,17 +297,13 @@ export class SonosDeviceController {
         
         const newTrackInfo: TrackInfo = track;
 
-        // Keep legacy callbacks for now
-        this.titleCallbacks.forEach(cb => cb(track.Title ?? ''));
-        this.artistCallbacks.forEach(cb => cb(track.Artist ?? ''));
-    
         if (track.AlbumArtUri && track.AlbumArtUri !== this.currentAlbumArtUri) {
             this.currentAlbumArtUri = track.AlbumArtUri;
             try {
                 const cover = await loadImageFromUri(track.AlbumArtUri, this.sonosDevice);
                 if (cover) {
                     newTrackInfo.albumArtDataUri = cover;
-                    this.coverCallbacks.forEach(cb => cb(cover)); // Legacy
+                    this.lastKnownCover = cover;
                 }
             } catch (err) {
                 streamDeck.logger.error("Error loading cover art", err);
@@ -326,8 +312,9 @@ export class SonosDeviceController {
         } else if (!track.AlbumArtUri) {
             this.currentAlbumArtUri = '';
         }
-        
-        newTrackInfo.albumArtDataUri = newTrackInfo.albumArtDataUri || this.currentTrack?.albumArtDataUri;
+
+        // Preserve the last known cover so news segments (which have no art) keep showing the station logo.
+        newTrackInfo.albumArtDataUri = newTrackInfo.albumArtDataUri || this.currentTrack?.albumArtDataUri || this.lastKnownCover;
         this.currentTrack = newTrackInfo;
         this.trackInfoCallbacks.forEach(cb => cb(this.currentTrack!));
       });
@@ -354,7 +341,7 @@ export class SonosDeviceController {
   }
 
   private generateMetadata(title: string, uri: string, upnpClass: string, protocolInfo: string): string {
-    // ID -1 signalisiert Sonos: "Neues Item für die Queue"
+    // ID -1 signals Sonos that this is a new item to add to the queue.
     return '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
         `<item id="-1" parentID="-1" restricted="true">` +
         `<dc:title>${this.encodeXml(title)}</dc:title>` +
@@ -363,9 +350,6 @@ export class SonosDeviceController {
         `</item></DIDL-Lite>`;
   }
 
-  /**
-   * Durchsucht einen lokalen Ordner, filtert M3Us und sortiert nach Dateinamen.
-   */
   private async handleLocalFolder(favorite: any): Promise<boolean> {
       const logPrefix = `[LocalFolder]`;
       streamDeck.logger.info(`${logPrefix} Browsing folder content...`);
@@ -437,8 +421,7 @@ export class SonosDeviceController {
               if (resMatch && resMatch[1]) {
                   const rawUriFromXml = resMatch[1];
                   
-                  // XML-Entities auflösen (z.B. &amp; -> &)
-                  // KORREKTUR: KEIN URL-Encoding für # machen! Die URI muss so bleiben wie sie im XML war (nur decoded).
+                  // Decode XML entities (e.g. &amp; → &). Do NOT percent-encode '#' — the URI must remain exactly as it was in the XML.
                   const cleanUri = this.decodeXmlEntities(rawUriFromXml);
                   
                   const title = titleMatch ? this.decodeXmlEntities(titleMatch[1]) : "Track";
@@ -457,7 +440,6 @@ export class SonosDeviceController {
                       continue;
                   }
                   
-                  // Nur Files/Tracks
                   if (!itemXml.includes('object.container')) {
                       items.push({ 
                           uri: cleanUri, 
@@ -474,20 +456,14 @@ export class SonosDeviceController {
               return false;
           }
 
-          // 3. SORTIEREN (nach Dateinamen)
           items.sort((a, b) => a.sortKey.localeCompare(b.sortKey, undefined, { numeric: true, sensitivity: 'base' }));
-          
+
           streamDeck.logger.info(`${logPrefix} Found ${items.length} sorted tracks. Enqueuing...`);
 
-          // 4. Queue leeren
           await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
 
-          // 5. Tracks hinzufügen
           let count = 0;
           for (const item of items) {
-              // Metadaten erzeugen
-              // this.encodeXml(item.uri) sorgt dafür, dass aus dem '&' in der URI wieder '&amp;' für das XML wird.
-              // Aber das '#' bleibt ein '#', und das ist korrekt so.
               const metadata = this.generateMetadata(
                   item.title, 
                   item.uri, 
@@ -509,7 +485,6 @@ export class SonosDeviceController {
               count++;
           }
 
-          // 6. Abspielen
           await this.sonosDevice.SwitchToQueue();
           await this.sonosDevice.Play();
           return true;
@@ -552,7 +527,7 @@ export class SonosDeviceController {
             }
         }
 
-        // --- 2. MUSIK BIBLIOTHEK / NAS ORDNER ---
+        // --- 2. MUSIC LIBRARY / NAS FOLDER ---
         if (favorite.TrackUri.startsWith('x-rincon-playlist') || favorite.TrackUri.startsWith('x-file-cifs')) {
             streamDeck.logger.info(`${logPrefix} Music Library/Folder detected. Trying custom expansion.`);
             
@@ -573,8 +548,7 @@ export class SonosDeviceController {
                 containerId = favorite.TrackUri.substring(hashIndex + 1);
             }
 
-            // Im Fallback nutzen wir die ID aus der URI, aber als Container-Klasse
-            const metadata = 
+            const metadata =
                 '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
                 `<item id="${containerId}" parentID="${favorite.ParentId}" restricted="true">` +
                 `<dc:title>${this.encodeXml(favorite.Title)}</dc:title>` +
@@ -596,7 +570,7 @@ export class SonosDeviceController {
             return;
         }
 
-        // --- 3. STANDARD / RADIO ---
+        // --- 3. RADIO / DIRECT URI ---
         streamDeck.logger.info(`${logPrefix} Standard/Radio detected. Setting URI directly.`);
         
         await this.sonosDevice.AVTransportService.SetAVTransportURI({
@@ -618,16 +592,25 @@ export class SonosDeviceController {
   async getCurrentTrackCover(): Promise<string | undefined> {
       const positionInfo = await this.sonosDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
       const trackMetadata = positionInfo.TrackMetaData;
-      if (typeof trackMetadata !== 'string' && trackMetadata.AlbumArtUri) { 
-        return await loadImageFromUri(trackMetadata.AlbumArtUri, this.sonosDevice);
+
+      if (typeof trackMetadata !== 'string' && trackMetadata.AlbumArtUri) {
+          return await loadImageFromUri(trackMetadata.AlbumArtUri, this.sonosDevice);
       }
-      
-      // Fallback: Nutze die gepufferte Cover, falls GetPositionInfo keine hat (z.B. bei Radiostationen)
-      if (this.currentTrack?.albumArtDataUri) {
-        return this.currentTrack.albumArtDataUri;
+
+      // For radio streams TrackMetaData is a plain string. Derive the art URL from the
+      // stream URI — the same URL the Sonos SDK computes for the currentTrack event.
+      // This URI stays stable even during news segments, so we can still serve the station logo.
+      if (typeof trackMetadata === 'string' && positionInfo.TrackURI) {
+          const artUri = `/getaa?s=1&u=${encodeURIComponent(positionInfo.TrackURI)}`;
+          const cover = await loadImageFromUri(artUri, this.sonosDevice);
+          if (cover) return cover;
       }
-      
-      return undefined;
+
+      // Buffered cover — set during UPnP track events; news events preserve the previous cover.
+      if (this.currentTrack?.albumArtDataUri) return this.currentTrack.albumArtDataUri;
+
+      // Final fallback: last cover that was ever successfully loaded for this device.
+      return this.lastKnownCover;
   }
   async getCurrentTrack(): Promise<Track | undefined> {
     const positionInfo = await this.sonosDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });

@@ -57,7 +57,7 @@ class SonosDeviceManager {
     public releaseController(ip: string): void {
         const entry = this.controllerEntries.get(ip);
         if (entry) {
-            entry.refCount--;
+            entry.refCount = Math.max(0, entry.refCount - 1);
             streamDeck.logger.debug(`[SonosDeviceManager] Released controller for IP: ${ip}. New refCount: ${entry.refCount}`);
             if (entry.refCount <= 0) {
                 streamDeck.logger.debug(`[SonosDeviceManager] Destroying controller for IP: ${ip} as refCount is zero.`);

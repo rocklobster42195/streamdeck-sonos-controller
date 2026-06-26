@@ -1,43 +1,30 @@
 import { type JsonValue } from "@elgato/utils";
-import streamDeck, { 
-    action, 
-    KeyDownEvent, 
-    SingletonAction, 
-    WillAppearEvent, 
-    SendToPluginEvent, 
-    DidReceiveSettingsEvent, 
-    WillDisappearEvent 
+import streamDeck, {
+    action,
+    KeyDownEvent,
+    SingletonAction,
+    WillAppearEvent,
+    SendToPluginEvent,
+    DidReceiveSettingsEvent,
+    WillDisappearEvent
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 
-/**
- * Einstellungen für {@link SonosPlaybackControlAction}.
- */
 type SonosPlaybackSettings = {
     deviceIp?: string;
     command?: 'next' | 'previous' | 'shuffle' | 'repeat';
 };
 
-/**
- * Eine Action, die mehrere Wiedergabesteuerungen für ein Sonos-Gerät bereitstellt.
- */
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-playback-control" })
-export class SonosPlaybackControlAction extends SingletonAction<SonosPlaybackSettings> {
-    // Speichert die Controller-Instanzen pro Taste
+export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
-    
-    // Speichert den Status der Initialisierung, um Endlosschleifen und Log-Spam zu vermeiden
     private initializedHash: Map<string, string> = new Map();
 
-    /**
-     * Aktualisiert das Icon basierend auf dem gewählten Befehl und dem Play-Modus.
-     */
     private updateIcon(action: any, command: SonosPlaybackSettings['command'], playMode: string = "") {
         if (!action || !command) return;
-        streamDeck.logger.debug(`[playback-control] updateIcon action=${action.id} command=${command} playMode=${playMode}`);
 
         let icon = "";
         const baseIconPath = "imgs/actions/sonos-playback-control/";
@@ -50,8 +37,8 @@ export class SonosPlaybackControlAction extends SingletonAction<SonosPlaybackSet
                 icon = `${baseIconPath}skip-previous-cccccc.png`;
                 break;
             case 'shuffle':
-                icon = playMode.includes('SHUFFLE') 
-                    ? `${baseIconPath}shuffle-cccccc.png` 
+                icon = playMode.includes('SHUFFLE')
+                    ? `${baseIconPath}shuffle-cccccc.png`
                     : `${baseIconPath}shuffle-off-cccccc.png`;
                 break;
             case 'repeat':
@@ -66,66 +53,49 @@ export class SonosPlaybackControlAction extends SingletonAction<SonosPlaybackSet
             default:
                 return;
         }
-        
-        if (icon) {
-            streamDeck.logger.debug(`[playback-control] set icon=${icon}`);
-            action.setImage(icon);
-        }
+
+        if (icon) action.setImage(icon);
     }
 
-    /**
-     * Zentrale Methode zur Initialisierung und Aktualisierung der Action.
-     */
     private async onInstanceUpdate(ev: WillAppearEvent<SonosPlaybackSettings> | DidReceiveSettingsEvent<SonosPlaybackSettings>): Promise<void> {
         const { action, payload } = ev;
         const context = action.id;
         const { deviceIp, command } = payload.settings;
 
-        // 1. Prüfen, ob dieses Setup bereits aktiv ist (Schleifenschutz)
         const currentHash = `${deviceIp}-${command}`;
-        if (this.initializedHash.get(context) === currentHash) {
-            return; 
-        }
+        if (this.initializedHash.get(context) === currentHash) return;
 
-        // 2. Warten auf Discovery
         await discoveryPromise;
 
-        // 3. Prüfung auf unvollständige Konfiguration
         if (!deviceIp || !command) {
-            streamDeck.logger.debug(`[${context}] Konfiguration fehlt: IP=${deviceIp}, Cmd=${command}`);
             await action.setTitle("Config...");
             return;
         }
 
         try {
-            // --- Alten Controller aufräumen, falls die IP wechselt ---
             const oldController = this.controllers.get(context);
             if (oldController && oldController.deviceIp !== deviceIp) {
                 oldController.unregisterPlayModeCallback(context);
                 sonosDeviceManager.releaseController(oldController.deviceIp);
             }
 
-            // --- Neuen Controller binden ---
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
-            
-            // Callback für Live-Updates (Icon-Sync bei Shuffle/Repeat)
+
             controller.unregisterPlayModeCallback(context);
             controller.registerPlayModeCallback(context, (playMode) => {
                 this.updateIcon(action, command, playMode);
             });
 
-            // Initialen PlayMode holen und Icon setzen
             const currentMode = await controller.getPlayMode();
             this.updateIcon(action, command, currentMode);
             await action.setTitle("");
-            
-            // Status als "fertig initialisiert" markieren
+
             this.initializedHash.set(context, currentHash);
-            streamDeck.logger.info(`[${context}] Initialisiert: IP=${deviceIp}, Cmd=${command}`);
+            streamDeck.logger.info(`[${context}] Initialized: IP=${deviceIp}, Cmd=${command}`);
 
         } catch (e) {
-            streamDeck.logger.error(`[${context}] Fehler beim Setup:`, e);
+            streamDeck.logger.error(`[${context}] Setup error:`, e);
             await action.setTitle("Error");
         }
     }
@@ -133,9 +103,8 @@ export class SonosPlaybackControlAction extends SingletonAction<SonosPlaybackSet
     override async onWillAppear(ev: WillAppearEvent<SonosPlaybackSettings>): Promise<void> {
         await this.onInstanceUpdate(ev);
     }
-    
+
     override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SonosPlaybackSettings>): Promise<void> {
-        // Cache löschen, damit eine manuelle Änderung im PI sofort verarbeitet wird
         this.initializedHash.delete(ev.action.id);
         await this.onInstanceUpdate(ev);
     }
@@ -177,21 +146,14 @@ export class SonosPlaybackControlAction extends SingletonAction<SonosPlaybackSet
             if (ev.payload.event === 'get-devices') {
                 await discoveryPromise;
 
-                // Erzeuge Liste der Speaker
                 const deviceItems = sonosManager.Devices.map((device: SonosDevice) => ({
                     label: device.Name,
                     value: device.Host
                 }));
 
-                // Füge die Leerzeile / Placeholder GANZ OBEN ein
-                const itemsWithPlaceholder = [
-                    { label: "-- Choose device --", value: "" },
-                    ...deviceItems
-                ];
-
                 await streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
-                    items: itemsWithPlaceholder
+                    items: [{ label: "-- Choose device --", value: "" }, ...deviceItems]
                 });
             }
         }

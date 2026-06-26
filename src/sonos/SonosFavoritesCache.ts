@@ -119,25 +119,23 @@ private async processCoverArts(favorites: any[]): Promise<void> {
     
     const coverArtPromises = favorites.map(async (fav) => {
         const url = fav.AlbumArtUri;
-        const title = fav.Title || 'Unbekannter Favorit';
+        const title = fav.Title || 'Unknown favorite';
 
         if (!url) {
-            // Nur eine Info-Log, kein Error. Stream Deck zeigt dann das Standard-Icon.
-            streamDeck.logger.info(`Favorit "${title}" hat kein Cover-Bild. Standard-Icon wird verwendet.`);
+            streamDeck.logger.info(`Favorite "${title}" has no cover image — default icon will be shown.`);
             return;
         }
 
         if (this.coverArtCache.has(url)) {
-            streamDeck.logger.debug(`Cover für "${title}" bereits im Cache.`);
+            streamDeck.logger.debug(`Cover for "${title}" already in cache.`);
             return;
         }
 
-        // Starte den Download/Resize Prozess
         await this.fetchAndScaleCoverArt(url, title);
     });
 
     await Promise.all(coverArtPromises);
-    streamDeck.logger.info(`Verarbeitung der Cover-Bilder abgeschlossen.`);
+    streamDeck.logger.info('Cover art processing complete.');
 }
 
 /**
@@ -159,11 +157,10 @@ private async fetchAndScaleCoverArt(imageUrl: string, title: string): Promise<vo
         
         const response = await fetch(url.toString());
         if (!response.ok) {
-            // Info statt Error, falls z.B. die Datei auf dem NAS nicht gefunden wurde (404)
-            streamDeck.logger.info(`Cover für "${title}" konnte nicht geladen werden (HTTP ${response.status}).`);
+            streamDeck.logger.info(`Cover for "${title}" could not be loaded (HTTP ${response.status}).`);
             return;
         }
-        
+
         const imageBuffer = await response.arrayBuffer();
 
         const scaledImageBuffer = await sharp(Buffer.from(imageBuffer))
@@ -172,11 +169,10 @@ private async fetchAndScaleCoverArt(imageUrl: string, title: string): Promise<vo
             .toBuffer();
 
         const base64Image = `data:image/png;base64,${scaledImageBuffer.toString('base64')}`;
-        this.coverArtCache.set(imageUrl, base64Image); 
-        
+        this.coverArtCache.set(imageUrl, base64Image);
+
     } catch (error) {
-        // Auch hier: Info statt Error-Log, um das Log-File sauber zu halten
-        streamDeck.logger.info(`Cover-Verarbeitung für "${title}" übersprungen.`);
+        streamDeck.logger.info(`Cover processing for "${title}" skipped.`);
     }
 }
 }
