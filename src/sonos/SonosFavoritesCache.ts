@@ -14,6 +14,10 @@ class SonosFavoritesCache {
     private favorites: any[] | null = null;
     private hasFetchedFavorites = false;
 
+    // Pre-encoded DIDL-Lite metadata per favorite ItemId for use in SetAVTransportURI.
+    // Extracted verbatim from the raw Browse response so no info (cdudn, res, class) is lost.
+    private rawMetadataMap: Map<string, string> = new Map();
+
     // Cache for scaled cover art images (URL -> base64).
     private coverArtCache: Map<string, string> = new Map();
 
@@ -79,6 +83,43 @@ class SonosFavoritesCache {
 
         try {
             streamDeck.logger.info('Refreshing Sonos favorites...');
+
+            // Raw Browse call to extract r:resMD metadata per favorite before the SDK discards it.
+            // GetFavorites() uses BrowseParsedWithDefaults which loses the r:resMD field.
+            const rawResponse = await this.deviceForFetching.ContentDirectoryService.Browse({
+                ObjectID: 'FV:2',
+                BrowseFlag: 'BrowseDirectChildren',
+                Filter: '*',
+                StartingIndex: 0,
+                RequestedCount: 0,
+                SortCriteria: '',
+            });
+            if (typeof rawResponse.Result === 'string') {
+                this.rawMetadataMap.clear();
+                // rawResponse.Result is plain XML (outer SOAP entities decoded). The <r:resMD>
+                // child element contains the already-HTML-encoded DIDL-Lite that SetAVTransportURI
+                // expects — it is stored verbatim and passed as a string to bypass TrackToMetaData.
+                const xml = rawResponse.Result;
+                const itemRe = /<item[\s\S]*?<\/item>/g;
+                // r:resMD text has no actual '<' chars (content is HTML-encoded), so [^<]* is safe.
+                const resMdRe = /<r:resMD>([^<]+)<\/r:resMD>/;
+                // <res> URI is XML-entity + percent-encoded; decode both to match favorite.TrackUri.
+                const resRe = /<res[^>]*>([^<]+)<\/res>/;
+                let m: RegExpExecArray | null;
+                while ((m = itemRe.exec(xml)) !== null) {
+                    const resMdMatch = resMdRe.exec(m[0]);
+                    const resMatch = resRe.exec(m[0]);
+                    if (resMdMatch && resMatch) {
+                        // HTML-decode and URL-decode the raw URI to get the canonical TrackUri.
+                        const trackUri = resMatch[1]
+                            .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+                            .replace(/%3A/gi, ':').replace(/%2F/gi, '/').replace(/%20/g, ' ');
+                        this.rawMetadataMap.set(trackUri, resMdMatch[1]);
+                    }
+                }
+                streamDeck.logger.info(`[FavCache] Stored r:resMD metadata for ${this.rawMetadataMap.size} favorites.`);
+            }
+
             const favoritesResponse = await this.deviceForFetching.GetFavorites();
             if (Array.isArray(favoritesResponse.Result)) {
                 this.favorites = favoritesResponse.Result;
@@ -105,6 +146,10 @@ class SonosFavoritesCache {
 
     public areFavoritesLoaded(): boolean {
         return this.hasFetchedFavorites;
+    }
+
+    public getResMd(trackUri: string): string | undefined {
+        return this.rawMetadataMap.get(trackUri);
     }
 
     public getCoverArt(imageUrl: string): string | undefined {

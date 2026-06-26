@@ -14,6 +14,7 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { generateFaderSvg } from "../sonos/utils";
+import { generateVolumeButtonIcon } from "../utils/icons";
 
 type SonosKeyVolumeSettings = {
     deviceIp?: string;
@@ -42,13 +43,13 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
                 iconFile = generateFaderSvg(volume, isMuted, "#CCCCCC");
                 break;
             case 'vol-up':
-                iconFile = `${basePath}volume-plus-cccccc.png`;
+                iconFile = generateVolumeButtonIcon('up');
                 break;
             case 'vol-down':
-                iconFile = `${basePath}volume-minus-cccccc.png`;
+                iconFile = generateVolumeButtonIcon('down');
                 break;
             case 'vol-preset':
-                iconFile = `${basePath}tune-vertical-cccccc.png`;
+                iconFile = generateVolumeButtonIcon('preset');
                 break;
             default:
                 iconFile = `${basePath}volume-high-cccccc.png`;

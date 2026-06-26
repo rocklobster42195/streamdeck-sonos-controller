@@ -12,6 +12,8 @@ import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
+import { TrackInfo } from "../sonos/SonosTypes";
+import { generatePlaybackIcon } from "../utils/icons";
 
 type SonosPlaybackSettings = {
     deviceIp?: string;
@@ -22,39 +24,44 @@ type SonosPlaybackSettings = {
 export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private initializedHash: Map<string, string> = new Map();
+    private isRadioByContext: Map<string, boolean> = new Map();
+    private playModeByContext: Map<string, string> = new Map();
 
-    private updateIcon(action: any, command: SonosPlaybackSettings['command'], playMode: string = "") {
+    private updateIcon(action: any, command: SonosPlaybackSettings['command'], playMode = '', isRadio = false): void {
         if (!action || !command) return;
 
-        let icon = "";
-        const baseIconPath = "imgs/actions/sonos-playback-control/";
+        const skipColor = isRadio ? '#252525' : '#CCCCCC';
+        const set = (img: string) => action.setImage(img).catch(() => {});
 
         switch (command) {
             case 'next':
-                icon = `${baseIconPath}skip-next-cccccc.png`;
+                set(generatePlaybackIcon('next', false, skipColor));
                 break;
             case 'previous':
-                icon = `${baseIconPath}skip-previous-cccccc.png`;
+                set(generatePlaybackIcon('previous', false, skipColor));
                 break;
             case 'shuffle':
-                icon = playMode.includes('SHUFFLE')
-                    ? `${baseIconPath}shuffle-cccccc.png`
-                    : `${baseIconPath}shuffle-off-cccccc.png`;
+                set(generatePlaybackIcon('shuffle',
+                    isRadio ? false : playMode.includes('SHUFFLE'),
+                    '#CCCCCC',
+                    isRadio ? '#252525' : '#555555'
+                ));
                 break;
             case 'repeat':
-                if (playMode.includes('REPEAT_ONE')) {
-                    icon = `${baseIconPath}repeat-once-cccccc.png`;
-                } else if (playMode.includes('REPEAT_ALL')) {
-                    icon = `${baseIconPath}repeat-cccccc.png`;
+                if (isRadio) {
+                    set(generatePlaybackIcon('repeat', false, '#CCCCCC', '#252525'));
+                } else if (playMode.includes('REPEAT_ONE')) {
+                    // REPEAT_ONE or SHUFFLE_REPEAT_ONE
+                    set(generatePlaybackIcon('repeat', 'one'));
+                } else if (playMode === 'REPEAT_ALL' || playMode === 'SHUFFLE' || playMode === 'SHUFFLE_REPEAT_ALL') {
+                    // SHUFFLE in the Sonos API means shuffle + repeat-all (confusingly named).
+                    set(generatePlaybackIcon('repeat', 'all'));
                 } else {
-                    icon = `${baseIconPath}repeat-off-cccccc.png`;
+                    // NORMAL or SHUFFLE_NOREPEAT
+                    set(generatePlaybackIcon('repeat', false));
                 }
                 break;
-            default:
-                return;
         }
-
-        if (icon) action.setImage(icon);
     }
 
     private async onInstanceUpdate(ev: WillAppearEvent<SonosPlaybackSettings> | DidReceiveSettingsEvent<SonosPlaybackSettings>): Promise<void> {
@@ -76,6 +83,7 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
             const oldController = this.controllers.get(context);
             if (oldController && oldController.deviceIp !== deviceIp) {
                 oldController.unregisterPlayModeCallback(context);
+                oldController.unregisterTrackInfoCallback(context);
                 sonosDeviceManager.releaseController(oldController.deviceIp);
             }
 
@@ -84,11 +92,24 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
 
             controller.unregisterPlayModeCallback(context);
             controller.registerPlayModeCallback(context, (playMode) => {
-                this.updateIcon(action, command, playMode);
+                this.playModeByContext.set(context, playMode);
+                this.updateIcon(action, command, playMode, this.isRadioByContext.get(context) ?? false);
             });
 
-            const currentMode = await controller.getPlayMode();
-            this.updateIcon(action, command, currentMode);
+            controller.unregisterTrackInfoCallback(context);
+            controller.registerTrackInfoCallback(context, (trackInfo: TrackInfo) => {
+                const isRadio = trackInfo.isRadio ?? false;
+                const wasRadio = this.isRadioByContext.get(context);
+                this.isRadioByContext.set(context, isRadio);
+                // Re-render whenever radio status changes — affects all command types.
+                if (isRadio !== wasRadio || command === 'next' || command === 'previous') {
+                    this.updateIcon(action, command, this.playModeByContext.get(context) ?? '', isRadio);
+                }
+            });
+
+            const [currentMode] = await Promise.all([controller.getPlayMode()]);
+            this.playModeByContext.set(context, currentMode);
+            this.updateIcon(action, command, currentMode, this.isRadioByContext.get(context) ?? false);
             await action.setTitle("");
 
             this.initializedHash.set(context, currentHash);
@@ -114,10 +135,13 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
         const controller = this.controllers.get(context);
         if (controller) {
             controller.unregisterPlayModeCallback(context);
+            controller.unregisterTrackInfoCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
         }
         this.controllers.delete(context);
         this.initializedHash.delete(context);
+        this.isRadioByContext.delete(context);
+        this.playModeByContext.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<SonosPlaybackSettings>): Promise<void> {
@@ -131,10 +155,10 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
 
         try {
             switch (command) {
-                case 'next': await controller.next(); break;
+                case 'next':     await controller.next(); break;
                 case 'previous': await controller.previous(); break;
-                case 'shuffle': await controller.toggleShuffle(); break;
-                case 'repeat': await controller.toggleRepeat(); break;
+                case 'shuffle':  await controller.toggleShuffle(); break;
+                case 'repeat':   await controller.toggleRepeat(); break;
             }
         } catch (e) {
             ev.action.showAlert();

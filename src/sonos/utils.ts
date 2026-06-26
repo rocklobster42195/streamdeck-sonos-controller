@@ -1,6 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
 import { SonosDevice } from "@svrooij/sonos";
 import { URL } from "url";
+import { generateVolumeLevelIcon } from "../utils/icons";
 
 export async function loadImageFromUri(uri: string, device: SonosDevice): Promise<string> {
   try {
@@ -38,14 +39,7 @@ export async function loadImageFromUri(uri: string, device: SonosDevice): Promis
 }
 
 export function getIconByVolume(volume: number): string {
-  switch (true) {
-    case volume < 10:
-      return "imgs/actions/sonos-dial-volume/volume-low-cccccc";
-    case volume < 60:
-      return "imgs/actions/sonos-dial-volume/volume-medium-cccccc";
-    default:
-      return "imgs/actions/sonos-dial-volume/volume-high-cccccc";
-  }
+  return generateVolumeLevelIcon(volume, false);
 }
 
 export function generateFaderSvg(levelPercent: number, isMuted: boolean, color: string): string {

@@ -7,6 +7,8 @@ import { SonosPlaybackControl } from "./actions/sonos-playback-control";
 import { SonosPlayFavorite } from "./actions/sonos-play-favorite";
 import { SonosKeyVolume } from "./actions/sonos-key-volume";
 import { SonosDialTrack } from "./actions/sonos-dial-track";
+import { SonosDialFavorites } from "./actions/sonos-dial-favorites";
+import { SonosDialParticles } from "./actions/sonos-dial-particles";
 
 streamDeck.logger.setLevel("info");
 
@@ -17,6 +19,8 @@ streamDeck.actions.registerAction(new SonosPlaybackControl());
 streamDeck.actions.registerAction(new SonosPlayFavorite());
 streamDeck.actions.registerAction(new SonosKeyVolume());
 streamDeck.actions.registerAction(new SonosDialTrack());
+streamDeck.actions.registerAction(new SonosDialFavorites());
+streamDeck.actions.registerAction(new SonosDialParticles());
 
 // Finally, connect to the Stream Deck immediately.
 streamDeck.connect();

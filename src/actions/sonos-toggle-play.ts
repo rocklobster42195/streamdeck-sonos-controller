@@ -14,6 +14,7 @@ import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
+import { generateTransportIcon } from "../utils/icons";
 
 /**
  * Settings for {@link SonosTogglePlay}.
@@ -96,7 +97,7 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                 if (settings.showCoverArt && cover) {
                     await action.setImage(cover);
                 } else {
-                    await action.setImage("imgs/actions/sonos-toggle-play/play-circle-cccccc.png");
+                    await action.setImage(generateTransportIcon('play'));
                 }
             }
         } else {
@@ -104,10 +105,10 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
 
             switch (transportState) {
                 case "TRANSITIONING":
-                    await action.setImage("imgs/actions/sonos-toggle-play/timer-sand-cccccc.png");
+                    await action.setImage(generateTransportIcon('loading'));
                     break;
                 default: // PAUSED, STOPPED
-                    await action.setImage("imgs/actions/sonos-toggle-play/play-circle-cccccc.png");
+                    await action.setImage(generateTransportIcon('play'));
                     break;
             }
         }

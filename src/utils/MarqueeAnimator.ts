@@ -3,7 +3,7 @@ export interface MarqueeOptions {
     fontSize?: number;
     fontColor?: string;
     speed?: number; // pixels per tick
-    pauseDuration?: number; // ticks to pause at start/end
+    pauseDuration?: number; // ticks to pause at start before scrolling
     measuredWidth?: number; // optional precise measurement
     availableWidth?: number; // width of the text area to fit into
 }
@@ -91,27 +91,17 @@ export class MarqueeAnimator {
         if (!state) return;
         if (state.intervalId) return;
 
-        let tickCount = 0;
         state.intervalId = setInterval(() => {
-            tickCount++;
-            // recompute maxOffset each tick in case text/available width changed
-            const maxOffset = Math.max(0, state.width - state.availableWidth);
-
-            // simple pause at ends
             if (state.pauseTicks < state.pauseDuration) {
                 state.pauseTicks++;
             } else {
                 state.offset += state.speed;
-                if (state.offset > maxOffset) {
-                    // reset to start (no overshoot beyond the left start position)
-                    state.offset = 0;
-                    state.pauseTicks = 0;
+                // Prevent integer overflow in very long sessions.
+                const cycleWidth = Math.max(1, state.width + state.availableWidth);
+                if (state.offset > cycleWidth * 5000) {
+                    state.offset = state.offset % cycleWidth;
                 }
             }
-
-            // ensure offset is always clamped to valid range
-            if (state.offset < 0) state.offset = 0;
-            if (state.offset > maxOffset) state.offset = maxOffset;
 
             if (state.renderCallback) {
                 state.renderCallback();
@@ -128,27 +118,44 @@ export class MarqueeAnimator {
         const clipId = this.getClipId(context);
 
         if (!state.shouldScroll) {
-            // static text, starts at left edge (x) with no extra padding
             return `
                 <defs>
-                  <clipPath id="${clipId}"><rect x="${x}" y="${y - fontSize}" width="${width}" height="${height}" /></clipPath>
+                  <clipPath id="${clipId}"><rect x="${x}" y="${y - fontSize - 2}" width="${width}" height="${height + fontSize + 4}"/></clipPath>
                 </defs>
                 <text x="${x}" y="${y}" fill="${state.fontColor}" font-family="Arial, sans-serif" font-size="${fontSize}" clip-path="url(#${clipId})">${text}</text>
             `;
         }
 
-                // scrolling: draw a single text element that moves left by at most maxOffset
-                // This avoids showing letters left of the start position when the animation resets.
-                const tx = x - state.offset;
-                const svg = `
-                        <defs>
-                            <clipPath id="${clipId}"><rect x="${x}" y="${y - fontSize}" width="${width}" height="${height}" /></clipPath>
-                        </defs>
-                        <g clip-path="url(#${clipId})">
-                            <text x="${tx}" y="${y}" fill="${state.fontColor}" font-family="Arial, sans-serif" font-size="${fontSize}">${text}</text>
-                        </g>
-                `;
-                return svg;
+        // Small gap between copies so the next copy enters before the current one has fully exited.
+        // cycleWidth < textWidth + availableWidth means both copies are briefly visible simultaneously.
+        const GAP = 25;
+        const cycleWidth = Math.max(1, state.width + GAP);
+        const effectiveOffset = state.offset % cycleWidth;
+        const tx1 = x - effectiveOffset;
+        const tx2 = x - effectiveOffset + cycleWidth;
+
+        // Right-side fade only — left boundary is the hard mask edge at x (same as artist indent).
+        const fadeW = 12;
+        const fadeStartPct = Math.round(((width - fadeW) / width) * 100);
+        const gradId = `${clipId}g`;
+        const maskId = `${clipId}m`;
+
+        return `
+            <defs>
+              <linearGradient id="${gradId}" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0%" stop-color="white" stop-opacity="1"/>
+                <stop offset="${fadeStartPct}%" stop-color="white" stop-opacity="1"/>
+                <stop offset="100%" stop-color="white" stop-opacity="0"/>
+              </linearGradient>
+              <mask id="${maskId}">
+                <rect x="${x}" y="${y - fontSize - 2}" width="${width}" height="${height + fontSize + 4}" fill="url(#${gradId})"/>
+              </mask>
+            </defs>
+            <g mask="url(#${maskId})">
+              <text x="${tx1}" y="${y}" fill="${state.fontColor}" font-family="Arial, sans-serif" font-size="${fontSize}">${text}</text>
+              <text x="${tx2}" y="${y}" fill="${state.fontColor}" font-family="Arial, sans-serif" font-size="${fontSize}">${text}</text>
+            </g>
+        `;
     }
 
     public stop(context: string) {
@@ -165,7 +172,6 @@ export class MarqueeAnimator {
     }
 
     private estimateTextWidth(text: string, fontSize: number): number {
-        // conservative estimate so long titles trigger scrolling reliably
         const factor = 0.55;
         const padding = 4;
         return Math.max(0, Math.ceil(text.length * fontSize * factor) + padding);

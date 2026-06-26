@@ -11,7 +11,8 @@ import streamDeck, {
   WillDisappearEvent
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
-import { getIconByVolume, generateFaderSvg } from "../sonos/utils";
+import { getIconByVolume } from "../sonos/utils";
+import { generateVolumeLevelIcon } from "../utils/icons";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { VolumeInfo } from "../sonos/SonosTypes";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
@@ -140,11 +141,14 @@ export class SonosDialVolume extends SingletonAction<SonosSettings> {
 
         const ticks = ev.payload.ticks;
         const currentVolume = state.volume;
-        // Increase step size for faster rotation
         const volumeChange = ticks * (Math.abs(ticks) > 3 ? 2 : 1);
         const newVolume = Math.min(100, Math.max(0, currentVolume + volumeChange));
-        
+
         if (newVolume !== currentVolume) {
+            // Update state immediately so rapid rotation accumulates correctly
+            // and the indicator responds without waiting for the UPnP event.
+            state.volume = newVolume;
+            this.updateFeedback(context);
             await controller.setVolume(newVolume);
         }
     }
@@ -170,9 +174,7 @@ export class SonosDialVolume extends SingletonAction<SonosSettings> {
             action.setFeedback({
                 title: `${state.deviceName ?? "Volume"}`,
                 value: state.isMuted ? 'Muted' : `${volume}%`,
-                icon: state.isMuted
-                    ? "imgs/actions/sonos-dial-volume/volume-mute-cccccc.png"
-                    : `${getIconByVolume(volume)}.png`,
+                icon: generateVolumeLevelIcon(volume, state.isMuted ?? false),
                indicator: { value: volume },
             });
         }

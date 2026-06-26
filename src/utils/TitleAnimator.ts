@@ -77,7 +77,7 @@ export class TitleAnimator {
             const data = fs.readFileSync(foundPath);
             const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
             this.font = opentype.parse(arrayBuffer);
-            streamDeck.logger.info(`[TitleAnimator] Font loaded: ${this.font.names.fontFamily.en}`);
+            streamDeck.logger.info(`[TitleAnimator] Font loaded: ${this.font.names.fontFamily?.en ?? 'OK'}`);
         } catch (err) {
             streamDeck.logger.error(`[TitleAnimator] Font parse error: ${err}`);
         }

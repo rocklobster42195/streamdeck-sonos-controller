@@ -1,7 +1,8 @@
 {
     "scripts": {
         "build": "rollup -c",
-        "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart de.boriskemper.sonos-controller\""
+        "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart de.boriskemper.sonos-controller\"",
+        "icons": "node tools/generate-icons.mjs"
     },
     "type": "module",
     "devDependencies": {
@@ -21,6 +22,7 @@
     },
     "dependencies": {
         "@elgato/streamdeck": "^2.1.0",
+        "@mdi/js": "^7.4.47",
         "@svrooij/sonos": "^2.6.0-beta.13",
         "opentype.js": "^2.0.0",
         "sharp": "^0.35.2"

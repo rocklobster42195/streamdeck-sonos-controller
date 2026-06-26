@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+  <title>Favorites Dial Settings</title>
+  <meta charset="utf-8"/>
+  <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+</head>
+<body>
+  <sdpi-item label="SONOS device">
+    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices..." hot-reload>
+    </sdpi-select>
+  </sdpi-item>
+
+  <sdpi-item label="Browse timeout">
+    <sdpi-range setting="browseTimeout" min="1" max="10" step="1" showlabels value="3">
+    </sdpi-range>
+  </sdpi-item>
+
+  <sdpi-item label="">
+    <sdpi-item-value style="font-size:11px; color:#888; line-height:1.4">
+      Rotate to browse all your Sonos favorites.<br>
+      Press to play. Touch or wait to return to now playing.
+    </sdpi-item-value>
+  </sdpi-item>
+</body>
+</html>

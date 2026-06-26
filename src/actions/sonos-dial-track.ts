@@ -11,38 +11,36 @@ import streamDeck, {
     TouchTapEvent
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
-import { generateFaderSvg } from "../sonos/utils";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { CoverArtAnimator } from "../utils/CoverArtAnimator";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
-import { TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
+import { getDominantColor } from "../utils/colorExtract";
+import { particleEngine } from "../utils/ParticleEngine";
+import { TrackInfo } from "../sonos/SonosTypes";
 
-/**
- * Settings for {@link SonosDialTrack}.
- */
 type SonosSettings = {
     deviceIp?: string;
     showTrackTitle?: boolean;
-    showCoverArt?: boolean;
     fontColor?: string;
     fontSize?: number;
     marqueeSpeed?: number;
     marqueePause?: number;
-    enableMarquee?: boolean;
+    visualizerMode?: 'eq' | 'particles' | 'none';
 };
 
 interface DialState {
-    volume: number;
-    isMuted: boolean;
     trackInfo?: TrackInfo;
+    transportState: string;
+    dominantColor: string;
+    lastColorUri?: string;
+    trackDuration: number;
+    trackPosition: number;
+    trackPositionTime: number;
 }
 
-/**
- * A dial action that displays the current track, cover art and provides volume control.
- */
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-track" })
 export class SonosDialTrack extends SingletonAction<SonosSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
@@ -50,193 +48,226 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
     private animators: Map<string, CoverArtAnimator> = new Map();
     private settingsMap: Map<string, SonosSettings> = new Map();
     private marqueeTimers: Map<string, NodeJS.Timeout> = new Map();
+    private animTimers: Map<string, NodeJS.Timeout> = new Map();
 
-    private onVolumeInfoChanged(context: string, volumeInfo: VolumeInfo): void {
+    private onTransportStateChanged(context: string, transportState: string): void {
         const state = this.states.get(context);
-        if (state) {
-            state.volume = volumeInfo.volume;
-            state.isMuted = volumeInfo.mute;
-            this.renderDial(context);
+        if (!state) return;
+        state.transportState = transportState;
+        if (transportState === 'PLAYING') {
+            this.startAnimTimer(context);
+            const controller = this.controllers.get(context);
+            if (controller) void this.fetchAndStorePosition(context, controller);
+        } else {
+            this.stopAnimTimer(context);
         }
+        void this.renderDial(context);
     }
 
     private async onTrackInfoChanged(context: string, trackInfo: TrackInfo): Promise<void> {
         const state = this.states.get(context);
         const animator = this.animators.get(context);
-        if (state && animator) {
-            // Preserve the visible cover when the new track event carries no art (e.g. radio news).
-            if (!trackInfo.albumArtDataUri && state.trackInfo?.albumArtDataUri) {
-                trackInfo = { ...trackInfo, albumArtDataUri: state.trackInfo.albumArtDataUri };
-            }
-            state.trackInfo = trackInfo;
-            animator.updateImage(context, trackInfo.albumArtDataUri);
-            // Update marquee text (title) using truncation preview + delayed full scroll
-            const settings = this.settingsMap.get(context);
-            const text = trackInfo.Title ? `${trackInfo.Title}` : trackInfo.Title || '';
-            const fontSize = settings?.fontSize ?? 14;
-            const gapRight = 5; // px gap between text and cover
-            const availWidth = 100 - gapRight; // ensure small spacing to cover
-            await this.updateTitleMarquee(context, text, fontSize, availWidth, settings);
-            this.renderDial(context);
+        if (!state || !animator) return;
+
+        // Preserve visible cover when the new event carries no art (e.g. radio news segment).
+        if (!trackInfo.albumArtDataUri && state.trackInfo?.albumArtDataUri) {
+            trackInfo = { ...trackInfo, albumArtDataUri: state.trackInfo.albumArtDataUri };
         }
+        state.trackInfo = trackInfo;
+        animator.updateImage(context, trackInfo.albumArtDataUri);
+
+        // Extract dominant color only when the cover changes.
+        const newCover = trackInfo.albumArtDataUri;
+        if (newCover && newCover !== state.lastColorUri) {
+            state.lastColorUri = newCover;
+            getDominantColor(newCover).then(color => {
+                const s = this.states.get(context);
+                if (!s) return;
+                s.dominantColor = color;
+                particleEngine.setColor(context, this.ensureVisibleColor(color));
+                void this.renderDial(context);
+            }).catch(() => {});
+        }
+
+        const controller = this.controllers.get(context);
+        if (controller) void this.fetchAndStorePosition(context, controller);
+
+        const settings = this.settingsMap.get(context);
+        const marqWidth = this.marqWidth(settings);
+        const text = trackInfo.Title ?? '';
+        await this.updateTitleMarquee(context, text, settings?.fontSize ?? 14, marqWidth, settings);
+        void this.renderDial(context);
+    }
+
+    // Drives re-renders for progress bar (all modes) and animations (eq/particles).
+    private startAnimTimer(context: string): void {
+        if (this.animTimers.has(context)) return;
+        const timer = setInterval(() => {
+            const s = this.states.get(context);
+            if (!s || s.transportState !== 'PLAYING') {
+                this.stopAnimTimer(context);
+                return;
+            }
+            const settings = this.settingsMap.get(context);
+            if (settings?.visualizerMode === 'particles') particleEngine.tick(context);
+            void this.renderDial(context);
+        }, 100);
+        this.animTimers.set(context, timer);
+    }
+
+    private stopAnimTimer(context: string): void {
+        const timer = this.animTimers.get(context);
+        if (timer) { clearInterval(timer); this.animTimers.delete(context); }
+    }
+
+    private marqWidth(_settings?: SonosSettings): number {
+        return 97;
     }
 
     private estimateTextWidth(text: string, fontSize: number): number {
-        // same estimation as MarqueeAnimator
-        const factor = 0.55;
-        const padding = 4;
-        return Math.max(0, Math.ceil(text.length * fontSize * factor) + padding);
+        return Math.max(0, Math.ceil(text.length * fontSize * 0.55) + 4);
     }
 
-    // Compute a truncated version of `text` that fits into `availableWidth` when rendered with `fontSize`.
     private async computeTruncatedText(text: string, fontSize: number, availableWidth: number): Promise<string> {
-        // quick path
         try {
             const fullWidth = await titleAnimator.measure(text, fontSize);
             if (fullWidth <= availableWidth) return text;
-        } catch {
-            // ignore, we'll fallback to estimate
-        }
+        } catch { /* fall through to binary search */ }
 
-        // binary search for maximum chars that fit with trailing ellipsis
-        let lo = 0;
-        let hi = text.length;
-        let best = '';
+        let lo = 0, hi = text.length, best = '';
         while (lo <= hi) {
             const mid = Math.floor((lo + hi) / 2);
             const candidate = text.substring(0, mid) + '…';
             let w: number;
-            try {
-                w = await titleAnimator.measure(candidate, fontSize);
-            } catch {
-                w = this.estimateTextWidth(candidate, fontSize);
-            }
-            if (w <= availableWidth) {
-                best = candidate;
-                lo = mid + 1;
-            } else {
-                hi = mid - 1;
-            }
+            try { w = await titleAnimator.measure(candidate, fontSize); }
+            catch { w = this.estimateTextWidth(candidate, fontSize); }
+            if (w <= availableWidth) { best = candidate; lo = mid + 1; }
+            else { hi = mid - 1; }
         }
-        return best || text.substring(0, Math.max(0, Math.floor((availableWidth / (fontSize * 0.55)) - 1))) + '…';
+        return best || text.substring(0, Math.max(0, Math.floor(availableWidth / (fontSize * 0.55)) - 1)) + '…';
     }
 
-    // Update marquee for title: show truncated preview, then after delay start the full scrolling text
     private async updateTitleMarquee(context: string, fullText: string, fontSize: number, availableWidth: number, settings?: SonosSettings) {
-        // clear previous timer
         const prev = this.marqueeTimers.get(context);
-        if (prev) {
-            clearTimeout(prev);
-            this.marqueeTimers.delete(context);
-        }
+        if (prev) { clearTimeout(prev); this.marqueeTimers.delete(context); }
 
-        // measure full text
-        let measuredFull: number | undefined = undefined;
-        try {
-            measuredFull = await titleAnimator.measure(fullText, fontSize);
-            streamDeck.logger.debug(`[updateTitleMarquee] measuredFull=${measuredFull} for "${fullText.substring(0,30)}..."`);
-        } catch (e) {
-            streamDeck.logger.debug(`[updateTitleMarquee] measure failed, will estimate`);
-        }
+        const fontColor = settings?.fontColor ?? '#FFFFFF';
+        const speed = settings?.marqueeSpeed;
+        const pauseDuration = settings?.marqueePause;
 
-        // If fits, show full static
+        let measuredFull: number | undefined;
+        try { measuredFull = await titleAnimator.measure(fullText, fontSize); } catch { /* use estimate */ }
+
         if ((measuredFull ?? this.estimateTextWidth(fullText, fontSize)) <= availableWidth) {
-            marqueeAnimator.update(context, { text: fullText, fontSize, fontColor: settings?.fontColor ?? '#FFFFFF', speed: settings?.marqueeSpeed, pauseDuration: settings?.marqueePause, measuredWidth: measuredFull, availableWidth });
+            marqueeAnimator.update(context, { text: fullText, fontSize, fontColor, speed, pauseDuration, measuredWidth: measuredFull, availableWidth });
             return;
         }
 
-        // Compute truncated preview that fits with ellipsis
         const preview = await this.computeTruncatedText(fullText, fontSize, availableWidth);
-        let measuredPreview: number | undefined = undefined;
-        try {
-            measuredPreview = await titleAnimator.measure(preview, fontSize);
-        } catch {
-            measuredPreview = this.estimateTextWidth(preview, fontSize);
-        }
+        let measuredPreview: number | undefined;
+        try { measuredPreview = await titleAnimator.measure(preview, fontSize); }
+        catch { measuredPreview = this.estimateTextWidth(preview, fontSize); }
 
-        // Show preview (no scrolling expected)
-        marqueeAnimator.update(context, { text: preview, fontSize, fontColor: settings?.fontColor ?? '#FFFFFF', speed: settings?.marqueeSpeed, pauseDuration: settings?.marqueePause, measuredWidth: measuredPreview, availableWidth });
+        marqueeAnimator.update(context, { text: preview, fontSize, fontColor, speed, pauseDuration, measuredWidth: measuredPreview, availableWidth });
 
-        // After a pause, switch to full text and enable scrolling
-        const initialPause = 1500; // ms
         const t = setTimeout(() => {
-            marqueeAnimator.update(context, { text: fullText, fontSize, fontColor: settings?.fontColor ?? '#FFFFFF', speed: settings?.marqueeSpeed, pauseDuration: settings?.marqueePause, measuredWidth: measuredFull, availableWidth });
+            marqueeAnimator.update(context, { text: fullText, fontSize, fontColor, speed, pauseDuration, measuredWidth: measuredFull, availableWidth });
             this.marqueeTimers.delete(context);
-        }, initialPause);
+        }, 1500);
         this.marqueeTimers.set(context, t);
     }
 
-async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
-    const context = ev.action.id;
-    const { deviceIp } = ev.payload.settings;
+    async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
+        const context = ev.action.id;
+        const settings = ev.payload.settings;
+        const { deviceIp } = settings;
 
-    // store settings for this context
-    this.settingsMap.set(context, ev.payload.settings);
+        this.cleanupInstance(context);
+        this.settingsMap.set(context, settings);
 
-    this.cleanupInstance(context);
+        const animator = new CoverArtAnimator();
+        this.animators.set(context, animator);
+        animator.start(context, () => { void this.renderDial(context); });
 
-    const animator = new CoverArtAnimator();
-    this.animators.set(context, animator);
-    animator.start(context, () => this.renderDial(context));
+        marqueeAnimator.start(context, () => { void this.renderDial(context); }, {
+            text: '',
+            fontSize: settings.fontSize ?? 14,
+            fontColor: settings.fontColor ?? '#FFFFFF',
+            speed: settings.marqueeSpeed,
+            pauseDuration: settings.marqueePause,
+            availableWidth: this.marqWidth(settings),
+        });
 
-    marqueeAnimator.start(context, () => this.renderDial(context), { text: '', fontSize: ev.payload.settings.fontSize ?? 14, fontColor: ev.payload.settings.fontColor ?? '#FFFFFF', speed: ev.payload.settings.marqueeSpeed, pauseDuration: ev.payload.settings.marqueePause, availableWidth: 100 });
+        this.states.set(context, {
+            transportState: 'STOPPED',
+            dominantColor: '#CCCCCC',
+            trackDuration: 0,
+            trackPosition: 0,
+            trackPositionTime: Date.now(),
+        });
 
-    this.states.set(context, { volume: 0, isMuted: false });
-
-    await this.renderDial(context);
-
-    if (!deviceIp) {
-        return;
-    }
-
-    try {
-        const controller = await sonosDeviceManager.getController(deviceIp);
-        this.controllers.set(context, controller);
-
-        controller.registerVolumeCallback(context, (volumeInfo) => this.onVolumeInfoChanged(context, volumeInfo));
-        controller.registerTrackInfoCallback(context, (trackInfo) => { void this.onTrackInfoChanged(context, trackInfo); });
-
-        const [vol, track] = await Promise.all([
-            controller.getVolume(),
-            controller.getCurrentTrack()
-        ]);
-
-        const state = this.states.get(context)!;
-        state.volume = vol.volume;
-        state.isMuted = vol.mute;
-
-        if (track) {
-            state.trackInfo = track;
-            
-            const cover = await controller.getCurrentTrackCover();
-                if (cover) {
-                    state.trackInfo.albumArtDataUri = cover;
-                    animator.updateImage(context, cover);
-                    // Update marquee text now that track is known (always update marquee state)
-                    const settings = this.settingsMap.get(context);
-                    const text = track.Title ? `${track.Title}` : '';
-                    const fontSize = settings?.fontSize ?? 14;
-                    let measured: number | undefined = undefined;
-                    try {
-                        measured = await titleAnimator.measure(text, fontSize);
-                        streamDeck.logger.debug(`[onInstanceUpdate] Measured text width: ${measured}px for "${text.substring(0, 30)}..." (fontSize=${fontSize})`);
-                    } catch (err) {
-                        streamDeck.logger.debug(`[onInstanceUpdate] Text measurement failed`);
-                    }
-                    const estimatedWidth = this.estimateTextWidth(text, fontSize);
-                    const gapRight = 5;
-                    const availWidth = 100 - gapRight;
-                    streamDeck.logger.debug(`[onInstanceUpdate] Marquee update: measured=${measured} estimated=${estimatedWidth} available=${availWidth}`);
-                    await this.updateTitleMarquee(context, text, fontSize, availWidth, settings);
-                }
+        if (settings.visualizerMode === 'particles') {
+            particleEngine.init(context, {
+                width: 100, height: 38, count: 12,
+                color: '#CCCCCC',
+                mode: 'network',
+                maxSpeed: 0.4,
+                connectDistance: 40,
+                minRadius: 1.5,
+                maxRadius: 3,
+                opacity: 0.85,
+            });
         }
 
         await this.renderDial(context);
 
-    } catch (e) {
-        streamDeck.logger.error(`Error getting initial state for ${deviceIp}`, e);
+        if (!deviceIp) return;
+
+        try {
+            const controller = await sonosDeviceManager.getController(deviceIp);
+            this.controllers.set(context, controller);
+
+            controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
+            controller.registerTrackInfoCallback(context, (ti) => { void this.onTrackInfoChanged(context, ti); });
+
+            const [transportState, track] = await Promise.all([
+                controller.getTransportState(),
+                controller.getCurrentTrack(),
+            ]);
+
+            const state = this.states.get(context)!;
+            state.transportState = transportState;
+            if (transportState === 'PLAYING') this.startAnimTimer(context);
+            if (track) state.trackInfo = track;
+
+            await this.fetchAndStorePosition(context, controller);
+
+            // For radio, getCurrentTrack() returns undefined; derive cover from stream URI.
+            const cover = await controller.getCurrentTrackCover();
+            if (cover) {
+                if (!state.trackInfo) state.trackInfo = {} as TrackInfo;
+                state.trackInfo.albumArtDataUri = cover;
+                animator.updateImage(context, cover);
+
+                state.lastColorUri = cover;
+                getDominantColor(cover).then(c => {
+                    const s = this.states.get(context);
+                    if (!s) return;
+                    s.dominantColor = c;
+                    particleEngine.setColor(context, this.ensureVisibleColor(c));
+                    void this.renderDial(context);
+                }).catch(() => {});
+
+                const text = state.trackInfo.Title ?? '';
+                await this.updateTitleMarquee(context, text, settings.fontSize ?? 14, this.marqWidth(settings), settings);
+            }
+
+            await this.renderDial(context);
+
+        } catch (e) {
+            streamDeck.logger.error(`Error getting initial state for ${deviceIp}`, e);
+        }
     }
-}
 
     override async onWillAppear(ev: WillAppearEvent<SonosSettings>): Promise<void> {
         await this.onInstanceUpdate(ev);
@@ -253,64 +284,64 @@ async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEv
     private cleanupInstance(context: string): void {
         const controller = this.controllers.get(context);
         if (controller) {
-            controller.unregisterVolumeCallback(context);
+            controller.unregisterTransportStateCallback(context);
             controller.unregisterTrackInfoCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
             this.controllers.delete(context);
         }
 
-        const animator = this.animators.get(context);
-        if (animator) {
-            animator.destroy(context);
-            this.animators.delete(context);
-        }
+        this.stopAnimTimer(context);
+        particleEngine.destroy(context);
 
-        // destroy marquee as well
+        const animator = this.animators.get(context);
+        if (animator) { animator.destroy(context); this.animators.delete(context); }
+
         marqueeAnimator.destroy(context);
 
-        // clear any pending marquee timers
         const mt = this.marqueeTimers.get(context);
-        if (mt) {
-            clearTimeout(mt);
-            this.marqueeTimers.delete(context);
-        }
+        if (mt) { clearTimeout(mt); this.marqueeTimers.delete(context); }
 
         this.settingsMap.delete(context);
-
         this.states.delete(context);
     }
 
+    // Dial press → next track so the user can browse playlists.
     override async onDialDown(ev: DialDownEvent<SonosSettings>): Promise<void> {
         const controller = this.controllers.get(ev.action.id);
-        if (controller) {
-            await controller.toggleMute();
-        }
+        if (controller) await controller.next();
     }
 
+    // Touch tap → toggle play / pause.
     override async onTouchTap(ev: TouchTapEvent<SonosSettings>): Promise<void> {
         const controller = this.controllers.get(ev.action.id);
-        if (controller) {
-            await controller.togglePlayPause();
-        }
+        if (controller) await controller.togglePlayPause();
     }
 
+    // Dial rotation → seek ±5 % per tick in the current track.
     override async onDialRotate(ev: DialRotateEvent<SonosSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         const state = this.states.get(context);
-        if (!controller || !state) return;
+        if (!controller || !state || state.trackDuration <= 5) return;
 
-        if (state.isMuted) {
-            await controller.toggleMute();
-        }
+        const elapsed = state.transportState === 'PLAYING'
+            ? (Date.now() - state.trackPositionTime) / 1000 : 0;
+        const current = state.trackPosition + elapsed;
+        const newPos = Math.max(0, Math.min(state.trackDuration, current + ev.payload.ticks * state.trackDuration * 0.05));
 
-        const ticks = ev.payload.ticks;
-        const currentVolume = state.volume;
-        const volumeChange = ticks * (Math.abs(ticks) > 3 ? 2 : 1);
-        const newVolume = Math.min(100, Math.max(0, currentVolume + volumeChange));
+        // Update immediately so the progress bar responds without waiting for the seek to confirm.
+        state.trackPosition = newPos;
+        state.trackPositionTime = Date.now();
+        void this.renderDial(context);
 
-        if (newVolume !== currentVolume) {
-            await controller.setVolume(newVolume);
+        try {
+            await controller.sonosDevice.AVTransportService.Seek({
+                InstanceID: 0,
+                Unit: 'REL_TIME',
+                Target: this.formatRelTime(newPos),
+            });
+        } catch (e) {
+            streamDeck.logger.warn('Seek failed', e);
         }
     }
 
@@ -327,75 +358,188 @@ async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEv
         }
     }
 
-private async renderDial(context: string): Promise<void> {
-    const action = streamDeck.actions.getActionById(context);
-    const state = this.states.get(context);
-    
-    if (!action || !action.isDial() || !state) {
-        return;
+    private parseRelTime(t: string): number {
+        if (!t || t === 'NOT_IMPLEMENTED') return 0;
+        const parts = t.split(':').map(Number);
+        return (parts.length === 3 && parts.every(n => !isNaN(n)))
+            ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+            : 0;
     }
 
-    const title = state.trackInfo?.Title || "Sonos";
-    const artist = state.trackInfo?.Artist || "Ready";
-    const coverImg = state.trackInfo?.albumArtDataUri || "";
-
-    let faderImg = generateFaderSvg(state.volume, state.isMuted, "#CCCCCC");
-
-    if (faderImg.trim().startsWith('<svg')) {
-        faderImg = `data:image/svg+xml;base64,${Buffer.from(faderImg).toString('base64')}`;
+    private formatRelTime(seconds: number): string {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
 
-    const coverSvgTag = coverImg
-        ? `<image href="${coverImg}" x="115" y="5" width="85" height="95" preserveAspectRatio="xMidYMid slice" rx="5" />`
-        : `<rect x="115" y="5" width="85" height="95" fill="#222222" rx="5" />`;
+    private async fetchAndStorePosition(context: string, controller: SonosDeviceController): Promise<void> {
+        try {
+            const pos = await controller.sonosDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
+            const state = this.states.get(context);
+            if (!state) return;
+            state.trackPosition = this.parseRelTime(pos.RelTime);
+            state.trackDuration = this.parseRelTime(pos.TrackDuration);
+            state.trackPositionTime = Date.now();
+        } catch { /* position stays at last known value */ }
+    }
 
-    const finalSvg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
-            <rect width="200" height="100" fill="black" />
-            <defs>
-                <clipPath id="textClipArea"><rect x="10" y="5" width="100" height="50" /></clipPath>
-            </defs>
-            <g clip-path="url(#textClipArea)">
-                ${(() => {
-                    const settings = this.settingsMap.get(context);
-                    // Show title by default; only hide if explicitly disabled in settings
-                    if (settings && settings.showTrackTitle === false) return '';
-                    const fontSize = settings?.fontSize ?? 14;
-                    // If marquee is active for this context, render title with animation
-                    if (marqueeAnimator.isRunning(context)) {
-                        const titleFrag = marqueeAnimator.render(context, 10, 25, 100, 20);
-                        const artistFrag = `<text x="10" y="42" fill="#AAAAAA" font-family="Arial, sans-serif" font-size="12">${this.escapeXml(artist)}</text>`;
-                        return titleFrag + artistFrag;
-                    }
-                    // Static text if no marquee
-                    const titleFrag = `<text x="10" y="25" fill="white" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${this.escapeXml(title)}</text>`;
-                    const artistFrag = `<text x="10" y="42" fill="#AAAAAA" font-family="Arial, sans-serif" font-size="12">${this.escapeXml(artist)}</text>`;
-                    return titleFrag + artistFrag;
-                })()}
-            </g>
-            <rect x="110" y="5" width="5" height="50" fill="black" />
-            ${coverSvgTag}
-            <image href="${faderImg}" x="10" y="45" width="50" height="50" />
-        </svg>
-    `.trim();
+    private ensureVisibleColor(color: string): string {
+        const m = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
+        if (!m) return '#CCCCCC';
+        const [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255];
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (lum >= 0.25) return color;
+        const mix = (v: number) => Math.min(255, Math.round(v * 255 + 255 * 0.55));
+        return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+    }
 
-    const finalImage = `data:image/svg+xml;base64,${Buffer.from(finalSvg).toString('base64')}`;
+    private renderEqualizerBars(color: string, amplitude = 1): string {
+        const base = [8, 14, 10, 18, 6, 12, 16, 8, 14, 10];
+        return base.map((h, i) => {
+            const full = Math.max(4, Math.min(18, h + Math.floor(Math.random() * 10 - 5)));
+            const rh = Math.max(1, Math.round(full * amplitude));
+            const op = (0.75 * amplitude).toFixed(2);
+            return `<rect x="${8 + i * 9}" y="${90 - rh}" width="7" height="${rh}" fill="${this.escapeXml(color)}" opacity="${op}" rx="1"/>`;
+        }).join('');
+    }
 
-    await action.setFeedback({
-        "full-canvas": finalImage,
-        "icon": "", 
-        "title": "",
-        "indicator": { "value": state.isMuted ? 0 : state.volume }
-    });
-}
+    private async renderDial(context: string): Promise<void> {
+        const sdAction = streamDeck.actions.getActionById(context);
+        const state = this.states.get(context);
+        const animator = this.animators.get(context);
+        if (!sdAction || !sdAction.isDial() || !state || !animator) return;
 
-private escapeXml(unsafe: string): string {
-    return unsafe.replace(/[<>&"']/g, (c) => {
-        switch (c) {
-            case '<': return '&lt;'; case '>': return '&gt;';
-            case '&': return '&amp;'; case '"': return '&quot;';
-            case "'": return '&apos;'; default: return c;
+        const settings = this.settingsMap.get(context);
+        const isPlaying = state.transportState === 'PLAYING';
+        const isTransitioning = state.transportState === 'TRANSITIONING';
+        const artist = state.trackInfo?.Artist ?? '';
+        const accentColor = this.ensureVisibleColor(state.dominantColor);
+        const textOpacity = (isPlaying || isTransitioning) ? 1 : 0.6;
+        const fontSize = settings?.fontSize ?? 14;
+        const fontColor = settings?.fontColor ?? '#FFFFFF';
+        const visualizerMode = settings?.visualizerMode ?? 'eq';
+
+        const elapsed = isPlaying ? (Date.now() - state.trackPositionTime) / 1000 : 0;
+        const currentPos = state.trackPosition + elapsed;
+        const progress = state.trackDuration > 5 ? Math.min(1, currentPos / state.trackDuration) : 0;
+        const progressPct = Math.round(progress * 100);
+
+        // EQ fade-out: shrink bars linearly over the last 3 seconds of a track.
+        const FADE_SECS = 3;
+        const timeRemaining = state.trackDuration > 5 ? state.trackDuration - currentPos : Infinity;
+        const eqAmplitude = (isPlaying && timeRemaining < FADE_SECS)
+            ? Math.max(0, timeRemaining / FADE_SECS)
+            : 1;
+
+        let svg: string;
+
+        if (visualizerMode === 'none') {
+            // Cover on the right, text bottom-aligned on the left, no visualizer.
+            const bgCover = animator.render(context, -10, -10, 220, 120);
+            const sharpCover = animator.render(context, 113, 4, 87, 92);
+
+            let titleFrag = '';
+            if (settings?.showTrackTitle !== false) {
+                if (marqueeAnimator.isRunning(context)) {
+                    titleFrag = marqueeAnimator.render(context, 8, 68, 97, 20);
+                } else {
+                    const t = this.escapeXml(state.trackInfo?.Title ?? 'Sonos');
+                    titleFrag = `<text x="8" y="68" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
+                }
+            }
+
+            svg = [
+                '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+                '<defs>',
+                '  <filter id="blur"><feGaussianBlur stdDeviation="8"/></filter>',
+                '  <linearGradient id="overlay" x1="0" x2="1" y1="0" y2="0">',
+                '    <stop offset="0%" stop-color="black" stop-opacity="0.85"/>',
+                '    <stop offset="65%" stop-color="black" stop-opacity="0.55"/>',
+                '    <stop offset="100%" stop-color="black" stop-opacity="0"/>',
+                '  </linearGradient>',
+                '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
+                '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
+                '</defs>',
+                '<rect width="200" height="100" fill="black"/>',
+                `<g filter="url(#blur)" opacity="0.35">${bgCover}</g>`,
+                '<rect width="200" height="100" fill="url(#overlay)"/>',
+                `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
+                titleFrag,
+                `  <text x="8" y="82" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
+                '</g>',
+                `<rect x="8" y="91" width="97" height="3" fill="white" opacity="0.12" rx="1.5"/>`,
+                progressPct > 0 ? `<rect x="8" y="91" width="${Math.round(97 * progress)}" height="3" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="1.5"/>` : '',
+                `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                '</svg>',
+            ].join('');
+        } else {
+            // Eq / particles layout: cover art on the right, text and visualizer on the left.
+            const bgCover = animator.render(context, -10, -10, 220, 120);
+            const sharpCover = animator.render(context, 113, 4, 87, 92);
+
+            let titleFrag = '';
+            if (settings?.showTrackTitle !== false) {
+                if (marqueeAnimator.isRunning(context)) {
+                    titleFrag = marqueeAnimator.render(context, 8, 22, 97, 20);
+                } else {
+                    const t = this.escapeXml(state.trackInfo?.Title ?? 'Sonos');
+                    titleFrag = `<text x="8" y="22" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
+                }
+            }
+
+            const isParticles = visualizerMode === 'particles';
+            const visualizer = isPlaying
+                ? (isParticles
+                    ? `<g clip-path="url(#particleClip)">${particleEngine.render(context, 8, 56)}</g>`
+                    : this.renderEqualizerBars(accentColor, eqAmplitude))
+                : '';
+
+            svg = [
+                '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+                '<defs>',
+                '  <filter id="blur"><feGaussianBlur stdDeviation="8"/></filter>',
+                '  <linearGradient id="overlay" x1="0" x2="1" y1="0" y2="0">',
+                '    <stop offset="0%" stop-color="black" stop-opacity="0.85"/>',
+                '    <stop offset="65%" stop-color="black" stop-opacity="0.55"/>',
+                '    <stop offset="100%" stop-color="black" stop-opacity="0"/>',
+                '  </linearGradient>',
+                '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
+                '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
+                '  <clipPath id="particleClip"><rect x="8" y="56" width="100" height="38"/></clipPath>',
+                '</defs>',
+                '<rect width="200" height="100" fill="black"/>',
+                `<g filter="url(#blur)" opacity="0.35">${bgCover}</g>`,
+                '<rect width="200" height="100" fill="url(#overlay)"/>',
+                `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
+                titleFrag,
+                `  <text x="8" y="38" fill="#999999" font-family="Arial,sans-serif" font-size="12">${this.escapeXml(artist)}</text>`,
+                '</g>',
+                `<rect x="8" y="49" width="100" height="3" fill="white" opacity="0.12" rx="1.5"/>`,
+                progressPct > 0 ? `<rect x="8" y="49" width="${progressPct}" height="3" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="1.5"/>` : '',
+                visualizer,
+                `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                '</svg>',
+            ].join('');
         }
-    });
-}
+
+        const finalImage = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+
+        await sdAction.setFeedback({
+            'full-canvas': finalImage,
+            'icon': '',
+            'title': '',
+            'indicator': { 'value': progressPct },
+        }).catch(() => {});
+    }
+
+    private escapeXml(unsafe: string): string {
+        return unsafe.replace(/[<>&"']/g, (c) => {
+            switch (c) {
+                case '<': return '&lt;'; case '>': return '&gt;';
+                case '&': return '&amp;'; case '"': return '&quot;';
+                case "'": return '&apos;'; default: return c;
+            }
+        });
+    }
 }
