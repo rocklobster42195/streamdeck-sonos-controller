@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+  <head lang="en">
+    <title>SONOS Play Favorite Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+  </head>
+
+  <body>
+    <sdpi-item label="SONOS device">
+        <sdpi-select
+            id="device-select"
+            setting="deviceIp"
+            datasource="get-devices"
+            loading="Fetching devices..."
+            hot-reload>
+            <option value="">-- Choose Device --</option>
+        </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Favorite">
+        <sdpi-select
+            id="favorite-select"
+            setting="favorite"
+            datasource="get-favorites"
+            loading="Fetching favorites..."
+            hot-reload>
+            <option value="">-- Choose Favorite --</option>
+        </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Show title">
+      <sdpi-checkbox setting="showTitle"></sdpi-checkbox>
+    </sdpi-item>
+
+    <script>
+      let deviceSelect, favoriteSelect;
+
+      function updateFavoriteState() {
+        if (deviceSelect && favoriteSelect) {
+            // A device must be selected to enable favorite selection.
+            const isDeviceSelected = deviceSelect.value && deviceSelect.value !== "";
+            favoriteSelect.disabled = !isDeviceSelected;
+        }
+      }
+
+      window.addEventListener('connected', (ev) => {
+        // This is called when the PI is connected to the Stream Deck software.
+        // It's the best time to get references to elements and check initial state.
+        deviceSelect = document.getElementById('device-select');
+        favoriteSelect = document.getElementById('favorite-select');
+        
+        // Set up the listener for when the user changes the device.
+        deviceSelect.addEventListener('change', updateFavoriteState);
+
+        // Check the initial state when the PI is loaded.
+        // A timeout helps ensure that the initial settings have been applied.
+        setTimeout(updateFavoriteState, 100);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+  <head lang="en">
+    <title>SONOS Dial Volume Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+  </head>
+
+  <body>
+    <sdpi-item label="SONOS device">
+        <sdpi-select
+            setting="deviceIp"
+            datasource="get-devices"
+            loading="Fetching devices..."
+            hot-reload>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Preset Volume">
+        <sdpi-range
+            setting="presetVolume"
+            min="0"
+            max="100"
+            step="1"
+            showlabels>
+        </sdpi-range>
+    </sdpi-item>
+  </body>
+</html>

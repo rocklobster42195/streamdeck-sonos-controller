@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+  <head lang="en">
+    <title>SONOS Track Dial Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+  </head>
+
+  <body>
+    <sdpi-item label="SONOS device">
+        <sdpi-select
+            setting="deviceIp"
+            datasource="get-devices"
+            loading="Fetching devices..."
+            hot-reload>
+        </sdpi-select>
+    </sdpi-item>
+  </body>
+</html>

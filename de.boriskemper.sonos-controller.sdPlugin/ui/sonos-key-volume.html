@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+
+<head lang="en">
+  <title>SONOS Volume Settings</title>
+  <meta charset="utf-8" />
+
+  <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+
+  <style>
+    /* Erzwingt das Ausblenden gegen die internen Styles der Library */
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- DEVICE SELECT -->
+  <sdpi-item label="SONOS device">
+    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices..." hot-reload>
+      <option value="">-- Choose Device --</option>
+    </sdpi-select>
+  </sdpi-item>
+
+  <!-- COMMAND SELECT -->
+  <sdpi-item label="Command">
+    <sdpi-select id="command-select" setting="command">
+      <option value="" selected hidden>-- Select Command --</option>
+      <option value="mute">Mute / Preset</option>
+      <option value="vol-up">Volume Up</option>
+      <option value="vol-down">Volume Down</option>
+      <option value="vol-preset">Volume Preset</option>
+    </sdpi-select>
+  </sdpi-item>
+
+  <sdpi-item label="Preset Volume">
+    <sdpi-range setting="presetVolume" min="0" max="100" step="1" showlabels>
+    </sdpi-range>
+  </sdpi-item>
+  <sdpi-item label="Show preset">
+    <sdpi-checkbox setting="showPreset"></sdpi-checkbox>
+  </sdpi-item>
+
+
+  <div id="show-volume-wrapper" class="hidden">
+    <sdpi-item label="Show volume">
+      <sdpi-checkbox setting="showVolume"></sdpi-checkbox>
+    </sdpi-item>
+  </div>
+
+  <script>
+    const commandSelect = document.getElementById('command-select');
+    const showShowVolumeWrap = document.getElementById('show-volume-wrapper');
+    const showPresetCheckbox = document.querySelector('sdpi-checkbox[setting="showPreset"]');
+    const showVolumeCheckbox = document.querySelector('sdpi-checkbox[setting="showVolume"]');
+    const relevantCommands = ['mute', 'vol-up', 'vol-down'];
+
+    function applyVisibility(command) {
+      showShowVolumeWrap.classList.toggle('hidden', !relevantCommands.includes(command));
+    }
+
+    // Handle mutual exclusivity for relevant commands, using the 'valuechange' event and '.value' property.
+    showPresetCheckbox.addEventListener('valuechange', (event) => {
+      const isChecked = event.target.value;
+      if (relevantCommands.includes(commandSelect.value) && isChecked) {
+        showVolumeCheckbox.value = false;
+        showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      }
+    });
+
+    showVolumeCheckbox.addEventListener('valuechange', (event) => {
+      const isChecked = event.target.value;
+      if (relevantCommands.includes(commandSelect.value) && isChecked) {
+        showPresetCheckbox.value = false;
+        showPresetCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      }
+    });
+
+    commandSelect.addEventListener('valuechange', (event) => {
+      const command = event.target.value;
+      applyVisibility(command);
+
+      // If switching to a relevant command and both happen to be checked, uncheck one.
+      if (relevantCommands.includes(command) && showPresetCheckbox.value && showVolumeCheckbox.value) {
+        showVolumeCheckbox.value = false;
+        showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
+      }
+    });
+
+    // Run visibility logic once the components are loaded and populated.
+    document.addEventListener('sdpi-ready', () => {
+      applyVisibility(commandSelect.value);
+    });
+  </script>
+</body>
+
+</html>
