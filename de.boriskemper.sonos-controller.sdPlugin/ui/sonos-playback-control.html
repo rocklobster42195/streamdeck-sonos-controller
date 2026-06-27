@@ -3,28 +3,25 @@
   <head lang="en">
     <title>SONOS Playback Control Settings</title>
     <meta charset="utf-8" />
-    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+    <script src="i18n.js" defer></script>
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
   </head>
 
   <body>
-    <sdpi-item label="SONOS device">
-        <sdpi-select
-            setting="deviceIp"
-            datasource="get-devices"
-            loading="Fetching devices..."
-            hot-reload>
-            <option value="">-- Choose Device --</option>
+    <sdpi-item label="SONOS device" data-i18n="sonos_device">
+        <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
+            <option value="" data-i18n="choose_device">-- Choose Device --</option>
         </sdpi-select>
     </sdpi-item>
 
-    <sdpi-item label="Command">
-    <sdpi-select setting="command">
-        <option value="" selected hidden>-- Select Command --</option>
-        <option value="next">Next Track</option>
-        <option value="previous">Previous Track</option>
-        <option value="shuffle">Toggle Shuffle</option>
-        <option value="repeat">Toggle Repeat</option>
-    </sdpi-select>
-</sdpi-item>
+    <sdpi-item label="Command" data-i18n="command">
+        <sdpi-select setting="command">
+            <option value="" selected hidden data-i18n="choose_command">-- Select Command --</option>
+            <option value="next" data-i18n="cmd_next">Next Track</option>
+            <option value="previous" data-i18n="cmd_previous">Previous Track</option>
+            <option value="shuffle" data-i18n="cmd_shuffle">Toggle Shuffle</option>
+            <option value="repeat" data-i18n="cmd_repeat">Toggle Repeat</option>
+        </sdpi-select>
+    </sdpi-item>
   </body>
 </html>

@@ -4,7 +4,8 @@
 <head lang="en">
   <title>SONOS Volume Settings</title>
   <meta charset="utf-8" />
-  <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+  <script src="i18n.js" defer></script>
+  <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
   <style>
     .hidden { display: none !important; }
     #pv-row { display: flex; align-items: center; gap: 8px; width: 100%; }
@@ -26,34 +27,34 @@
 
 <body>
 
-  <sdpi-item label="SONOS device">
-    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices..." hot-reload>
-      <option value="">-- Choose Device --</option>
+  <sdpi-item label="SONOS device" data-i18n="sonos_device">
+    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
+      <option value="" data-i18n="choose_device">-- Choose Device --</option>
     </sdpi-select>
   </sdpi-item>
 
-  <sdpi-item label="Command">
+  <sdpi-item label="Command" data-i18n="command">
     <sdpi-select id="command-select" setting="command">
-      <option value="" selected hidden>-- Select Command --</option>
-      <option value="mute">Mute / Preset</option>
-      <option value="vol-up">Volume Up</option>
-      <option value="vol-down">Volume Down</option>
-      <option value="vol-preset">Volume Preset</option>
+      <option value="" selected hidden data-i18n="choose_command">-- Select Command --</option>
+      <option value="mute" data-i18n="cmd_mute_preset">Mute / Preset</option>
+      <option value="vol-up" data-i18n="cmd_vol_up">Volume Up</option>
+      <option value="vol-down" data-i18n="cmd_vol_down">Volume Down</option>
+      <option value="vol-preset" data-i18n="cmd_vol_preset">Volume Preset</option>
     </sdpi-select>
   </sdpi-item>
 
-  <sdpi-item label="Preset Volume">
+  <sdpi-item label="Preset Volume" data-i18n="preset_volume">
     <div id="pv-row">
       <sdpi-range id="pvRange" setting="presetVolume" min="0" max="100" step="1"></sdpi-range>
       <input type="number" id="pvNumber" min="0" max="100" step="1" title="Preset Volume">
     </div>
   </sdpi-item>
-  <sdpi-item label="Show preset">
+  <sdpi-item label="Show preset" data-i18n="show_preset">
     <sdpi-checkbox setting="showPreset"></sdpi-checkbox>
   </sdpi-item>
 
   <div id="show-volume-wrapper" class="hidden">
-    <sdpi-item label="Show volume">
+    <sdpi-item label="Show volume" data-i18n="show_volume">
       <sdpi-checkbox setting="showVolume"></sdpi-checkbox>
     </sdpi-item>
   </div>

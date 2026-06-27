@@ -3,33 +3,24 @@
   <head lang="en">
     <title>SONOS Play Favorite Settings</title>
     <meta charset="utf-8" />
-    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+    <script src="i18n.js" defer></script>
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
   </head>
 
   <body>
-    <sdpi-item label="SONOS device">
-        <sdpi-select
-            id="device-select"
-            setting="deviceIp"
-            datasource="get-devices"
-            loading="Fetching devices..."
-            hot-reload>
-            <option value="">-- Choose Device --</option>
+    <sdpi-item label="SONOS device" data-i18n="sonos_device">
+        <sdpi-select id="device-select" setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
+            <option value="" data-i18n="choose_device">-- Choose Device --</option>
         </sdpi-select>
     </sdpi-item>
 
-    <sdpi-item label="Favorite">
-        <sdpi-select
-            id="favorite-select"
-            setting="favorite"
-            datasource="get-favorites"
-            loading="Fetching favorites..."
-            hot-reload>
-            <option value="">-- Choose Favorite --</option>
+    <sdpi-item label="Favorite" data-i18n="favorite">
+        <sdpi-select id="favorite-select" setting="favorite" datasource="get-favorites" loading="Fetching favorites…" data-i18n-loading="fetching_favorites" hot-reload>
+            <option value="" data-i18n="choose_favorite">-- Choose Favorite --</option>
         </sdpi-select>
     </sdpi-item>
 
-    <sdpi-item label="Show title">
+    <sdpi-item label="Show title" data-i18n="show_title">
       <sdpi-checkbox setting="showTitle"></sdpi-checkbox>
     </sdpi-item>
 

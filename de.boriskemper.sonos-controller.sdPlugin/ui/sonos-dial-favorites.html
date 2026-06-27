@@ -3,7 +3,8 @@
 <head lang="en">
   <title>Favorites Dial Settings</title>
   <meta charset="utf-8"/>
-  <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+  <script src="i18n.js" defer></script>
+  <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
   <style>
     #bt-row { display: flex; align-items: center; gap: 8px; width: 100%; }
     #btRange { flex: 1; min-width: 0; }
@@ -22,12 +23,12 @@
   </style>
 </head>
 <body>
-  <sdpi-item label="SONOS device">
-    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices..." hot-reload>
+  <sdpi-item label="SONOS device" data-i18n="sonos_device">
+    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
     </sdpi-select>
   </sdpi-item>
 
-  <sdpi-item label="Browse timeout">
+  <sdpi-item label="Browse timeout" data-i18n="browse_timeout">
     <div id="bt-row">
       <sdpi-range id="btRange" setting="browseTimeout" min="1" max="10" step="1" value="3"></sdpi-range>
       <input type="number" id="btNumber" min="1" max="10" step="1" title="Browse timeout">
@@ -35,7 +36,7 @@
   </sdpi-item>
 
   <sdpi-item label="">
-    <sdpi-item-value style="font-size:11px; color:#888; line-height:1.4">
+    <sdpi-item-value style="font-size:11px; color:#888; line-height:1.4" data-i18n-html="fav_hint">
       Rotate to browse all your Sonos favorites.<br>
       Press to play. Touch or wait to return to now playing.
     </sdpi-item-value>

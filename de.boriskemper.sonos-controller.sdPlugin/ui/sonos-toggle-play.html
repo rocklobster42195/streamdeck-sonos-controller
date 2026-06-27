@@ -4,33 +4,28 @@
 <head lang="en">
   <title>Play Key Settings</title>
   <meta charset="utf-8" />
-  <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+  <script src="i18n.js" defer></script>
+  <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
 </head>
 
 <body>
-  <sdpi-item label="SONOS device">
-    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices..." hot-reload>
+  <sdpi-item label="SONOS device" data-i18n="sonos_device">
+    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
     </sdpi-select>
   </sdpi-item>
-  <sdpi-item label="Device Name">
+  <sdpi-item label="Device Name" data-i18n="device_name">
     <sdpi-checkbox setting="showDeviceName" value="true"></sdpi-checkbox>
   </sdpi-item>
-  <sdpi-item label="Cover Art">
+  <sdpi-item label="Cover Art" data-i18n="cover_art">
     <sdpi-checkbox setting="showCoverArt" value="true"></sdpi-checkbox>
   </sdpi-item>
-  <sdpi-item label="Title (Artist)">
+  <sdpi-item label="Title (Artist)" data-i18n="title_artist">
     <sdpi-checkbox setting="showTrackTitle" value="true"></sdpi-checkbox>
   </sdpi-item>
-  <sdpi-item label="FontSize">
-    <sdpi-range
-        setting="fontSize"
-        min="10"
-        max="20"
-        step="1"
-        showlabels>
-    </sdpi-range>
-</sdpi-item>
-  <sdpi-item label="FontColor">
+  <sdpi-item label="FontSize" data-i18n="font_size">
+    <sdpi-range setting="fontSize" min="10" max="20" step="1" showlabels></sdpi-range>
+  </sdpi-item>
+  <sdpi-item label="FontColor" data-i18n="font_color">
     <sdpi-color setting="fontColor"></sdpi-color>
   </sdpi-item>
 </body>

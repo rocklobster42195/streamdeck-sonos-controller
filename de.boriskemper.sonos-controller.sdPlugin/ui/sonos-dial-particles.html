@@ -4,24 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panorama Particles Settings</title>
-    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+    <script src="i18n.js" defer></script>
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
   </head>
 
   <body>
-    <sdpi-item label="SONOS device">
-      <sdpi-select
-          setting="deviceIp"
-          datasource="get-devices"
-          loading="Fetching devices..."
-          hot-reload>
+    <sdpi-item label="SONOS device" data-i18n="sonos_device">
+      <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
       </sdpi-select>
     </sdpi-item>
 
-    <sdpi-item id="colorItem" label="Particle color">
+    <sdpi-item id="colorItem" label="Particle color" data-i18n="particle_color">
       <sdpi-color setting="staticColor"></sdpi-color>
     </sdpi-item>
 
-    <sdpi-item label="Track info">
+    <sdpi-item label="Track info" data-i18n="track_info">
       <sdpi-checkbox setting="showTrackInfo"></sdpi-checkbox>
     </sdpi-item>
 

@@ -297,7 +297,7 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         if (isBrowsing && favs.length > 0) {
             const fav = favs[state.currentIndex];
             cover = fav?.AlbumArtUri ? sonosFavoritesCache.getCoverArt(fav.AlbumArtUri) : undefined;
-            subtitleText = 'Press to play';
+            subtitleText = streamDeck.i18n.translate('Press to play');
             positionText = `${state.currentIndex + 1} / ${favs.length}`;
         } else {
             cover = state.playingFav?.AlbumArtUri
@@ -371,11 +371,11 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         const covers = this.getAvailableCovers(8);
 
         const body = covers.length === 0
-            ? '<text x="100" y="55" fill="#444" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">No device set</text>'
+            ? `<text x="100" y="55" fill="#444" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${this.escapeXml(streamDeck.i18n.translate('No device set'))}</text>`
             : this.buildMosaic(covers);
 
         const hint = covers.length > 0
-            ? '<text x="100" y="96" fill="#fff" font-family="Arial,sans-serif" font-size="9" text-anchor="middle" opacity="0.4">Rotate to browse</text>'
+            ? `<text x="100" y="96" fill="#fff" font-family="Arial,sans-serif" font-size="9" text-anchor="middle" opacity="0.4">${this.escapeXml(streamDeck.i18n.translate('Rotate to browse'))}</text>`
             : '';
 
         return [

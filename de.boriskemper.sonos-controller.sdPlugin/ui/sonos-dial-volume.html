@@ -3,7 +3,8 @@
   <head lang="en">
     <title>SONOS Dial Volume Settings</title>
     <meta charset="utf-8" />
-    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+    <script src="i18n.js" defer></script>
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
     <style>
         #pv-row, #pc-row, #ps-row { display: flex; align-items: center; gap: 8px; width: 100%; }
         #pvRange, #pcRange, #psRange { flex: 1; min-width: 0; }
@@ -24,40 +25,36 @@
   </head>
 
   <body>
-    <sdpi-item label="SONOS device">
-        <sdpi-select
-            setting="deviceIp"
-            datasource="get-devices"
-            loading="Fetching devices..."
-            hot-reload>
+    <sdpi-item label="SONOS device" data-i18n="sonos_device">
+        <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
         </sdpi-select>
     </sdpi-item>
-    <sdpi-item label="Preset Volume">
+    <sdpi-item label="Preset Volume" data-i18n="preset_volume">
         <div id="pv-row">
             <sdpi-range id="pvRange" setting="presetVolume" min="0" max="100" step="1"></sdpi-range>
             <input type="number" id="pvNumber" class="num-field" min="0" max="100" step="1" title="Preset Volume">
         </div>
     </sdpi-item>
-    <sdpi-item label="Alignment">
+    <sdpi-item label="Alignment" data-i18n="alignment">
         <sdpi-select setting="align">
-            <option value="left">Left</option>
-            <option value="center">Center</option>
-            <option value="right">Right</option>
+            <option value="left" data-i18n="align_left">Left</option>
+            <option value="center" data-i18n="align_center">Center</option>
+            <option value="right" data-i18n="align_right">Right</option>
         </sdpi-select>
     </sdpi-item>
-    <sdpi-item label="Background">
+    <sdpi-item label="Background" data-i18n="background">
         <sdpi-select id="vizMode" setting="visualizerMode">
-            <option value="none">None</option>
-            <option value="particles">Particles</option>
+            <option value="none" data-i18n="bg_none">None</option>
+            <option value="particles" data-i18n="bg_particles">Particles</option>
         </sdpi-select>
     </sdpi-item>
-    <sdpi-item id="pcItem" label="Particle count" class="hidden">
+    <sdpi-item id="pcItem" label="Particle count" data-i18n="particle_count" class="hidden">
         <div id="pc-row">
             <sdpi-range id="pcRange" setting="particleCount" min="5" max="40" step="1"></sdpi-range>
             <input type="number" id="pcNumber" class="num-field" min="5" max="40" step="1" title="Particle count">
         </div>
     </sdpi-item>
-    <sdpi-item id="psItem" label="Particle speed" class="hidden">
+    <sdpi-item id="psItem" label="Particle speed" data-i18n="particle_speed" class="hidden">
         <div id="ps-row">
             <sdpi-range id="psRange" setting="particleSpeed" min="1" max="10" step="1"></sdpi-range>
             <input type="number" id="psNumber" class="num-field" min="1" max="10" step="1" title="Particle speed">
