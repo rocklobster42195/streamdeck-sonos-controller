@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Ideas
+    url: https://github.com/rocklobster42195/streamdeck-sonos-controller/discussions
+    about: For questions and general discussion, please use GitHub Discussions.
+  - name: Documentation
+    url: https://github.com/rocklobster42195/streamdeck-sonos-controller/blob/master/README.md
+    about: Check the README before opening an issue.
