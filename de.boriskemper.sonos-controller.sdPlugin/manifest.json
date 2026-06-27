@@ -118,8 +118,8 @@
 			"Encoder": {
 				"layout": "$A0",
 				"TriggerDescription": {
-					"Push": "Reset particle count",
-					"Rotate": "Adjust particle count",
+					"Push": "Toggle particle count / speed mode",
+					"Rotate": "Adjust particle count or speed",
 					"Touch": "None"
 				}
 			},

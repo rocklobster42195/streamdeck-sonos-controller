@@ -109,8 +109,8 @@ Ambient particle animation that spans multiple LCD panels side by side as one co
 
 | Interaction | Effect |
 |-------------|--------|
-| Rotate | Adjust particle count |
-| Press | Reset particle count |
+| Rotate | Adjust particle count or animation speed (depending on mode) |
+| Press | Toggle between particle count mode and speed mode |
 
 | Setting | Description |
 |---------|-------------|
