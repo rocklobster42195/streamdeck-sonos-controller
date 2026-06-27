@@ -5,7 +5,6 @@
     // navigator.language reflects the OS/browser language (e.g. "de-DE" → "de").
     // This is what Stream Deck's webview inherits from the system language setting.
     var lang = (window.navigator.language || 'en').split('-')[0].toLowerCase();
-    console.log('[i18n] navigator.language =', window.navigator.language, '→ lang =', lang);
 
     var dict = {
         de: {
@@ -96,7 +95,6 @@
 
     function applyAll() {
         var t = dict[lang];
-        console.log('[i18n] applyAll called, lang =', lang, ', dict found =', !!t);
         if (!t) return;
 
         document.querySelectorAll('sdpi-item[data-i18n]').forEach(function (el) {
