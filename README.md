@@ -25,7 +25,7 @@ Full Sonos playback control for your Stream Deck — cover art, volume, track in
 
 Toggles playback on your Sonos speaker. Displays the current album or radio station cover art while playing.
 
-![Play / Pause Key showing cover art](assets/screenshots/key-play-pause.png)
+<img src="assets/screenshots/key-play-pause.png" width="160" alt="Play / Pause Key showing cover art"/>
 
 | Setting | Description |
 |---------|-------------|
@@ -41,7 +41,7 @@ Toggles playback on your Sonos speaker. Displays the current album or radio stat
 
 The centerpiece of the plugin. The LCD panel displays the album or station cover on the right, a scrolling track title, artist name, and a progress bar colored to match the cover art.
 
-![Track Dial playing with equalizer bars](assets/screenshots/track-dial.png)
+<img src="assets/screenshots/track-dial.png" width="400" alt="Track Dial playing with equalizer bars"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -65,7 +65,7 @@ The centerpiece of the plugin. The LCD panel displays the album or station cover
 
 Dedicated volume control. Displays a pie chart showing the current volume level. When muted, the volume-off icon replaces the pie.
 
-![Volume Dial at 65% volume](assets/screenshots/volume-dial.png)
+<img src="assets/screenshots/volume-dial.png" width="400" alt="Volume Dial at 65% volume"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -86,7 +86,7 @@ Dedicated volume control. Displays a pie chart showing the current volume level.
 
 Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art and title of the currently highlighted favorite.
 
-![Favorites Dial browsing the list](assets/screenshots/favorites-dial.png)
+<img src="assets/screenshots/favorites-dial.png" width="400" alt="Favorites Dial browsing the list"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -121,7 +121,7 @@ Ambient particle animation that spans multiple LCD panels side by side as one co
 
 Increase, decrease, or set a preset volume with a single key press.
 
-![Volume Key](assets/screenshots/key-volume.png)
+<img src="assets/screenshots/key-volume.png" width="160" alt="Volume Key"/>
 
 | Setting | Description |
 |---------|-------------|
@@ -135,7 +135,7 @@ Increase, decrease, or set a preset volume with a single key press.
 
 Next track, previous track, shuffle, or repeat — each as a dedicated key. All four buttons **dim** when a radio station is playing, since playback controls are unavailable for radio streams.
 
-![Playback Control Key — Next](assets/screenshots/key-playback-control.png) ![Playback Control Key dimmed during radio](assets/screenshots/key-playback-control-radio.png)
+<img src="assets/screenshots/key-playback-control.png" width="160" alt="Playback Control Key — Next"/> <img src="assets/screenshots/key-playback-control-radio.png" width="160" alt="Playback Control Key dimmed during radio"/>
 
 | Setting | Description |
 |---------|-------------|
