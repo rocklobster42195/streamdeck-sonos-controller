@@ -1,21 +1,25 @@
 # Sonos Controller for Elgato Stream Deck
 
-Full Sonos playback control for your Stream Deck — cover art, volume, track info, and more.
+Full Sonos playback control for your Stream Deck — cover art, track info, volume dials, favorites browsing, and ambient particle animations.
 
 [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/rocklobster42195)
+[![GitHub release](https://img.shields.io/github/v/release/rocklobster42195/streamdeck-sonos-controller)](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
 
-![Sonos Controller — Panorama Particles spanning 4 LCD panels](assets/screenshots/panorama-particles.png)
+![Track Dial — live cover art, track info, and EQ Effect](assets/store-showcase-track.png)
 
 ---
 
-## Requirements
+## At a Glance
 
-- **Elgato Stream Deck** — any model for key actions; **Stream Deck+** required for dial actions
-- **Stream Deck software** — version 6.4 or later
-- **Sonos system** — any Sonos speaker on the same local network as your computer
-- **Network** — plugin and speaker must be on the same subnet (no VLAN isolation)
+| Key Actions | Dial Actions *(Stream Deck+ only)* |
+|---|---|
+| **Play / Pause** — cover art + scrolling title | **Track Dial** — cover art · title · progress · EQ Effect |
+| **Playback Control** — next · previous · shuffle · repeat | **Volume Dial** — pie chart · mute · preset |
+| **Volume Key** — up · down · mute · preset | **Favorites Dial** — browse & play your favorites list |
+| **Play Favorite** — one tap to play a saved favorite | **Panorama Particles** — ambient art spanning multiple panels |
 
 ---
 
@@ -23,7 +27,7 @@ Full Sonos playback control for your Stream Deck — cover art, volume, track in
 
 ### Play / Pause Key
 
-Toggles playback on your Sonos speaker. Displays the current album or radio station cover art while playing.
+Toggles playback on your Sonos speaker. While playing, the key displays the current album or radio station cover art. A scrolling marquee shows track title and artist.
 
 <img src="assets/screenshots/key-play-pause.png" width="160" alt="Play / Pause Key showing cover art"/>
 
@@ -39,9 +43,9 @@ Toggles playback on your Sonos speaker. Displays the current album or radio stat
 
 ### Track Dial *(Stream Deck+ only)*
 
-The centerpiece of the plugin. The LCD panel displays the album or station cover on the right, a scrolling track title, artist name, and a progress bar colored to match the cover art.
+The centerpiece of the plugin. The LCD panel shows the album or station cover art, a scrolling track title, artist name, and a progress bar — tinted to match the cover art palette.
 
-<img src="assets/screenshots/track-dial.png" width="400" alt="Track Dial playing with equalizer bars"/>
+<img src="assets/screenshots/track-dial.png" width="400" alt="Track Dial showing cover art and EQ Effect"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -52,18 +56,15 @@ The centerpiece of the plugin. The LCD panel displays the album or station cover
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
-| Background | `None` (track info only), `EQ Effect` (animated bars), or `Particles` (network particle animation) |
-| Show track title | Display title and artist on the panel |
-| Font color | Color for the title text |
-| Font size | Size of the title text (px) |
-| Marquee speed | Scroll speed for long titles |
-| Marquee pause | How long to pause before scrolling begins |
+| Background | `None` (track info only), `EQ Effect` (animated bars), or `Particles` |
+| Particle count | Number of particles (Particles mode) |
+| Particle speed | Animation speed (Particles mode) |
 
 ---
 
 ### Volume Dial *(Stream Deck+ only)*
 
-Dedicated volume control. Displays a pie chart showing the current volume level. When muted, the volume-off icon replaces the pie.
+Dedicated volume control with a live pie chart showing the current level. When muted, a volume-off icon replaces the pie.
 
 <img src="assets/screenshots/volume-dial.png" width="400" alt="Volume Dial at 65% volume"/>
 
@@ -78,116 +79,129 @@ Dedicated volume control. Displays a pie chart showing the current volume level.
 | Device | Which Sonos speaker to control |
 | Preset Volume | Target volume for touch |
 | Alignment | Position of the pie: `Left`, `Center`, or `Right` |
-| Background | `None` or `Particles` (network particle animation) |
+| Background | `None` or `Particles` |
 
 ---
 
 ### Favorites Dial *(Stream Deck+ only)*
 
-Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art and title of the currently highlighted favorite.
+Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art, title, and position indicator for the highlighted item.
 
 <img src="assets/screenshots/favorites-dial.png" width="400" alt="Favorites Dial browsing the list"/>
 
 | Interaction | Effect |
 |-------------|--------|
-| Rotate | Browse favorites list |
+| Rotate | Scroll through favorites |
 | Press | Play the highlighted favorite |
 | Touch | Return to now playing |
 
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
+| Browse timeout | Seconds of inactivity before returning to now playing |
 
 ---
 
 ### Panorama Particles Dial *(Stream Deck+ only)*
 
-Ambient particle animation that spans multiple LCD panels side by side as one continuous scene. Place two or more of these dials in adjacent slots to connect them into a single panoramic display.
+Ambient particle network animation that spans multiple adjacent LCD panels as one continuous scene. Place two or more side by side to connect them into a seamless panorama.
 
 ![Panorama Particles across 4 LCD panels](assets/screenshots/panorama-particles.png)
 
 | Interaction | Effect |
 |-------------|--------|
-| Rotate | Adjust particle count or animation speed (depending on mode) |
-| Press | Toggle between particle count mode and speed mode |
-
-| Setting | Description |
-|---------|-------------|
-| Column | Which column this dial occupies in the panorama (0 = leftmost) |
+| Rotate | Adjust particle count or speed (depending on active mode) |
+| Press | Toggle between count mode and speed mode |
 
 ---
 
 ### Volume Key
 
-Increase, decrease, or set a preset volume with a single key press.
+Increase, decrease, mute, or set a preset volume with a single key press.
 
 <img src="assets/screenshots/key-volume.png" width="160" alt="Volume Key"/>
 
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
-| Command | `Volume Up`, `Volume Down`, `Mute`, or `Set Preset` |
-| Preset volume | Target volume for the preset command |
+| Command | `Volume Up`, `Volume Down`, `Mute / Preset`, or `Volume Preset` |
+| Preset Volume | Target volume for the preset command |
+| Show preset | Display the preset value on the key |
 
 ---
 
 ### Playback Control Key
 
-Next track, previous track, shuffle, or repeat — each as a dedicated key. All four buttons **dim** when a radio station is playing, since playback controls are unavailable for radio streams.
+Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim automatically** when a radio station is playing, since seek controls are unavailable for live streams.
 
-<img src="assets/screenshots/key-playback-control.png" width="160" alt="Playback Control Key — Next"/> <img src="assets/screenshots/key-playback-control-radio.png" width="160" alt="Playback Control Key dimmed during radio"/>
+<img src="assets/screenshots/key-playback-control.png" width="160" alt="Playback Control Key — Next"/>
+<img src="assets/screenshots/key-playback-control-radio.png" width="160" alt="Playback Control Key dimmed during radio"/>
 
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
-| Command | `Next`, `Previous`, `Shuffle`, or `Repeat` |
+| Command | `Next Track`, `Previous Track`, `Toggle Shuffle`, or `Toggle Repeat` |
 
 ---
 
 ### Play Favorite
 
-Play one of your saved Sonos favorites with a single key press.
+Play one of your saved Sonos favorites with a single key press. The key displays the favorite's cover art while it is playing.
 
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Favorite | Select from your Sonos favorites list |
+| Show title | Display the favorite's title on the key |
+
+---
+
+## Requirements
+
+- **Elgato Stream Deck** — any model for key actions; **Stream Deck+** required for dial actions
+- **Stream Deck software** — version 6.9 or later
+- **Sonos system** — any Sonos speaker on the same local network as your computer
+- **Network** — plugin and speaker must be on the same subnet (no VLAN isolation between them)
 
 ---
 
 ## Setup
 
-1. Install the plugin via the Elgato Marketplace or by double-clicking the `.streamDeckPlugin` file.
+1. Install the plugin via the **Elgato Marketplace** or by double-clicking the `.streamDeckPlugin` file.
 2. Drag an action from the **Sonos Controller** category onto a key or dial slot.
-3. Open the action's settings (click the key in Stream Deck software).
+3. Open the action's settings (click the slot in Stream Deck software).
 4. Select your **Sonos device** from the dropdown — devices are discovered automatically on your local network.
 5. Configure the remaining options and click anywhere to save.
+
+> The plugin supports **English**, **German**, and **Spanish** in the settings panel — the language follows your operating system's regional setting.
 
 ---
 
 ## Troubleshooting
 
-### Speaker not showing in device list
-
-- Ensure the Sonos speaker is on and connected to your Wi-Fi or Ethernet.
-- The computer and speaker must be on the **same subnet** — the plugin uses UPnP, which does not cross router boundaries.
+**Speaker not showing in the device list**
+- Make sure the speaker is powered on and connected to your Wi-Fi or Ethernet.
+- The computer and speaker must be on the **same subnet**. The plugin uses UPnP, which does not cross router or VLAN boundaries.
 - Restart the Stream Deck software and wait a few seconds for discovery to complete.
 
-### Cover art not showing on radio stations
+**Cover art not showing on radio stations**
+- Radio station art is fetched on first play. It may take a moment to appear after the plugin starts.
 
-Radio station logos are fetched from the Sonos device using the stream URI. This may take a moment on the first load after the plugin starts.
+**Controls not responding / out of sync**
+- The plugin uses UPnP event subscriptions for real-time updates. On an unstable network, a subscription may drop and recover automatically within 60 seconds.
+- If the problem persists, restart the Stream Deck software.
 
-### Controls not responding
-
-The plugin uses Sonos UPnP event subscriptions to stay in sync. If your network is unstable, subscriptions may occasionally fail and recover automatically within 60 seconds.
+**Panorama Particles not connecting across panels**
+- All Panorama Particles dials must be placed in **adjacent slots** in the same profile row.
+- Each dial detects its neighbors automatically — no manual column setting is needed.
 
 ---
 
 ## Network Notes
 
-- The plugin subscribes to **UPnP events** from each Sonos device to receive real-time updates.
+- The plugin subscribes to **UPnP events** from each Sonos device for real-time track and volume updates.
 - Subscriptions are automatically renewed to maintain the connection.
-- The plugin only initiates outbound HTTP connections to Sonos devices on your local network — no cloud or external services are contacted.
+- **No cloud connection** — the plugin only communicates with Sonos devices on your local network.
 
 ---
 
@@ -201,5 +215,6 @@ MIT — see [LICENSE](LICENSE)
 
 Built with:
 - [Elgato Stream Deck SDK](https://developer.elgato.com/documentation/stream-deck/) (`@elgato/streamdeck`)
-- [Sonos TypeScript SDK](https://github.com/svrooij/node-sonos-ts) (`@svrooij/sonos`) by Stephan van Rooij
+- [Sonos TypeScript SDK](https://github.com/svrooij/node-sonos-ts) (`@svrooij/sonos`) by Stephan van Rooij — MIT license
 - [Material Design Icons](https://pictogrammers.com/library/mdi/) (`@mdi/js`) — MIT license
+- [sdpi-components](https://github.com/geekyeggo/sdpi-components) by GeekyEggo — MIT license
