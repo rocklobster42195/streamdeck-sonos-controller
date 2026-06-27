@@ -113,7 +113,7 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
             await action.setTitle("");
 
             this.initializedHash.set(context, currentHash);
-            streamDeck.logger.info(`[${context}] Initialized: IP=${deviceIp}, Cmd=${command}`);
+            streamDeck.logger.debug(`[${context}] Initialized: IP=${deviceIp}, Cmd=${command}`);
 
         } catch (e) {
             streamDeck.logger.error(`[${context}] Setup error:`, e);

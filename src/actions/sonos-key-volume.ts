@@ -126,7 +126,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
             await this.updateTitle(action, settings, currentVolume);
             
             this.initializedHash.set(context, currentHash);
-            streamDeck.logger.info(`[${context}] Initialized: IP=${deviceIp}, Cmd=${command}`);
+            streamDeck.logger.debug(`[${context}] Initialized: IP=${deviceIp}, Cmd=${command}`);
 
         } catch (e) {
             streamDeck.logger.error(`[${context}] Setup error:`, e);

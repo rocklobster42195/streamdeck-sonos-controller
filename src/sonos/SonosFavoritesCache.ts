@@ -117,7 +117,7 @@ class SonosFavoritesCache {
                         this.rawMetadataMap.set(trackUri, resMdMatch[1]);
                     }
                 }
-                streamDeck.logger.info(`[FavCache] Stored r:resMD metadata for ${this.rawMetadataMap.size} favorites.`);
+                streamDeck.logger.debug(`[FavCache] Stored r:resMD metadata for ${this.rawMetadataMap.size} favorites.`);
             }
 
             const favoritesResponse = await this.deviceForFetching.GetFavorites();
@@ -160,14 +160,14 @@ class SonosFavoritesCache {
  * Processes a list of favorites to download and scale their cover art.
  */
 private async processCoverArts(favorites: any[]): Promise<void> {
-    streamDeck.logger.info(`Processing cover art for ${favorites.length} favorites.`);
+    streamDeck.logger.debug(`Processing cover art for ${favorites.length} favorites.`);
     
     const coverArtPromises = favorites.map(async (fav) => {
         const url = fav.AlbumArtUri;
         const title = fav.Title || 'Unknown favorite';
 
         if (!url) {
-            streamDeck.logger.info(`Favorite "${title}" has no cover image — default icon will be shown.`);
+            streamDeck.logger.debug(`Favorite "${title}" has no cover image — default icon will be shown.`);
             return;
         }
 
@@ -180,7 +180,7 @@ private async processCoverArts(favorites: any[]): Promise<void> {
     });
 
     await Promise.all(coverArtPromises);
-    streamDeck.logger.info('Cover art processing complete.');
+    streamDeck.logger.debug('Cover art processing complete.');
 }
 
 /**
@@ -202,7 +202,7 @@ private async fetchAndScaleCoverArt(imageUrl: string, title: string): Promise<vo
         
         const response = await fetch(url.toString());
         if (!response.ok) {
-            streamDeck.logger.info(`Cover for "${title}" could not be loaded (HTTP ${response.status}).`);
+            streamDeck.logger.warn(`Cover for "${title}" could not be loaded (HTTP ${response.status}).`);
             return;
         }
 
@@ -217,7 +217,7 @@ private async fetchAndScaleCoverArt(imageUrl: string, title: string): Promise<vo
         this.coverArtCache.set(imageUrl, base64Image);
 
     } catch (error) {
-        streamDeck.logger.info(`Cover processing for "${title}" skipped.`);
+        streamDeck.logger.debug(`Cover processing for "${title}" skipped.`);
     }
 }
 }

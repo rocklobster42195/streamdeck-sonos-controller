@@ -30,7 +30,6 @@ export async function loadImageFromUri(uri: string, device: SonosDevice): Promis
     streamDeck.logger.debug(`Image MIME type: ${mimeType}`);
 
     const dataUri = `data:${mimeType};base64,${base64String}`;
-    // streamDeck.logger.debug(`Generated data URI: ${dataUri.substring(0, 100)}...`); // Don't log the full URI
     return dataUri;
   } catch (error) {
     streamDeck.logger.error("Error in loadImageFromUri:", error);
