@@ -2,7 +2,9 @@
 
 Full Sonos playback control for your Stream Deck — cover art, volume, track info, and more.
 
-<!-- TODO: Banner screenshot of the plugin in action -->
+> **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
+
+![Sonos Controller — Panorama Particles spanning 4 LCD panels](assets/screenshots/panorama-particles.png)
 
 ---
 
@@ -21,7 +23,7 @@ Full Sonos playback control for your Stream Deck — cover art, volume, track in
 
 Toggles playback on your Sonos speaker. Displays the current album or radio station cover art while playing.
 
-<!-- TODO: Screenshot of the key showing cover art while playing -->
+![Play / Pause Key showing cover art](assets/screenshots/key-play-pause.png)
 
 | Setting | Description |
 |---------|-------------|
@@ -37,10 +39,7 @@ Toggles playback on your Sonos speaker. Displays the current album or radio stat
 
 The centerpiece of the plugin. The LCD panel displays the album or station cover on the right, a scrolling track title, artist name, and a progress bar colored to match the cover art.
 
-<!-- TODO: Screenshot of the Track Dial panel while playing (eq mode) -->
-<!-- TODO: Screenshot of the Track Dial panel in particles mode -->
-<!-- TODO: Screenshot of the Track Dial panel while paused (dimmed state) -->
-<!-- TODO: Screenshot of a radio station with blurred logo backdrop -->
+![Track Dial playing with equalizer bars](assets/screenshots/track-dial.png)
 
 | Interaction | Effect |
 |-------------|--------|
@@ -64,9 +63,7 @@ The centerpiece of the plugin. The LCD panel displays the album or station cover
 
 Dedicated volume control. Displays a pie chart showing the current volume level. When muted, the volume-off icon replaces the pie.
 
-<!-- TODO: Screenshot of the Volume Dial (left alignment, ~60% volume) -->
-<!-- TODO: Screenshot of the Volume Dial in muted state -->
-<!-- TODO: Screenshot of the Volume Dial with particles background -->
+![Volume Dial at 65% volume](assets/screenshots/volume-dial.png)
 
 | Interaction | Effect |
 |-------------|--------|
@@ -87,7 +84,7 @@ Dedicated volume control. Displays a pie chart showing the current volume level.
 
 Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art and title of the currently highlighted favorite.
 
-<!-- TODO: Screenshot of the Favorites Dial browsing the list -->
+![Favorites Dial browsing the list](assets/screenshots/favorites-dial.png)
 
 | Interaction | Effect |
 |-------------|--------|
@@ -105,7 +102,7 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 
 Ambient particle animation that spans multiple LCD panels side by side as one continuous scene. Place two or more of these dials in adjacent slots to connect them into a single panoramic display.
 
-<!-- TODO: Screenshot of 2–4 Panorama Particles dials connected as one scene -->
+![Panorama Particles across 4 LCD panels](assets/screenshots/panorama-particles.png)
 
 | Interaction | Effect |
 |-------------|--------|
@@ -122,7 +119,7 @@ Ambient particle animation that spans multiple LCD panels side by side as one co
 
 Increase, decrease, or set a preset volume with a single key press.
 
-<!-- TODO: Screenshot of the three Volume Key variants (up / down / preset) -->
+![Volume Key](assets/screenshots/key-volume.png)
 
 | Setting | Description |
 |---------|-------------|
@@ -136,8 +133,7 @@ Increase, decrease, or set a preset volume with a single key press.
 
 Next track, previous track, shuffle, or repeat — each as a dedicated key. All four buttons **dim** when a radio station is playing, since playback controls are unavailable for radio streams.
 
-<!-- TODO: Screenshot showing next/previous/shuffle/repeat keys -->
-<!-- TODO: Screenshot showing all four keys dimmed while radio is playing -->
+![Playback Control Key — Next](assets/screenshots/key-playback-control.png) ![Playback Control Key dimmed during radio](assets/screenshots/key-playback-control-radio.png)
 
 | Setting | Description |
 |---------|-------------|
@@ -149,8 +145,6 @@ Next track, previous track, shuffle, or repeat — each as a dedicated key. All 
 ### Play Favorite
 
 Play one of your saved Sonos favorites with a single key press.
-
-<!-- TODO: Screenshot of the Play Favorite key with cover art -->
 
 | Setting | Description |
 |---------|-------------|
