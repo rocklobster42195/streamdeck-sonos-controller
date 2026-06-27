@@ -2,6 +2,8 @@
 
 Full Sonos playback control for your Stream Deck — cover art, volume, track info, and more.
 
+[![Ko-fi](https://img.shields.io/badge/support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/rocklobster42195)
+
 > **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
 
 ![Sonos Controller — Panorama Particles spanning 4 LCD panels](assets/screenshots/panorama-particles.png)
