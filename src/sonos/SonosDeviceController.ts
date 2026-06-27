@@ -33,13 +33,18 @@ export class SonosDeviceController {
     if (!uri) return false;
     return uri.startsWith('x-sonosapi-stream:') ||
            uri.startsWith('x-sonosapi-radio:')  ||
-           uri.startsWith('x-rincon-stream:')    ||
-           uri.startsWith('aac:')                ||
-           uri.startsWith('pndrradio:');
+           uri.startsWith('x-sonosapi-hls:')    ||
+           uri.startsWith('x-rincon-stream:')   ||
+           uri.startsWith('aac:')               ||
+           uri.startsWith('pndrradio:')         ||
+           // Sonos Radio (Deezer-powered) delivers individual tracks via x-sonos-http but they are not skippable.
+           (uri.startsWith('x-sonos-http:') && uri.includes('-DZR:'));
   }
 
   private static isRadioAlbumArtUri(albumArtUri: string | undefined): boolean {
     if (!albumArtUri) return false;
+    // Sonos Radio (Deezer-powered) serves cover art from sonosradio.imgix.net — no u= parameter.
+    if (albumArtUri.includes('sonosradio.imgix.net')) return true;
     const match = albumArtUri.match(/[?&]u=([^&]+)/);
     if (!match) return false;
     return SonosDeviceController.isRadioStream(decodeURIComponent(match[1]));
