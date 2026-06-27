@@ -52,7 +52,7 @@ The centerpiece of the plugin. The LCD panel displays the album or station cover
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
-| Background | `None` (track info only), `Equalizer` (animated bars), or `Particles` (network particle animation) |
+| Background | `None` (track info only), `EQ Effect` (animated bars), or `Particles` (network particle animation) |
 | Show track title | Display title and artist on the panel |
 | Font color | Color for the title text |
 | Font size | Size of the title text (px) |

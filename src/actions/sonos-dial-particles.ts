@@ -39,7 +39,7 @@ const SPEED_MIN = 0.05;
 const SPEED_MAX = 1.5;
 const SPEED_DEFAULT = 0.25;
 const SPEED_STEP = 0.05;
-const DEFAULT_COLOR = '#7EB8F7';
+const DEFAULT_COLOR = '#404040';
 
 // Shared panorama registry — allows other actions (e.g. SonosDialTrack) to join a panorama group.
 export const panoramaColumns = new Map<string, number>();

@@ -293,7 +293,7 @@ export class ParticleEngine {
         if (rgb) return [+rgb[1], +rgb[2], +rgb[3]];
         const hex = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
         if (hex) return [parseInt(hex[1], 16), parseInt(hex[2], 16), parseInt(hex[3], 16)];
-        return [126, 184, 247];
+        return [64, 64, 64];
     }
 
     private colorToRgb(r: number, g: number, b: number): string {
