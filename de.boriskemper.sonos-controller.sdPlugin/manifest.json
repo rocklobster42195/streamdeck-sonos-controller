@@ -97,7 +97,9 @@
 			"Icon": "imgs/actions/sonos-dial-favorites/icon",
 			"Tooltip": "Browse and play your personal Sonos favorites list.",
 			"PropertyInspectorPath": "ui/sonos-dial-favorites.html",
-			"Controllers": ["Encoder"],
+			"Controllers": [
+				"Encoder"
+			],
 			"Encoder": {
 				"layout": "$A0",
 				"TriggerDescription": {
@@ -106,7 +108,11 @@
 					"Touch": "Return to now playing"
 				}
 			},
-			"States": [{ "Image": "imgs/actions/sonos-dial-favorites/icon" }]
+			"States": [
+				{
+					"Image": "imgs/actions/sonos-dial-favorites/icon"
+				}
+			]
 		},
 		{
 			"Name": "Panorama Particles",
@@ -114,7 +120,9 @@
 			"Icon": "imgs/actions/sonos-dial-particles/icon",
 			"Tooltip": "Particle animation spanning up to 4 LCD panels as one continuous scene.",
 			"PropertyInspectorPath": "ui/sonos-dial-particles.html",
-			"Controllers": ["Encoder"],
+			"Controllers": [
+				"Encoder"
+			],
 			"Encoder": {
 				"layout": "$A0",
 				"TriggerDescription": {
@@ -123,7 +131,11 @@
 					"Touch": "None"
 				}
 			},
-			"States": [{ "Image": "imgs/actions/sonos-dial-particles/icon" }]
+			"States": [
+				{
+					"Image": "imgs/actions/sonos-dial-particles/icon"
+				}
+			]
 		},
 		{
 			"Name": "Track Dial",
@@ -154,9 +166,9 @@
 	"CodePath": "bin/plugin.js",
 	"Description": "Control your SONOS system with your StreamDeck+\nThis plugin is not connected to SONOS.\n\nThis plugin uses SONOS-TS by Stephan van Rooij (https://sonos-ts.svrooij.io/), licensed under MIT License.\n\nIcons by\nhttps://pictogrammers.com\n\nsdpi-components by GeekyEggo\nhttps://github.com/geekyeggo/sdpi-components",
 	"Icon": "imgs/plugin/lobster",
-	"SDKVersion": 2,
+	"SDKVersion": 3,
 	"Software": {
-		"MinimumVersion": "6.4"
+		"MinimumVersion": "6.9"
 	},
 	"OS": [
 		{
