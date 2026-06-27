@@ -307,17 +307,27 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             positionText = isPlaying ? '▶' : '⏸';
         }
 
+        // Full-canvas idle: not browsing and no cover available.
+        if (!isBrowsing && !cover) {
+            const svg = this.buildIdleSvg();
+            const img = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+            await action.setFeedback({
+                'full-canvas': img, 'icon': '', 'title': '',
+                'indicator': { value: 0, enabled: false },
+            }).catch(() => {});
+            return;
+        }
+
         const coverFrag = cover
             ? `<image href="${cover}" x="4" y="6" width="88" height="88" preserveAspectRatio="xMidYMid slice" clip-path="url(#cc)"/>`
-            : `<rect x="4" y="6" width="88" height="88" fill="#2a2a2a" rx="6"/>
-               <text x="48" y="62" fill="#555" font-family="Arial,sans-serif" font-size="42" text-anchor="middle">★</text>`;
+            : `<rect x="4" y="6" width="88" height="88" fill="#2a2a2a" rx="6"/>`;
 
         const titleFrag = marqueeAnimator.isRunning(context)
             ? marqueeAnimator.render(context, 100, 30, 97, 20)
             : (() => {
                 const fallback = isBrowsing
                     ? (favs[state.currentIndex]?.Title ?? '')
-                    : (state.playingFav?.Title ?? (favs.length === 0 ? 'No device set' : 'Rotate to browse'));
+                    : (state.playingFav?.Title ?? '');
                 return `<text x="100" y="30" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="14" clip-path="url(#tc)">${this.escapeXml(fallback)}</text>`;
             })();
 
@@ -342,13 +352,56 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             'full-canvas': img,
             'icon': '',
             'title': '',
-            'indicator': {
-                value: isBrowsing
-                    ? Math.round(((state.currentIndex) / Math.max(1, favs.length - 1)) * 100)
-                    : (state.isMuted ? 0 : state.volume)
-            }
+            'indicator': { value: 0, enabled: false }
         }).catch(() => {});
     }
+
+    private getAvailableCovers(max: number): string[] {
+        const favs = this.getFavorites();
+        const covers: string[] = [];
+        for (const fav of favs) {
+            if (covers.length >= max) break;
+            const art = fav.AlbumArtUri ? sonosFavoritesCache.getCoverArt(fav.AlbumArtUri) : undefined;
+            if (art) covers.push(art);
+        }
+        return covers;
+    }
+
+    private buildIdleSvg(): string {
+        const covers = this.getAvailableCovers(8);
+
+        const body = covers.length === 0
+            ? '<text x="100" y="55" fill="#444" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">No device set</text>'
+            : this.buildMosaic(covers);
+
+        const hint = covers.length > 0
+            ? '<text x="100" y="96" fill="#fff" font-family="Arial,sans-serif" font-size="9" text-anchor="middle" opacity="0.4">Rotate to browse</text>'
+            : '';
+
+        return [
+            '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+            '<defs><clipPath id="vp"><rect width="200" height="100"/></clipPath></defs>',
+            '<rect width="200" height="100" fill="#111"/>',
+            `<g clip-path="url(#vp)">${body}</g>`,
+            hint,
+            '</svg>',
+        ].join('');
+    }
+
+    private buildMosaic(covers: string[]): string {
+        const COLS = 4, ROWS = 2, W = 50, H = 50;
+        const total = COLS * ROWS;
+        const defs: string[] = [];
+        const imgs: string[] = [];
+        for (let i = 0; i < total; i++) {
+            const col = i % COLS, row = Math.floor(i / COLS);
+            const x = col * W, y = row * H;
+            defs.push(`<clipPath id="ms${i}"><rect x="${x}" y="${y}" width="${W}" height="${H}"/></clipPath>`);
+            imgs.push(`<image href="${covers[i % covers.length]}" x="${x}" y="${y}" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" clip-path="url(#ms${i})"/>`);
+        }
+        return `<defs>${defs.join('')}</defs>${imgs.join('')}`;
+    }
+
 
     private renderDots(current: number, total: number): string {
         if (total <= 1) return '';

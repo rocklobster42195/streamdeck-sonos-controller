@@ -2,14 +2,7 @@
 
 Full Sonos playback control for your Stream Deck — cover art, volume, track info, and more.
 
-<!-- TODO: Replace with a banner screenshot of the plugin in action -->
-<!-- ![Banner](docs/images/banner.png) -->
-
----
-
-## Overview
-
-This plugin brings Sonos speaker control directly to your Elgato Stream Deck. It supports both key buttons and the Stream Deck+ dial/LCD panel. Every action updates in real time as you play music — cover art, track titles, volume level, and playback state all reflect the current state of your speaker.
+<!-- TODO: Banner screenshot of the plugin in action -->
 
 ---
 
@@ -29,11 +22,9 @@ This plugin brings Sonos speaker control directly to your Elgato Stream Deck. It
 Toggles playback on your Sonos speaker. Displays the current album or radio station cover art while playing.
 
 <!-- TODO: Screenshot of the key showing cover art while playing -->
-<!-- ![Play Pause Key](docs/images/action-play-pause.png) -->
 
-**Settings:**
-| Option | Description |
-|--------|-------------|
+| Setting | Description |
+|---------|-------------|
 | Device | Which Sonos speaker to control |
 | Show cover art | Display album art on the key while playing |
 | Show track title | Scroll the track title and artist across the key |
@@ -44,91 +35,112 @@ Toggles playback on your Sonos speaker. Displays the current album or radio stat
 
 ### Track Dial *(Stream Deck+ only)*
 
-The centerpiece of the plugin. The LCD panel displays:
+The centerpiece of the plugin. The LCD panel displays the album or station cover on the right, a scrolling track title, artist name, and a progress bar colored to match the cover art.
 
-- **Blurred cover art backdrop** — fills the full 200×100 panel with atmospheric color
-- **Album or station cover** — sharp on the right, with rounded corners
-- **Scrolling track title** — marquee animation for long titles
-- **Artist name**
-- **Progress bar** — shows real playback position in the dominant cover color; radio stations show a static separator
-- **Equalizer bars** — 10 animated bars while playing, colored to match the cover art (luminance-corrected for dark covers)
-- **Status** — play/pause state and current volume
-
-The volume indicator bar at the bottom reflects the exact speaker volume.
-
-<!-- TODO: Screenshot of the Track Dial panel while playing -->
-<!-- ![Track Dial Playing](docs/images/action-dial-track-playing.png) -->
-
+<!-- TODO: Screenshot of the Track Dial panel while playing (eq mode) -->
+<!-- TODO: Screenshot of the Track Dial panel in particles mode -->
 <!-- TODO: Screenshot of the Track Dial panel while paused (dimmed state) -->
-<!-- ![Track Dial Paused](docs/images/action-dial-track-paused.png) -->
+<!-- TODO: Screenshot of a radio station with blurred logo backdrop -->
 
-<!-- TODO: Screenshot showing a radio station with blurred logo backdrop -->
-<!-- ![Track Dial Radio](docs/images/action-dial-track-radio.png) -->
-
-**Dial interaction:**
-| Action | Effect |
-|--------|--------|
-| Rotate | Adjust volume (±1% per tick, ±2% for fast rotation) |
-| Press | Toggle mute |
+| Interaction | Effect |
+|-------------|--------|
+| Rotate | Seek ±5% in the current track |
+| Press | Skip to next track |
 | Touch | Toggle play / pause |
 
-**Settings:**
-| Option | Description |
-|--------|-------------|
+| Setting | Description |
+|---------|-------------|
 | Device | Which Sonos speaker to control |
+| Background | `None` (track info only), `Equalizer` (animated bars), or `Particles` (network particle animation) |
 | Show track title | Display title and artist on the panel |
-| Font color | Color for the title text (default: white) |
-| Font size | Size of the title text |
+| Font color | Color for the title text |
+| Font size | Size of the title text (px) |
 | Marquee speed | Scroll speed for long titles |
-| Marquee pause | How long to pause at the start before scrolling |
+| Marquee pause | How long to pause before scrolling begins |
 
 ---
 
 ### Volume Dial *(Stream Deck+ only)*
 
-Dedicated volume control with mute support.
+Dedicated volume control. Displays a pie chart showing the current volume level. When muted, the volume-off icon replaces the pie.
 
-<!-- TODO: Screenshot of the Volume Dial LCD panel -->
-<!-- ![Volume Dial](docs/images/action-dial-volume.png) -->
+<!-- TODO: Screenshot of the Volume Dial (left alignment, ~60% volume) -->
+<!-- TODO: Screenshot of the Volume Dial in muted state -->
+<!-- TODO: Screenshot of the Volume Dial with particles background -->
 
-**Dial interaction:**
-| Action | Effect |
-|--------|--------|
-| Rotate | Adjust volume |
+| Interaction | Effect |
+|-------------|--------|
+| Rotate | Adjust volume (±1% per tick, ±2% for fast rotation) |
 | Press | Toggle mute |
 | Touch | Set volume to configured preset |
+
+| Setting | Description |
+|---------|-------------|
+| Device | Which Sonos speaker to control |
+| Preset Volume | Target volume for touch |
+| Alignment | Position of the pie: `Left`, `Center`, or `Right` |
+| Background | `None` or `Particles` (network particle animation) |
+
+---
+
+### Favorites Dial *(Stream Deck+ only)*
+
+Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art and title of the currently highlighted favorite.
+
+<!-- TODO: Screenshot of the Favorites Dial browsing the list -->
+
+| Interaction | Effect |
+|-------------|--------|
+| Rotate | Browse favorites list |
+| Press | Play the highlighted favorite |
+| Touch | Return to now playing |
+
+| Setting | Description |
+|---------|-------------|
+| Device | Which Sonos speaker to control |
+
+---
+
+### Panorama Particles Dial *(Stream Deck+ only)*
+
+Ambient particle animation that spans multiple LCD panels side by side as one continuous scene. Place two or more of these dials in adjacent slots to connect them into a single panoramic display.
+
+<!-- TODO: Screenshot of 2–4 Panorama Particles dials connected as one scene -->
+
+| Interaction | Effect |
+|-------------|--------|
+| Rotate | Adjust particle count |
+| Press | Reset particle count |
+
+| Setting | Description |
+|---------|-------------|
+| Column | Which column this dial occupies in the panorama (0 = leftmost) |
 
 ---
 
 ### Volume Key
 
-Increase, decrease, or set a preset volume with a single key press. Long-press (hold 0.5 s) to jump directly to the preset volume.
+Increase, decrease, or set a preset volume with a single key press.
 
 <!-- TODO: Screenshot of the three Volume Key variants (up / down / preset) -->
-<!-- ![Volume Keys](docs/images/action-key-volume.png) -->
 
-**Settings:**
-| Option | Description |
-|--------|-------------|
+| Setting | Description |
+|---------|-------------|
 | Device | Which Sonos speaker to control |
-| Command | `Volume Up`, `Volume Down`, or `Set Preset` |
-| Preset volume | Target volume for long-press or preset command |
-| Show volume | Display the current volume on the key |
+| Command | `Volume Up`, `Volume Down`, `Mute`, or `Set Preset` |
+| Preset volume | Target volume for the preset command |
 
 ---
 
 ### Playback Control Key
 
-Next track, previous track, shuffle, or repeat — each as a dedicated key.
+Next track, previous track, shuffle, or repeat — each as a dedicated key. All four buttons **dim** when a radio station is playing, since playback controls are unavailable for radio streams.
 
-Skip buttons automatically **dim** when a radio station is playing (since skipping is not available for radio streams).
+<!-- TODO: Screenshot showing next/previous/shuffle/repeat keys -->
+<!-- TODO: Screenshot showing all four keys dimmed while radio is playing -->
 
-<!-- TODO: Screenshot showing next/previous/shuffle/repeat keys, dim skip buttons on radio -->
-<!-- ![Playback Control Keys](docs/images/action-playback-control.png) -->
-
-**Settings:**
-| Option | Description |
-|--------|-------------|
+| Setting | Description |
+|---------|-------------|
 | Device | Which Sonos speaker to control |
 | Command | `Next`, `Previous`, `Shuffle`, or `Repeat` |
 
@@ -139,11 +151,9 @@ Skip buttons automatically **dim** when a radio station is playing (since skippi
 Play one of your saved Sonos favorites with a single key press.
 
 <!-- TODO: Screenshot of the Play Favorite key with cover art -->
-<!-- ![Play Favorite](docs/images/action-play-favorite.png) -->
 
-**Settings:**
-| Option | Description |
-|--------|-------------|
+| Setting | Description |
+|---------|-------------|
 | Device | Which Sonos speaker to control |
 | Favorite | Select from your Sonos favorites list |
 
@@ -154,10 +164,8 @@ Play one of your saved Sonos favorites with a single key press.
 1. Install the plugin via the Elgato Marketplace or by double-clicking the `.streamDeckPlugin` file.
 2. Drag an action from the **Sonos Controller** category onto a key or dial slot.
 3. Open the action's settings (click the key in Stream Deck software).
-4. Select your **Sonos device** from the dropdown — devices are discovered automatically.
+4. Select your **Sonos device** from the dropdown — devices are discovered automatically on your local network.
 5. Configure the remaining options and click anywhere to save.
-
-**First use:** The plugin discovers Sonos speakers on your network when it loads. If your speaker does not appear in the list, ensure it is powered on and connected to the same network as your computer.
 
 ---
 
@@ -173,17 +181,9 @@ Play one of your saved Sonos favorites with a single key press.
 
 Radio station logos are fetched from the Sonos device using the stream URI. This may take a moment on the first load after the plugin starts.
 
-### Volume or mute key not responding
+### Controls not responding
 
-The plugin uses Sonos UPnP event subscriptions to stay in sync. If your network is unstable, subscriptions may occasionally fail and recover automatically within 60 seconds. Check the plugin log at:
-
-```
-<sonos-controller-install-dir>/logs/de.boriskemper.sonos-controller.0.log
-```
-
-### Track Dial shows "Sonos / Ready" instead of current track
-
-This appears when no track info is available (e.g., the speaker is idle). Start playback on the speaker and the display will update automatically.
+The plugin uses Sonos UPnP event subscriptions to stay in sync. If your network is unstable, subscriptions may occasionally fail and recover automatically within 60 seconds.
 
 ---
 

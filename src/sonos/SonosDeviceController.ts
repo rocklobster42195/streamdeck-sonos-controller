@@ -108,9 +108,11 @@ export class SonosDeviceController {
               } catch { this.currentAlbumArtUri = ''; }
             }
             newTrackInfo.albumArtDataUri = newTrackInfo.albumArtDataUri ?? this.lastKnownCover;
-            newTrackInfo.isRadio = track.AlbumArtUri
-              ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri)
-              : (this.currentTrack?.isRadio ?? false);
+            newTrackInfo.isRadio =
+              SonosDeviceController.isRadioStream(track.TrackUri) ||
+              (track.AlbumArtUri
+                ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri)
+                : (this.currentTrack?.isRadio ?? false));
             this.currentTrack = newTrackInfo;
             this.trackInfoCallbacks.forEach(cb => cb(this.currentTrack!));
           }
@@ -131,6 +133,9 @@ export class SonosDeviceController {
     const track = await this.getCurrentTrack();
     if (track) {
         this.currentTrack = track;
+        this.currentTrack.isRadio =
+            SonosDeviceController.isRadioStream(track.TrackUri) ||
+            (track.AlbumArtUri ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri) : false);
         if (track.AlbumArtUri) {
             const cover = await loadImageFromUri(track.AlbumArtUri, this.sonosDevice);
             if (cover) this.currentTrack.albumArtDataUri = cover;
@@ -322,7 +327,11 @@ export class SonosDeviceController {
   unregisterTransportStateCallback(id: string): void { this.transportStateCallbacks.delete(id); }
   registerPlayModeCallback(id: string, callback: (playMode: string) => void): void { this.playModeCallbacks.set(id, callback); }
   unregisterPlayModeCallback(id: string): void { this.playModeCallbacks.delete(id); }
-  registerTrackInfoCallback(id: string, callback: (trackInfo: TrackInfo) => void): void { this.trackInfoCallbacks.set(id, callback); }
+  registerTrackInfoCallback(id: string, callback: (trackInfo: TrackInfo) => void): void {
+    this.trackInfoCallbacks.set(id, callback);
+    // Fire immediately with cached state so callers get isRadio without waiting for the next UPnP event.
+    if (this.currentTrack) callback(this.currentTrack);
+  }
   unregisterTrackInfoCallback(id: string): void { this.trackInfoCallbacks.delete(id); }
   
   // --- Subscriptions ---
@@ -389,9 +398,13 @@ export class SonosDeviceController {
         // Preserve the last known cover so news segments (which have no art) keep showing the station logo.
         newTrackInfo.albumArtDataUri = newTrackInfo.albumArtDataUri || this.currentTrack?.albumArtDataUri || this.lastKnownCover;
         // Preserve isRadio across news segments (which fire with no AlbumArtUri).
-        newTrackInfo.isRadio = track.AlbumArtUri
-            ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri)
-            : (this.currentTrack?.isRadio ?? false);
+        // TrackUri is the primary signal (always carries the radio stream scheme).
+        // Fall back to AlbumArtUri-based detection, then preserve previous state for news segments.
+        newTrackInfo.isRadio =
+            SonosDeviceController.isRadioStream(track.TrackUri) ||
+            (track.AlbumArtUri
+                ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri)
+                : (this.currentTrack?.isRadio ?? false));
         this.currentTrack = newTrackInfo;
         this.trackInfoCallbacks.forEach(cb => cb(this.currentTrack!));
       });

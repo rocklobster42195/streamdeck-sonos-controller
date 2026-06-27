@@ -26,7 +26,7 @@ async function write(mdiPath, outDir, name) {
 }
 
 await write(mdiPlayCircle,   `${IMGS}/actions/sonos-toggle-play`,      'icon');
-await write(mdiStarCircle,   `${IMGS}/actions/sonos-play-favorite`,    'icon');
+await write(mdiHeartCircle,  `${IMGS}/actions/sonos-play-favorite`,    'icon');
 await write(mdiPlaylistPlay, `${IMGS}/actions/sonos-playback-control`, 'icon');
 await write(mdiVolumeHigh,   `${IMGS}/actions/sonos-key-volume`,       'icon');
 await write(mdiVolumeOff,    `${IMGS}/actions/sonos-key-volume`,       'icon-muted');

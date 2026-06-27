@@ -41,10 +41,33 @@ const SPEED_DEFAULT = 0.25;
 const SPEED_STEP = 0.05;
 const DEFAULT_COLOR = '#7EB8F7';
 
+// Shared panorama registry — allows other actions (e.g. SonosDialTrack) to join a panorama group.
+export const panoramaColumns = new Map<string, number>();
+export const panoramaContextGroupKey = new Map<string, string>();
+let _scheduleSyncFn: (() => void) | null = null;
+
+export function registerInPanorama(context: string, column: number): void {
+    panoramaColumns.set(context, column);
+    _scheduleSyncFn?.();
+}
+
+export function unregisterFromPanorama(context: string): void {
+    const key = panoramaContextGroupKey.get(context);
+    if (key) panoramaContextGroupKey.delete(context);
+    panoramaColumns.delete(context);
+    _scheduleSyncFn?.();
+}
+
+export function getPanoramaSliceOffset(context: string): number {
+    const col = panoramaColumns.get(context) ?? 0;
+    const key = panoramaContextGroupKey.get(context);
+    if (!key) return 0;
+    const minCol = Math.min(...key.replace('panorama-cols-', '').split(',').map(Number));
+    return (col - minCol) * DISPLAY_W;
+}
+
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-particles" })
 export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
-    // Shared column registry — all instances of this action on the current page.
-    private static globalColumns: Map<string, number> = new Map();
 
     private groupContexts = new Map<string, Set<string>>();
     private groupTimers = new Map<string, NodeJS.Timeout>();
@@ -57,7 +80,8 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
 
     private settingsMap = new Map<string, ParticlesSettings>();
     private instanceStates = new Map<string, InstanceState>();
-    private contextGroupKey = new Map<string, string>();
+    // Alias to module-level map so all code using this.contextGroupKey still works.
+    private contextGroupKey = panoramaContextGroupKey;
     private renderGen = new Map<string, number>();
 
     private syncTimer: NodeJS.Timeout | null = null;
@@ -74,11 +98,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
     }
 
     private getSliceOffset(context: string): number {
-        const col = SonosDialParticles.globalColumns.get(context) ?? 0;
-        const key = this.contextGroupKey.get(context);
-        if (!key) return 0;
-        const minCol = Math.min(...this.colsFromKey(key));
-        return (col - minCol) * DISPLAY_W;
+        return getPanoramaSliceOffset(context);
     }
 
     private ensureVisibleColor(color: string): string {
@@ -108,7 +128,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
      * Returns Map<groupKey, contexts[]>.
      */
     private computeAllGroups(): Map<string, string[]> {
-        const sorted = [...SonosDialParticles.globalColumns.entries()]
+        const sorted = [...panoramaColumns.entries()]
             .sort(([, a], [, b]) => a - b);
         const result = new Map<string, string[]>();
         let i = 0;
@@ -191,6 +211,10 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             this.groupControllers.delete(key);
         }
         particleEngine.destroyPanorama(key);
+        // Clear group key for ALL participants, including external actions (e.g. Track Dial).
+        for (const [ctx, k] of [...panoramaContextGroupKey.entries()]) {
+            if (k === key) panoramaContextGroupKey.delete(ctx);
+        }
         this.groupContexts.delete(key);
         this.groupDialMode.delete(key);
         this.groupSpeed.delete(key);
@@ -205,7 +229,9 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         if (!this.groupContexts.has(key)) this.groupContexts.set(key, new Set());
         const group = this.groupContexts.get(key)!;
         for (const ctx of ctxs) {
-            group.add(ctx);
+            // Only own Particles instances go into groupContexts for render dispatch.
+            // External participants (e.g. Track Dial) render via their own timer.
+            if (this.settingsMap.has(ctx)) group.add(ctx);
             this.contextGroupKey.set(ctx, key);
         }
 
@@ -242,7 +268,8 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
 
             this.groupSpeed.set(key, speed);
             for (const ctx of ctxs) {
-                const col = SonosDialParticles.globalColumns.get(ctx) ?? 0;
+                if (!this.settingsMap.has(ctx)) continue; // Skip external participants
+                const col = panoramaColumns.get(ctx) ?? 0;
                 this.instanceStates.set(ctx, { density, column: col });
             }
         }
@@ -405,13 +432,14 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
     // ── Instance lifecycle ───────────────────────────────────────────────────
 
     override async onWillAppear(ev: WillAppearEvent<ParticlesSettings>): Promise<void> {
+        _scheduleSyncFn = () => this.scheduleSyncGroups();
         const context = ev.action.id;
         const col = 'coordinates' in ev.payload
             ? (ev.payload.coordinates as { column: number }).column : 0;
         const settings = ev.payload.settings;
 
         this.settingsMap.set(context, settings);
-        SonosDialParticles.globalColumns.set(context, col);
+        panoramaColumns.set(context, col);
         this.instanceStates.set(context, {
             density: settings.savedDensity ?? BASE_PER_DISPLAY,
             column: col,
@@ -442,9 +470,12 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         }
 
         if (settings.showTrackInfo !== oldSettings?.showTrackInfo) {
-            const show = settings.showTrackInfo ?? false;
-            this.groupShowTrackInfo.set(key, show || this.groupShowTrackInfo.get(key) === true);
-            await this.propagateGroupSetting(key, (s) => ({ ...s, showTrackInfo: settings.showTrackInfo }), context);
+            const show = settings.showTrackInfo === true;
+            this.groupShowTrackInfo.set(key, show);
+            await this.propagateGroupSetting(key, (s) => ({ ...s, showTrackInfo: show }), context);
+            // Re-render all group contexts immediately so the rightmost display updates at once.
+            const group = this.groupContexts.get(key);
+            if (group) for (const ctx of group) this.queueRender(ctx);
         }
 
         await this.renderDial(context);
@@ -454,7 +485,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         const context = ev.action.id;
         await this.saveGroupStateToSettings(context);
         this.leaveGroup(context);
-        SonosDialParticles.globalColumns.delete(context);
+        panoramaColumns.delete(context);
         this.settingsMap.delete(context);
         this.instanceStates.delete(context);
         this.renderGen.delete(context);
@@ -534,23 +565,28 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
 
         const fragment = key ? particleEngine.renderPanoramaSlice(key, sliceOffsetX) : '';
 
-        const myCol = SonosDialParticles.globalColumns.get(context) ?? 0;
+        const myCol = panoramaColumns.get(context) ?? 0;
         const cols = key ? this.colsFromKey(key) : [myCol];
-        const isRightmost = myCol === Math.max(...cols);
-        const showText = isRightmost && key && (this.groupShowTrackInfo.get(key) ?? false);
-        const trackInfo = showText ? (this.groupTrackInfo.get(key!) ?? null) : null;
+        const maxCol = Math.max(...cols);
+        const isRightmost = myCol === maxCol;
+        const showTrackInfo = !!key && (this.groupShowTrackInfo.get(key) ?? false);
+        const trackInfo = showTrackInfo ? (this.groupTrackInfo.get(key!) ?? null) : null;
+
+        // Text anchor at x=196 of the rightmost display, expressed in this display's local coords.
+        // With text-anchor="end", long titles overflow leftward into adjacent displays naturally.
+        const textAnchorX = 196 + (maxCol - myCol) * DISPLAY_W;
 
         const svg = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
             '<defs>',
             '  <clipPath id="c"><rect width="200" height="100"/></clipPath>',
-            showText ? '  <linearGradient id="tg" x1="0" x2="0" y1="0" y2="1"><stop offset="30%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity="0.75"/></linearGradient>' : '',
+            (showTrackInfo && isRightmost) ? '  <linearGradient id="tg" x1="0" x2="0" y1="0" y2="1"><stop offset="30%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity="0.75"/></linearGradient>' : '',
             '</defs>',
             '<rect width="200" height="100" fill="#000"/>',
             `<g clip-path="url(#c)">${fragment}</g>`,
-            showText ? '<rect width="200" height="100" fill="url(#tg)"/>' : '',
-            trackInfo?.title ? `<text x="196" y="72" fill="#fff" font-family="Arial,sans-serif" font-size="20" font-weight="500" text-anchor="end" clip-path="url(#c)">${this.escapeXml(trackInfo.title)}</text>` : '',
-            trackInfo?.artist ? `<text x="196" y="93" fill="#aaa" font-family="Arial,sans-serif" font-size="15" text-anchor="end" clip-path="url(#c)">${this.escapeXml(trackInfo.artist)}</text>` : '',
+            (showTrackInfo && isRightmost) ? '<rect width="200" height="100" fill="url(#tg)"/>' : '',
+            trackInfo?.title ? `<text x="${textAnchorX}" y="72" fill="#fff" font-family="Arial,sans-serif" font-size="20" font-weight="500" text-anchor="end" clip-path="url(#c)">${this.escapeXml(trackInfo.title)}</text>` : '',
+            trackInfo?.artist ? `<text x="${textAnchorX}" y="93" fill="#aaa" font-family="Arial,sans-serif" font-size="15" text-anchor="end" clip-path="url(#c)">${this.escapeXml(trackInfo.artist)}</text>` : '',
             '</svg>',
         ].join('');
 

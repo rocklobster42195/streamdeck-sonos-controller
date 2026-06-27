@@ -4,6 +4,9 @@
     <title>SONOS Dial Volume Settings</title>
     <meta charset="utf-8" />
     <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+    <style>
+        #pvVal { text-align: center; color: #999; font-size: 11px; margin: -6px 0 10px; }
+    </style>
   </head>
 
   <body>
@@ -24,5 +27,44 @@
             showlabels>
         </sdpi-range>
     </sdpi-item>
+    <p id="pvVal">—</p>
+    <sdpi-item label="Alignment">
+        <sdpi-select setting="align">
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Background">
+        <sdpi-select setting="visualizerMode">
+            <option value="none">None</option>
+            <option value="particles">Particles</option>
+        </sdpi-select>
+    </sdpi-item>
+
+    <script>
+        var pvVal = document.getElementById('pvVal');
+
+        function showPv(v) {
+            if (pvVal != null && v != null) pvVal.textContent = v + '%';
+        }
+
+        // Fires when the user moves the slider.
+        document.addEventListener('sdpi-item-value', function(e) {
+            var d = e && e.detail;
+            if (d && (d.id === 'presetVolume' || d.setting === 'presetVolume')) showPv(d.value);
+        });
+
+        // Fires on PI open with the saved settings.
+        (function tryClient(n) {
+            if (window.streamDeckClient && streamDeckClient.onDidReceiveSettings) {
+                streamDeckClient.onDidReceiveSettings(function(ev) {
+                    showPv(ev && ev.settings && ev.settings.presetVolume);
+                });
+            } else if (n > 0) {
+                setTimeout(function() { tryClient(n - 1); }, 100);
+            }
+        }(20));
+    </script>
   </body>
 </html>

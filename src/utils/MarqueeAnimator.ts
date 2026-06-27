@@ -106,7 +106,7 @@ export class MarqueeAnimator {
             if (state.renderCallback) {
                 state.renderCallback();
             }
-        }, 80);
+        }, 150);
     }
 
     public render(context: string, x: number, y: number, width: number, height: number): string {

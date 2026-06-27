@@ -19,6 +19,7 @@ import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { getDominantColor } from "../utils/colorExtract";
 import { particleEngine } from "../utils/ParticleEngine";
+import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset } from "./sonos-dial-particles";
 import { TrackInfo } from "../sonos/SonosTypes";
 
 type SonosSettings = {
@@ -49,15 +50,20 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
     private settingsMap: Map<string, SonosSettings> = new Map();
     private marqueeTimers: Map<string, NodeJS.Timeout> = new Map();
     private animTimers: Map<string, NodeJS.Timeout> = new Map();
+    private contextColumns: Map<string, number> = new Map();
 
     private onTransportStateChanged(context: string, transportState: string): void {
         const state = this.states.get(context);
         if (!state) return;
         state.transportState = transportState;
-        if (transportState === 'PLAYING') {
+        const settings = this.settingsMap.get(context);
+        const inPanorama = settings?.visualizerMode === 'particles' && !!panoramaContextGroupKey.get(context);
+        if (transportState === 'PLAYING' || inPanorama) {
             this.startAnimTimer(context);
-            const controller = this.controllers.get(context);
-            if (controller) void this.fetchAndStorePosition(context, controller);
+            if (transportState === 'PLAYING') {
+                const controller = this.controllers.get(context);
+                if (controller) void this.fetchAndStorePosition(context, controller);
+            }
         } else {
             this.stopAnimTimer(context);
         }
@@ -99,17 +105,22 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         void this.renderDial(context);
     }
 
-    // Drives re-renders for progress bar (all modes) and animations (eq/particles).
+    // Drives re-renders for progress bar and animations.
+    // In panorama particles mode the timer stays alive regardless of play state;
+    // the panorama group timer handles physics ticking.
     private startAnimTimer(context: string): void {
         if (this.animTimers.has(context)) return;
         const timer = setInterval(() => {
             const s = this.states.get(context);
-            if (!s || s.transportState !== 'PLAYING') {
+            if (!s) { this.stopAnimTimer(context); return; }
+            const settings = this.settingsMap.get(context);
+            const inPanorama = settings?.visualizerMode === 'particles' && !!panoramaContextGroupKey.get(context);
+            if (!inPanorama && s.transportState !== 'PLAYING') {
                 this.stopAnimTimer(context);
                 return;
             }
-            const settings = this.settingsMap.get(context);
-            if (settings?.visualizerMode === 'particles') particleEngine.tick(context);
+            // Tick standalone particles only when not in a panorama group.
+            if (settings?.visualizerMode === 'particles' && !inPanorama) particleEngine.tick(context);
             void this.renderDial(context);
         }, 100);
         this.animTimers.set(context, timer);
@@ -207,6 +218,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         });
 
         if (settings.visualizerMode === 'particles') {
+            // Standalone engine as fallback when no adjacent Panorama Particles dials form a group.
             particleEngine.init(context, {
                 width: 100, height: 38, count: 12,
                 color: '#CCCCCC',
@@ -217,6 +229,12 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 maxRadius: 3,
                 opacity: 0.85,
             });
+            // Register in shared panorama column map so adjacent Panorama Particles dials
+            // can include this display in their group (auto-adjacency detection).
+            const col = this.contextColumns.get(context) ?? 0;
+            registerInPanorama(context, col);
+        } else {
+            unregisterFromPanorama(context);
         }
 
         await this.renderDial(context);
@@ -237,7 +255,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
 
             const state = this.states.get(context)!;
             state.transportState = transportState;
-            if (transportState === 'PLAYING') this.startAnimTimer(context);
+            if (transportState === 'PLAYING' || settings.visualizerMode === 'particles') this.startAnimTimer(context);
             if (track) state.trackInfo = track;
 
             await this.fetchAndStorePosition(context, controller);
@@ -270,6 +288,9 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
     }
 
     override async onWillAppear(ev: WillAppearEvent<SonosSettings>): Promise<void> {
+        const col = 'coordinates' in ev.payload
+            ? (ev.payload.coordinates as { column: number }).column : 0;
+        this.contextColumns.set(ev.action.id, col);
         await this.onInstanceUpdate(ev);
     }
 
@@ -279,6 +300,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
 
     override async onWillDisappear(ev: WillDisappearEvent<SonosSettings>): Promise<void> {
         this.cleanupInstance(ev.action.id);
+        this.contextColumns.delete(ev.action.id);
     }
 
     private cleanupInstance(context: string): void {
@@ -291,6 +313,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         }
 
         this.stopAnimTimer(context);
+        unregisterFromPanorama(context);
         particleEngine.destroy(context);
 
         const animator = this.animators.get(context);
@@ -411,6 +434,21 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         if (!sdAction || !sdAction.isDial() || !state || !animator) return;
 
         const settings = this.settingsMap.get(context);
+
+        // No device configured: show a minimal ready screen.
+        if (!settings?.deviceIp) {
+            const readySvg = [
+                '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+                '<rect width="200" height="100" fill="#0a0a0a"/>',
+                '<text x="100" y="48" fill="#2a2a2a" font-family="Arial,sans-serif" font-size="34" text-anchor="middle">♪</text>',
+                '<text x="100" y="68" fill="#333" font-family="Arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="2">SONOS</text>',
+                '</svg>',
+            ].join('');
+            const img = `data:image/svg+xml;base64,${Buffer.from(readySvg).toString('base64')}`;
+            await sdAction.setFeedback({ 'full-canvas': img, 'icon': '', 'title': '', 'indicator': { value: 0 } }).catch(() => {});
+            return;
+        }
+
         const isPlaying = state.transportState === 'PLAYING';
         const isTransitioning = state.transportState === 'TRANSITIONING';
         const artist = state.trackInfo?.Artist ?? '';
@@ -435,8 +473,6 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         let svg: string;
 
         if (visualizerMode === 'none') {
-            // Cover on the right, text bottom-aligned on the left, no visualizer.
-            const bgCover = animator.render(context, -10, -10, 220, 120);
             const sharpCover = animator.render(context, 113, 4, 87, 92);
 
             let titleFrag = '';
@@ -452,18 +488,10 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
             svg = [
                 '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                 '<defs>',
-                '  <filter id="blur"><feGaussianBlur stdDeviation="8"/></filter>',
-                '  <linearGradient id="overlay" x1="0" x2="1" y1="0" y2="0">',
-                '    <stop offset="0%" stop-color="black" stop-opacity="0.85"/>',
-                '    <stop offset="65%" stop-color="black" stop-opacity="0.55"/>',
-                '    <stop offset="100%" stop-color="black" stop-opacity="0"/>',
-                '  </linearGradient>',
                 '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
                 '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
                 '</defs>',
                 '<rect width="200" height="100" fill="black"/>',
-                `<g filter="url(#blur)" opacity="0.35">${bgCover}</g>`,
-                '<rect width="200" height="100" fill="url(#overlay)"/>',
                 `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                 titleFrag,
                 `  <text x="8" y="82" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
@@ -474,8 +502,6 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 '</svg>',
             ].join('');
         } else {
-            // Eq / particles layout: cover art on the right, text and visualizer on the left.
-            const bgCover = animator.render(context, -10, -10, 220, 120);
             const sharpCover = animator.render(context, 113, 4, 87, 92);
 
             let titleFrag = '';
@@ -488,39 +514,74 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 }
             }
 
-            const isParticles = visualizerMode === 'particles';
-            const visualizer = isPlaying
-                ? (isParticles
-                    ? `<g clip-path="url(#particleClip)">${particleEngine.render(context, 8, 56)}</g>`
-                    : this.renderEqualizerBars(accentColor, eqAmplitude))
-                : '';
+            const panoramaKey = visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
 
-            svg = [
-                '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
-                '<defs>',
-                '  <filter id="blur"><feGaussianBlur stdDeviation="8"/></filter>',
-                '  <linearGradient id="overlay" x1="0" x2="1" y1="0" y2="0">',
-                '    <stop offset="0%" stop-color="black" stop-opacity="0.85"/>',
-                '    <stop offset="65%" stop-color="black" stop-opacity="0.55"/>',
-                '    <stop offset="100%" stop-color="black" stop-opacity="0"/>',
-                '  </linearGradient>',
-                '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
-                '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
-                '  <clipPath id="particleClip"><rect x="8" y="56" width="100" height="38"/></clipPath>',
-                '</defs>',
-                '<rect width="200" height="100" fill="black"/>',
-                `<g filter="url(#blur)" opacity="0.35">${bgCover}</g>`,
-                '<rect width="200" height="100" fill="url(#overlay)"/>',
-                `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
-                titleFrag,
-                `  <text x="8" y="38" fill="#999999" font-family="Arial,sans-serif" font-size="12">${this.escapeXml(artist)}</text>`,
-                '</g>',
-                `<rect x="8" y="49" width="100" height="3" fill="white" opacity="0.12" rx="1.5"/>`,
-                progressPct > 0 ? `<rect x="8" y="49" width="${progressPct}" height="3" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="1.5"/>` : '',
-                visualizer,
-                `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
-                '</svg>',
-            ].join('');
+            if (panoramaKey) {
+                // Panorama mode: particles as full-canvas background; text layout same as 'none' (bottom-aligned).
+                const sliceOffset = getPanoramaSliceOffset(context);
+                const particleFrag = particleEngine.renderPanoramaSlice(panoramaKey, sliceOffset);
+
+                let panoTitleFrag = '';
+                if (settings?.showTrackTitle !== false) {
+                    if (marqueeAnimator.isRunning(context)) {
+                        panoTitleFrag = marqueeAnimator.render(context, 8, 68, 97, 20);
+                    } else {
+                        const t = this.escapeXml(state.trackInfo?.Title ?? 'Sonos');
+                        panoTitleFrag = `<text x="8" y="68" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
+                    }
+                }
+
+                svg = [
+                    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+                    '<defs>',
+                    '  <clipPath id="c"><rect width="200" height="100"/></clipPath>',
+                    '  <linearGradient id="overlay" x1="0" x2="0" y1="0" y2="1">',
+                    '    <stop offset="40%" stop-color="black" stop-opacity="0"/>',
+                    '    <stop offset="100%" stop-color="black" stop-opacity="0.75"/>',
+                    '  </linearGradient>',
+                    '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
+                    '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
+                    '</defs>',
+                    '<rect width="200" height="100" fill="#000"/>',
+                    `<g clip-path="url(#c)">${particleFrag}</g>`,
+                    '<rect width="200" height="100" fill="url(#overlay)"/>',
+                    `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
+                    panoTitleFrag,
+                    `  <text x="8" y="82" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
+                    '</g>',
+                    `<rect x="8" y="91" width="97" height="3" fill="white" opacity="0.12" rx="1.5"/>`,
+                    progressPct > 0 ? `<rect x="8" y="91" width="${Math.round(97 * progress)}" height="3" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="1.5"/>` : '',
+                    `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                    '</svg>',
+                ].join('');
+            } else {
+                // Eq / standalone-particles layout: dark background, visualizer bottom-left.
+                const isParticles = visualizerMode === 'particles';
+                const visualizer = isPlaying
+                    ? (isParticles
+                        ? `<g clip-path="url(#particleClip)">${particleEngine.render(context, 8, 56)}</g>`
+                        : this.renderEqualizerBars(accentColor, eqAmplitude))
+                    : '';
+
+                svg = [
+                    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+                    '<defs>',
+                    '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
+                    '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
+                    '  <clipPath id="particleClip"><rect x="8" y="56" width="100" height="38"/></clipPath>',
+                    '</defs>',
+                    '<rect width="200" height="100" fill="black"/>',
+                    `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
+                    titleFrag,
+                    `  <text x="8" y="38" fill="#999999" font-family="Arial,sans-serif" font-size="12">${this.escapeXml(artist)}</text>`,
+                    '</g>',
+                    `<rect x="8" y="49" width="100" height="3" fill="white" opacity="0.12" rx="1.5"/>`,
+                    progressPct > 0 ? `<rect x="8" y="49" width="${progressPct}" height="3" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="1.5"/>` : '',
+                    visualizer,
+                    `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                    '</svg>',
+                ].join('');
+            }
         }
 
         const finalImage = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
