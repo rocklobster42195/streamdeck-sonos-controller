@@ -24,6 +24,8 @@ type SonosDialVolumeSettings = {
     presetVolume?: number;
     align?: 'left' | 'center' | 'right';
     visualizerMode?: 'none' | 'particles';
+    particleCount?: number;
+    particleSpeed?: number;
 };
 
 interface DialState {
@@ -95,9 +97,11 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
 
         if (settings.visualizerMode === 'particles') {
             particleEngine.init(context, {
-                width: 200, height: 100, count: 20, color: '#CCCCCC',
-                mode: 'network', maxSpeed: 0.4, connectDistance: 50,
+                width: 200, height: 100, color: '#CCCCCC',
+                mode: 'network', connectDistance: 50,
                 minRadius: 1.5, maxRadius: 3, opacity: 0.85,
+                count: settings.particleCount ?? 20,
+                maxSpeed: settings.particleSpeed != null ? settings.particleSpeed / 10 : 0.4,
             });
             registerInPanorama(context, this.contextColumns.get(context) ?? 0);
             this.startAnimTimer(context);
@@ -171,6 +175,12 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
                     items: [{ label: '-- Choose Device --', value: '' }, ...items],
+                });
+            }
+            if (ev.payload.event === 'get-particle-state') {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'particle-state',
+                    inPanorama: !!panoramaContextGroupKey.get(ev.action.id),
                 });
             }
         }

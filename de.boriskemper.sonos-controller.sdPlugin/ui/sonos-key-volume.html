@@ -4,27 +4,34 @@
 <head lang="en">
   <title>SONOS Volume Settings</title>
   <meta charset="utf-8" />
-
   <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
-
   <style>
-    /* Erzwingt das Ausblenden gegen die internen Styles der Library */
-    .hidden {
-      display: none !important;
+    .hidden { display: none !important; }
+    #pv-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+    #pvRange { flex: 1; min-width: 0; }
+    #pvNumber {
+        width: 46px;
+        background: var(--sdpi-background, #1e1e1e);
+        color: var(--sdpi-color, #ccc);
+        border: 1px solid var(--sdpi-borderColor, #555);
+        border-radius: 3px;
+        padding: 3px 4px;
+        text-align: center;
+        font-size: 12px;
+        font-family: inherit;
     }
+    #pvNumber:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
   </style>
 </head>
 
 <body>
 
-  <!-- DEVICE SELECT -->
   <sdpi-item label="SONOS device">
     <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices..." hot-reload>
       <option value="">-- Choose Device --</option>
     </sdpi-select>
   </sdpi-item>
 
-  <!-- COMMAND SELECT -->
   <sdpi-item label="Command">
     <sdpi-select id="command-select" setting="command">
       <option value="" selected hidden>-- Select Command --</option>
@@ -36,13 +43,14 @@
   </sdpi-item>
 
   <sdpi-item label="Preset Volume">
-    <sdpi-range setting="presetVolume" min="0" max="100" step="1" showlabels>
-    </sdpi-range>
+    <div id="pv-row">
+      <sdpi-range id="pvRange" setting="presetVolume" min="0" max="100" step="1"></sdpi-range>
+      <input type="number" id="pvNumber" min="0" max="100" step="1" title="Preset Volume">
+    </div>
   </sdpi-item>
   <sdpi-item label="Show preset">
     <sdpi-checkbox setting="showPreset"></sdpi-checkbox>
   </sdpi-item>
-
 
   <div id="show-volume-wrapper" class="hidden">
     <sdpi-item label="Show volume">
@@ -51,46 +59,67 @@
   </div>
 
   <script>
-    const commandSelect = document.getElementById('command-select');
-    const showShowVolumeWrap = document.getElementById('show-volume-wrapper');
-    const showPresetCheckbox = document.querySelector('sdpi-checkbox[setting="showPreset"]');
-    const showVolumeCheckbox = document.querySelector('sdpi-checkbox[setting="showVolume"]');
-    const relevantCommands = ['mute', 'vol-up', 'vol-down'];
+    var pvRange = document.getElementById('pvRange');
+    var pvNumber = document.getElementById('pvNumber');
+    var commandSelect = document.getElementById('command-select');
+    var showShowVolumeWrap = document.getElementById('show-volume-wrapper');
+    var showPresetCheckbox = document.querySelector('sdpi-checkbox[setting="showPreset"]');
+    var showVolumeCheckbox = document.querySelector('sdpi-checkbox[setting="showVolume"]');
+    var relevantCommands = ['mute', 'vol-up', 'vol-down'];
+
+    // Slider → number field
+    pvRange.addEventListener('valuechange', function (e) {
+        pvNumber.value = e.target.value;
+    });
+
+    // Number field → slider
+    pvNumber.addEventListener('change', function () {
+        var n = Math.max(0, Math.min(100, parseInt(pvNumber.value) || 0));
+        pvNumber.value = n;
+        pvRange.value = n;
+        pvRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    });
+
+    // Populate number field on PI open
+    (function tryClient(n) {
+        if (window.streamDeckClient && streamDeckClient.onDidReceiveSettings) {
+            streamDeckClient.onDidReceiveSettings(function (ev) {
+                var v = ev && ev.settings && ev.settings.presetVolume;
+                if (v != null) pvNumber.value = v;
+            });
+        } else if (n > 0) {
+            setTimeout(function () { tryClient(n - 1); }, 100);
+        }
+    }(20));
 
     function applyVisibility(command) {
       showShowVolumeWrap.classList.toggle('hidden', !relevantCommands.includes(command));
     }
 
-    // Handle mutual exclusivity for relevant commands, using the 'valuechange' event and '.value' property.
-    showPresetCheckbox.addEventListener('valuechange', (event) => {
-      const isChecked = event.target.value;
-      if (relevantCommands.includes(commandSelect.value) && isChecked) {
+    showPresetCheckbox.addEventListener('valuechange', function (event) {
+      if (relevantCommands.includes(commandSelect.value) && event.target.value) {
         showVolumeCheckbox.value = false;
         showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
       }
     });
 
-    showVolumeCheckbox.addEventListener('valuechange', (event) => {
-      const isChecked = event.target.value;
-      if (relevantCommands.includes(commandSelect.value) && isChecked) {
+    showVolumeCheckbox.addEventListener('valuechange', function (event) {
+      if (relevantCommands.includes(commandSelect.value) && event.target.value) {
         showPresetCheckbox.value = false;
         showPresetCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
       }
     });
 
-    commandSelect.addEventListener('valuechange', (event) => {
-      const command = event.target.value;
+    commandSelect.addEventListener('valuechange', function (event) {
+      var command = event.target.value;
       applyVisibility(command);
-
-      // If switching to a relevant command and both happen to be checked, uncheck one.
       if (relevantCommands.includes(command) && showPresetCheckbox.value && showVolumeCheckbox.value) {
         showVolumeCheckbox.value = false;
         showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
       }
     });
 
-    // Run visibility logic once the components are loaded and populated.
-    document.addEventListener('sdpi-ready', () => {
+    document.addEventListener('sdpi-ready', function () {
       applyVisibility(commandSelect.value);
     });
   </script>

@@ -30,6 +30,8 @@ type SonosSettings = {
     marqueeSpeed?: number;
     marqueePause?: number;
     visualizerMode?: 'eq' | 'particles' | 'none';
+    particleCount?: number;
+    particleSpeed?: number;
 };
 
 interface DialState {
@@ -220,14 +222,15 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         if (settings.visualizerMode === 'particles') {
             // Standalone engine as fallback when no adjacent Panorama Particles dials form a group.
             particleEngine.init(context, {
-                width: 100, height: 38, count: 12,
+                width: 100, height: 38,
                 color: '#CCCCCC',
                 mode: 'network',
-                maxSpeed: 0.4,
                 connectDistance: 40,
                 minRadius: 1.5,
                 maxRadius: 3,
                 opacity: 0.85,
+                count: settings.particleCount ?? 12,
+                maxSpeed: settings.particleSpeed != null ? settings.particleSpeed / 10 : 0.4,
             });
             // Register in shared panorama column map so adjacent Panorama Particles dials
             // can include this display in their group (auto-adjacency detection).
@@ -376,6 +379,12 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
                     items: [{ label: '-- Choose Device --', value: '' }, ...deviceItems]
+                });
+            }
+            if (ev.payload.event === 'get-particle-state') {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'particle-state',
+                    inPanorama: !!panoramaContextGroupKey.get(ev.action.id),
                 });
             }
         }

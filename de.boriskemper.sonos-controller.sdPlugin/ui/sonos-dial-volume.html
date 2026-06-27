@@ -5,7 +5,21 @@
     <meta charset="utf-8" />
     <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
     <style>
-        #pvVal { text-align: center; color: #999; font-size: 11px; margin: -6px 0 10px; }
+        #pv-row, #pc-row, #ps-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+        #pvRange, #pcRange, #psRange { flex: 1; min-width: 0; }
+        .num-field {
+            width: 46px;
+            background: var(--sdpi-background, #1e1e1e);
+            color: var(--sdpi-color, #ccc);
+            border: 1px solid var(--sdpi-borderColor, #555);
+            border-radius: 3px;
+            padding: 3px 4px;
+            text-align: center;
+            font-size: 12px;
+            font-family: inherit;
+        }
+        .num-field:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
+        .hidden { display: none !important; }
     </style>
   </head>
 
@@ -19,15 +33,11 @@
         </sdpi-select>
     </sdpi-item>
     <sdpi-item label="Preset Volume">
-        <sdpi-range
-            setting="presetVolume"
-            min="0"
-            max="100"
-            step="1"
-            showlabels>
-        </sdpi-range>
+        <div id="pv-row">
+            <sdpi-range id="pvRange" setting="presetVolume" min="0" max="100" step="1"></sdpi-range>
+            <input type="number" id="pvNumber" class="num-field" min="0" max="100" step="1" title="Preset Volume">
+        </div>
     </sdpi-item>
-    <p id="pvVal">—</p>
     <sdpi-item label="Alignment">
         <sdpi-select setting="align">
             <option value="left">Left</option>
@@ -36,33 +46,81 @@
         </sdpi-select>
     </sdpi-item>
     <sdpi-item label="Background">
-        <sdpi-select setting="visualizerMode">
+        <sdpi-select id="vizMode" setting="visualizerMode">
             <option value="none">None</option>
             <option value="particles">Particles</option>
         </sdpi-select>
     </sdpi-item>
+    <sdpi-item id="pcItem" label="Particle count" class="hidden">
+        <div id="pc-row">
+            <sdpi-range id="pcRange" setting="particleCount" min="5" max="40" step="1"></sdpi-range>
+            <input type="number" id="pcNumber" class="num-field" min="5" max="40" step="1" title="Particle count">
+        </div>
+    </sdpi-item>
+    <sdpi-item id="psItem" label="Particle speed" class="hidden">
+        <div id="ps-row">
+            <sdpi-range id="psRange" setting="particleSpeed" min="1" max="10" step="1"></sdpi-range>
+            <input type="number" id="psNumber" class="num-field" min="1" max="10" step="1" title="Particle speed">
+        </div>
+    </sdpi-item>
 
     <script>
-        var pvVal = document.getElementById('pvVal');
+        var pvRange  = document.getElementById('pvRange');
+        var pvNumber = document.getElementById('pvNumber');
+        var pcRange  = document.getElementById('pcRange');
+        var pcNumber = document.getElementById('pcNumber');
+        var psRange  = document.getElementById('psRange');
+        var psNumber = document.getElementById('psNumber');
+        var pcItem   = document.getElementById('pcItem');
+        var psItem   = document.getElementById('psItem');
+        var vizMode  = document.getElementById('vizMode');
+        var inPanorama = false;
 
-        function showPv(v) {
-            if (pvVal != null && v != null) pvVal.textContent = v + '%';
+        function updateParticleVisibility() {
+            var show = vizMode.value === 'particles' && !inPanorama;
+            pcItem.classList.toggle('hidden', !show);
+            psItem.classList.toggle('hidden', !show);
         }
 
-        // Fires when the user moves the slider.
-        document.addEventListener('sdpi-item-value', function(e) {
-            var d = e && e.detail;
-            if (d && (d.id === 'presetVolume' || d.setting === 'presetVolume')) showPv(d.value);
-        });
+        // Slider ↔ number field sync helpers
+        function wireSlider(range, number) {
+            range.addEventListener('valuechange', function (e) { number.value = e.target.value; });
+            number.addEventListener('change', function () {
+                var min = +number.min, max = +number.max;
+                var n = Math.max(min, Math.min(max, parseInt(number.value) || min));
+                number.value = n;
+                range.value = n;
+                range.dispatchEvent(new InputEvent('input', { bubbles: true }));
+            });
+        }
 
-        // Fires on PI open with the saved settings.
+        wireSlider(pvRange, pvNumber);
+        wireSlider(pcRange, pcNumber);
+        wireSlider(psRange, psNumber);
+
+        vizMode.addEventListener('valuechange', updateParticleVisibility);
+
+        // Populate fields on PI open and receive panorama state
         (function tryClient(n) {
             if (window.streamDeckClient && streamDeckClient.onDidReceiveSettings) {
-                streamDeckClient.onDidReceiveSettings(function(ev) {
-                    showPv(ev && ev.settings && ev.settings.presetVolume);
+                streamDeckClient.onDidReceiveSettings(function (ev) {
+                    var s = (ev && ev.settings) || {};
+                    if (s.presetVolume   != null) pvNumber.value = s.presetVolume;
+                    if (s.particleCount  != null) pcNumber.value = s.particleCount;
+                    if (s.particleSpeed  != null) psNumber.value = s.particleSpeed;
+                    updateParticleVisibility();
                 });
+                streamDeckClient.onSendToPlugin = streamDeckClient.onSendToPlugin; // no-op guard
+                document.addEventListener('sendToPropertyInspector', function (e) {
+                    var d = e && e.detail;
+                    if (d && d.event === 'particle-state') {
+                        inPanorama = !!d.inPanorama;
+                        updateParticleVisibility();
+                    }
+                });
+                streamDeckClient.sendToPlugin({ event: 'get-particle-state' });
             } else if (n > 0) {
-                setTimeout(function() { tryClient(n - 1); }, 100);
+                setTimeout(function () { tryClient(n - 1); }, 100);
             }
         }(20));
     </script>

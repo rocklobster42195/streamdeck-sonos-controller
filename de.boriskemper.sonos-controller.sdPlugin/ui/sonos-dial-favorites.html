@@ -4,6 +4,22 @@
   <title>Favorites Dial Settings</title>
   <meta charset="utf-8"/>
   <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+  <style>
+    #bt-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+    #btRange { flex: 1; min-width: 0; }
+    #btNumber {
+        width: 46px;
+        background: var(--sdpi-background, #1e1e1e);
+        color: var(--sdpi-color, #ccc);
+        border: 1px solid var(--sdpi-borderColor, #555);
+        border-radius: 3px;
+        padding: 3px 4px;
+        text-align: center;
+        font-size: 12px;
+        font-family: inherit;
+    }
+    #btNumber:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
+  </style>
 </head>
 <body>
   <sdpi-item label="SONOS device">
@@ -12,8 +28,10 @@
   </sdpi-item>
 
   <sdpi-item label="Browse timeout">
-    <sdpi-range setting="browseTimeout" min="1" max="10" step="1" showlabels value="3">
-    </sdpi-range>
+    <div id="bt-row">
+      <sdpi-range id="btRange" setting="browseTimeout" min="1" max="10" step="1" value="3"></sdpi-range>
+      <input type="number" id="btNumber" min="1" max="10" step="1" title="Browse timeout">
+    </div>
   </sdpi-item>
 
   <sdpi-item label="">
@@ -22,5 +40,32 @@
       Press to play. Touch or wait to return to now playing.
     </sdpi-item-value>
   </sdpi-item>
+
+  <script>
+    var btRange = document.getElementById('btRange');
+    var btNumber = document.getElementById('btNumber');
+
+    btRange.addEventListener('valuechange', function (e) {
+        btNumber.value = e.target.value;
+    });
+
+    btNumber.addEventListener('change', function () {
+        var n = Math.max(1, Math.min(10, parseInt(btNumber.value) || 3));
+        btNumber.value = n;
+        btRange.value = n;
+        btRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    });
+
+    (function tryClient(n) {
+        if (window.streamDeckClient && streamDeckClient.onDidReceiveSettings) {
+            streamDeckClient.onDidReceiveSettings(function (ev) {
+                var v = ev && ev.settings && ev.settings.browseTimeout;
+                if (v != null) btNumber.value = v;
+            });
+        } else if (n > 0) {
+            setTimeout(function () { tryClient(n - 1); }, 100);
+        }
+    }(20));
+  </script>
 </body>
 </html>
