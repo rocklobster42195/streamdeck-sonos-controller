@@ -96,25 +96,30 @@
         wireSlider(psRange, psNumber);
 
         vizMode.addEventListener('valuechange', updateParticleVisibility);
+        document.addEventListener('change', function (ev) {
+            if (ev.target && ev.target.getAttribute && ev.target.getAttribute('setting') === 'visualizerMode') {
+                updateParticleVisibility();
+            }
+        });
 
-        // Populate fields on PI open and receive panorama state
+        document.addEventListener('settingsDidChange', function (ev) {
+            var s = ev.detail || {};
+            if (s.presetVolume  != null) pvNumber.value = s.presetVolume;
+            if (s.particleCount != null) pcNumber.value = s.particleCount;
+            if (s.particleSpeed != null) psNumber.value = s.particleSpeed;
+            setTimeout(updateParticleVisibility, 0);
+        });
+
+        document.addEventListener('sendToPropertyInspector', function (e) {
+            var d = e && e.detail;
+            if (d && d.event === 'particle-state') {
+                inPanorama = !!d.inPanorama;
+                updateParticleVisibility();
+            }
+        });
+
         (function tryClient(n) {
-            if (window.streamDeckClient && streamDeckClient.onDidReceiveSettings) {
-                streamDeckClient.onDidReceiveSettings(function (ev) {
-                    var s = (ev && ev.settings) || {};
-                    if (s.presetVolume   != null) pvNumber.value = s.presetVolume;
-                    if (s.particleCount  != null) pcNumber.value = s.particleCount;
-                    if (s.particleSpeed  != null) psNumber.value = s.particleSpeed;
-                    updateParticleVisibility();
-                });
-                streamDeckClient.onSendToPlugin = streamDeckClient.onSendToPlugin; // no-op guard
-                document.addEventListener('sendToPropertyInspector', function (e) {
-                    var d = e && e.detail;
-                    if (d && d.event === 'particle-state') {
-                        inPanorama = !!d.inPanorama;
-                        updateParticleVisibility();
-                    }
-                });
+            if (window.streamDeckClient) {
                 streamDeckClient.sendToPlugin({ event: 'get-particle-state' });
             } else if (n > 0) {
                 setTimeout(function () { tryClient(n - 1); }, 100);

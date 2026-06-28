@@ -82,16 +82,10 @@
     });
 
     // Populate number field on PI open
-    (function tryClient(n) {
-        if (window.streamDeckClient && streamDeckClient.onDidReceiveSettings) {
-            streamDeckClient.onDidReceiveSettings(function (ev) {
-                var v = ev && ev.settings && ev.settings.presetVolume;
-                if (v != null) pvNumber.value = v;
-            });
-        } else if (n > 0) {
-            setTimeout(function () { tryClient(n - 1); }, 100);
-        }
-    }(20));
+    document.addEventListener('settingsDidChange', function (ev) {
+        var v = ev.detail && ev.detail.presetVolume;
+        if (v != null) pvNumber.value = v;
+    });
 
     function applyVisibility(command) {
       showShowVolumeWrap.classList.toggle('hidden', !relevantCommands.includes(command));

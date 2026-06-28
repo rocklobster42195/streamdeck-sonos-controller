@@ -57,16 +57,10 @@
         btRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
     });
 
-    (function tryClient(n) {
-        if (window.streamDeckClient && streamDeckClient.onDidReceiveSettings) {
-            streamDeckClient.onDidReceiveSettings(function (ev) {
-                var v = ev && ev.settings && ev.settings.browseTimeout;
-                if (v != null) btNumber.value = v;
-            });
-        } else if (n > 0) {
-            setTimeout(function () { tryClient(n - 1); }, 100);
-        }
-    }(20));
+    document.addEventListener('settingsDidChange', function (ev) {
+        var v = ev.detail && ev.detail.browseTimeout;
+        if (v != null) btNumber.value = v;
+    });
   </script>
 </body>
 </html>
