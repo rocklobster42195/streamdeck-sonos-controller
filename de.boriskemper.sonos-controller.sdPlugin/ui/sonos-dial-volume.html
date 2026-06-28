@@ -1,8 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title>SONOS Dial Volume Settings</title>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SONOS Dial Volume Settings</title>
     <script src="i18n.js" defer></script>
     <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
     <style>
@@ -20,6 +21,19 @@
             font-family: inherit;
         }
         .num-field:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
+        .sdpi-select {
+            width: 100%;
+            background: var(--sdpi-background, #1e1e1e);
+            color: var(--sdpi-color, #ccc);
+            border: 1px solid var(--sdpi-borderColor, #555);
+            border-radius: 3px;
+            padding: 4px 6px;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+        .sdpi-select:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
         .hidden { display: none !important; }
     </style>
   </head>
@@ -36,17 +50,17 @@
         </div>
     </sdpi-item>
     <sdpi-item label="Alignment" data-i18n="alignment">
-        <sdpi-select setting="align">
-            <option value="left" data-i18n="align_left">Left</option>
+        <select id="alignSelect" class="sdpi-select" title="Alignment">
+            <option value="left"   data-i18n="align_left">Left</option>
             <option value="center" data-i18n="align_center">Center</option>
-            <option value="right" data-i18n="align_right">Right</option>
-        </sdpi-select>
+            <option value="right"  data-i18n="align_right">Right</option>
+        </select>
     </sdpi-item>
     <sdpi-item label="Background" data-i18n="background">
-        <sdpi-select id="vizMode" setting="visualizerMode">
-            <option value="none" data-i18n="bg_none">None</option>
+        <select id="vizMode" class="sdpi-select" title="Background">
+            <option value="none"      data-i18n="bg_none">None</option>
             <option value="particles" data-i18n="bg_particles">Particles</option>
-        </sdpi-select>
+        </select>
     </sdpi-item>
     <sdpi-item id="pcItem" label="Particle count" data-i18n="particle_count" class="hidden">
         <div id="pc-row">
@@ -62,16 +76,18 @@
     </sdpi-item>
 
     <script>
-        var pvRange  = document.getElementById('pvRange');
-        var pvNumber = document.getElementById('pvNumber');
-        var pcRange  = document.getElementById('pcRange');
-        var pcNumber = document.getElementById('pcNumber');
-        var psRange  = document.getElementById('psRange');
-        var psNumber = document.getElementById('psNumber');
-        var pcItem   = document.getElementById('pcItem');
-        var psItem   = document.getElementById('psItem');
-        var vizMode  = document.getElementById('vizMode');
-        var inPanorama = false;
+        var pvRange     = document.getElementById('pvRange');
+        var pvNumber    = document.getElementById('pvNumber');
+        var pcRange     = document.getElementById('pcRange');
+        var pcNumber    = document.getElementById('pcNumber');
+        var psRange     = document.getElementById('psRange');
+        var psNumber    = document.getElementById('psNumber');
+        var pcItem      = document.getElementById('pcItem');
+        var psItem      = document.getElementById('psItem');
+        var alignSelect = document.getElementById('alignSelect');
+        var vizMode     = document.getElementById('vizMode');
+        var inPanorama  = false;
+        var currentSettings = {};
 
         function updateParticleVisibility() {
             var show = vizMode.value === 'particles' && !inPanorama;
@@ -79,7 +95,6 @@
             psItem.classList.toggle('hidden', !show);
         }
 
-        // Slider ↔ number field sync helpers
         function wireSlider(range, number) {
             range.addEventListener('valuechange', function (e) { number.value = e.target.value; });
             number.addEventListener('change', function () {
@@ -95,19 +110,25 @@
         wireSlider(pcRange, pcNumber);
         wireSlider(psRange, psNumber);
 
-        vizMode.addEventListener('valuechange', updateParticleVisibility);
-        document.addEventListener('change', function (ev) {
-            if (ev.target && ev.target.getAttribute && ev.target.getAttribute('setting') === 'visualizerMode') {
-                updateParticleVisibility();
-            }
+        alignSelect.addEventListener('change', function () {
+            currentSettings = Object.assign({}, currentSettings, { align: alignSelect.value });
+            if (window.streamDeckClient) streamDeckClient.setSettings(currentSettings);
+        });
+
+        vizMode.addEventListener('change', function () {
+            currentSettings = Object.assign({}, currentSettings, { visualizerMode: vizMode.value });
+            if (window.streamDeckClient) streamDeckClient.setSettings(currentSettings);
+            updateParticleVisibility();
         });
 
         document.addEventListener('settingsDidChange', function (ev) {
-            var s = ev.detail || {};
-            if (s.presetVolume  != null) pvNumber.value = s.presetVolume;
-            if (s.particleCount != null) pcNumber.value = s.particleCount;
-            if (s.particleSpeed != null) psNumber.value = s.particleSpeed;
-            setTimeout(updateParticleVisibility, 0);
+            currentSettings = ev.detail || {};
+            if (currentSettings.align          != null) alignSelect.value = currentSettings.align;
+            if (currentSettings.visualizerMode != null) vizMode.value     = currentSettings.visualizerMode;
+            if (currentSettings.presetVolume   != null) pvNumber.value    = currentSettings.presetVolume;
+            if (currentSettings.particleCount  != null) pcNumber.value    = currentSettings.particleCount;
+            if (currentSettings.particleSpeed  != null) psNumber.value    = currentSettings.particleSpeed;
+            updateParticleVisibility();
         });
 
         document.addEventListener('sendToPropertyInspector', function (e) {

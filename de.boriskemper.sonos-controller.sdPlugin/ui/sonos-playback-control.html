@@ -1,10 +1,26 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
-    <title>SONOS Playback Control Settings</title>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SONOS Playback Control Settings</title>
     <script src="i18n.js" defer></script>
     <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
+    <style>
+      .sdpi-select {
+        width: 100%;
+        background: var(--sdpi-background, #1e1e1e);
+        color: var(--sdpi-color, #ccc);
+        border: 1px solid var(--sdpi-borderColor, #555);
+        border-radius: 3px;
+        padding: 4px 6px;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        box-sizing: border-box;
+      }
+      .sdpi-select:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
+    </style>
   </head>
 
   <body>
@@ -15,13 +31,28 @@
     </sdpi-item>
 
     <sdpi-item label="Command" data-i18n="command">
-        <sdpi-select setting="command">
+        <select id="command-select" class="sdpi-select" title="Command">
             <option value="" selected hidden data-i18n="choose_command">-- Select Command --</option>
-            <option value="next" data-i18n="cmd_next">Next Track</option>
+            <option value="next"     data-i18n="cmd_next">Next Track</option>
             <option value="previous" data-i18n="cmd_previous">Previous Track</option>
-            <option value="shuffle" data-i18n="cmd_shuffle">Toggle Shuffle</option>
-            <option value="repeat" data-i18n="cmd_repeat">Toggle Repeat</option>
-        </sdpi-select>
+            <option value="shuffle"  data-i18n="cmd_shuffle">Toggle Shuffle</option>
+            <option value="repeat"   data-i18n="cmd_repeat">Toggle Repeat</option>
+        </select>
     </sdpi-item>
+
+    <script>
+      var commandSelect  = document.getElementById('command-select');
+      var currentSettings = {};
+
+      commandSelect.addEventListener('change', function () {
+          currentSettings = Object.assign({}, currentSettings, { command: commandSelect.value });
+          if (window.streamDeckClient) streamDeckClient.setSettings(currentSettings);
+      });
+
+      document.addEventListener('settingsDidChange', function (ev) {
+          currentSettings = ev.detail || {};
+          if (currentSettings.command != null) commandSelect.value = currentSettings.command;
+      });
+    </script>
   </body>
 </html>

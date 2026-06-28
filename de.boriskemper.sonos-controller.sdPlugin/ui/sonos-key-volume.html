@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-  <title>SONOS Volume Settings</title>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SONOS Volume Settings</title>
   <script src="i18n.js" defer></script>
   <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
   <style>
@@ -22,6 +23,19 @@
         font-family: inherit;
     }
     #pvNumber:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
+    .sdpi-select {
+        width: 100%;
+        background: var(--sdpi-background, #1e1e1e);
+        color: var(--sdpi-color, #ccc);
+        border: 1px solid var(--sdpi-borderColor, #555);
+        border-radius: 3px;
+        padding: 4px 6px;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        box-sizing: border-box;
+    }
+    .sdpi-select:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
   </style>
 </head>
 
@@ -34,13 +48,13 @@
   </sdpi-item>
 
   <sdpi-item label="Command" data-i18n="command">
-    <sdpi-select id="command-select" setting="command">
+    <select id="command-select" class="sdpi-select" title="Command">
       <option value="" selected hidden data-i18n="choose_command">-- Select Command --</option>
-      <option value="mute" data-i18n="cmd_mute_preset">Mute / Preset</option>
-      <option value="vol-up" data-i18n="cmd_vol_up">Volume Up</option>
-      <option value="vol-down" data-i18n="cmd_vol_down">Volume Down</option>
+      <option value="mute"       data-i18n="cmd_mute_preset">Mute / Preset</option>
+      <option value="vol-up"     data-i18n="cmd_vol_up">Volume Up</option>
+      <option value="vol-down"   data-i18n="cmd_vol_down">Volume Down</option>
       <option value="vol-preset" data-i18n="cmd_vol_preset">Volume Preset</option>
-    </sdpi-select>
+    </select>
   </sdpi-item>
 
   <sdpi-item label="Preset Volume" data-i18n="preset_volume">
@@ -60,20 +74,19 @@
   </div>
 
   <script>
-    var pvRange = document.getElementById('pvRange');
-    var pvNumber = document.getElementById('pvNumber');
-    var commandSelect = document.getElementById('command-select');
-    var showShowVolumeWrap = document.getElementById('show-volume-wrapper');
-    var showPresetCheckbox = document.querySelector('sdpi-checkbox[setting="showPreset"]');
-    var showVolumeCheckbox = document.querySelector('sdpi-checkbox[setting="showVolume"]');
-    var relevantCommands = ['mute', 'vol-up', 'vol-down'];
+    var pvRange              = document.getElementById('pvRange');
+    var pvNumber             = document.getElementById('pvNumber');
+    var commandSelect        = document.getElementById('command-select');
+    var showShowVolumeWrap   = document.getElementById('show-volume-wrapper');
+    var showPresetCheckbox   = document.querySelector('sdpi-checkbox[setting="showPreset"]');
+    var showVolumeCheckbox   = document.querySelector('sdpi-checkbox[setting="showVolume"]');
+    var relevantCommands     = ['mute', 'vol-up', 'vol-down'];
+    var currentSettings      = {};
 
-    // Slider → number field
     pvRange.addEventListener('valuechange', function (e) {
         pvNumber.value = e.target.value;
     });
 
-    // Number field → slider
     pvNumber.addEventListener('change', function () {
         var n = Math.max(0, Math.min(100, parseInt(pvNumber.value) || 0));
         pvNumber.value = n;
@@ -81,15 +94,20 @@
         pvRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
     });
 
-    // Populate number field on PI open
-    document.addEventListener('settingsDidChange', function (ev) {
-        var v = ev.detail && ev.detail.presetVolume;
-        if (v != null) pvNumber.value = v;
-    });
-
     function applyVisibility(command) {
       showShowVolumeWrap.classList.toggle('hidden', !relevantCommands.includes(command));
     }
+
+    commandSelect.addEventListener('change', function () {
+        var command = commandSelect.value;
+        currentSettings = Object.assign({}, currentSettings, { command: command });
+        if (window.streamDeckClient) streamDeckClient.setSettings(currentSettings);
+        applyVisibility(command);
+        if (relevantCommands.includes(command) && showPresetCheckbox.value && showVolumeCheckbox.value) {
+            showVolumeCheckbox.value = false;
+            showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        }
+    });
 
     showPresetCheckbox.addEventListener('valuechange', function (event) {
       if (relevantCommands.includes(commandSelect.value) && event.target.value) {
@@ -105,17 +123,11 @@
       }
     });
 
-    commandSelect.addEventListener('valuechange', function (event) {
-      var command = event.target.value;
-      applyVisibility(command);
-      if (relevantCommands.includes(command) && showPresetCheckbox.value && showVolumeCheckbox.value) {
-        showVolumeCheckbox.value = false;
-        showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
-      }
-    });
-
-    document.addEventListener('sdpi-ready', function () {
-      applyVisibility(commandSelect.value);
+    document.addEventListener('settingsDidChange', function (ev) {
+        currentSettings = ev.detail || {};
+        if (currentSettings.presetVolume != null) pvNumber.value = currentSettings.presetVolume;
+        if (currentSettings.command      != null) commandSelect.value = currentSettings.command;
+        applyVisibility(commandSelect.value);
     });
   </script>
 </body>
