@@ -454,7 +454,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 '</svg>',
             ].join('');
             const img = `data:image/svg+xml;base64,${Buffer.from(readySvg).toString('base64')}`;
-            await sdAction.setFeedback({ 'full-canvas': img, 'icon': '', 'title': '', 'indicator': { value: 0 } }).catch(() => {});
+            await sdAction.setFeedback({ 'full-canvas': img }).catch(() => {});
             return;
         }
 

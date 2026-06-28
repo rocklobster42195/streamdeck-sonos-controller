@@ -61,6 +61,8 @@ export class SonosDeviceController {
     if (this.isInitialized) return;
     await this.updateInitialState();
     await this.initializeSubscriptions();
+    // Always poll — catches missed UPnP events (e.g. lost PLAYING after TRANSITIONING).
+    this.startPolling();
     this.startRefreshEventSubscriptions();
     this.isInitialized = true;
   }
@@ -125,7 +127,7 @@ export class SonosDeviceController {
       } catch (e) {
         streamDeck.logger.debug(`[${this.deviceIp}] Polling error:`, e);
       }
-    }, 5000);
+    }, 8000);
   }
 
   private async updateInitialState(): Promise<void> {
