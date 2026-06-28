@@ -252,6 +252,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
             await sdAction.setFeedback({
                 'full-canvas': `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
             'title': '',
+            'indicator': { value: 0, enabled: false },
             }).catch(() => {});
             return;
         }
