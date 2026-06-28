@@ -311,7 +311,7 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         if (!isBrowsing && !cover) {
             const svg = this.buildIdleSvg();
             const img = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-            await action.setFeedback({ 'full-canvas': img, 'title': '', 'indicator': { value: 0, enabled: false } }).catch(() => {});
+            await action.setFeedback({ 'full-canvas': img }).catch(() => {});
             return;
         }
 
@@ -345,7 +345,7 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         ].join('');
 
         const img = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-        await action.setFeedback({ 'full-canvas': img, 'title': '', 'indicator': { value: 0, enabled: false } }).catch(() => {});
+        await action.setFeedback({ 'full-canvas': img }).catch(() => {});
     }
 
     private getAvailableCovers(max: number): string[] {

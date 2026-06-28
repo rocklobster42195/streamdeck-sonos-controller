@@ -1,6 +1,6 @@
 {
 	"Name": "SONOS-Controller",
-	"Version": "0.2.4.0",
+	"Version": "0.2.5.0",
 	"Author": "Boris Kemper",
 	"Actions": [
 		{
@@ -78,7 +78,7 @@
 				"Encoder"
 			],
 			"Encoder": {
-				"layout": "$A0",
+				"layout": "layouts/canvas.json",
 				"TriggerDescription": {
 					"Push": "Mute",
 					"Rotate": "Adjust Volume",
@@ -101,7 +101,7 @@
 				"Encoder"
 			],
 			"Encoder": {
-				"layout": "$A0",
+				"layout": "layouts/canvas.json",
 				"TriggerDescription": {
 					"Push": "Play selected favorite",
 					"Rotate": "Browse favorites list",
