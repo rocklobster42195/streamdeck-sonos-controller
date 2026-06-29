@@ -32,6 +32,22 @@
         "Press to play": "Pulsa para reproducir",
         "No device set": "Sin dispositivo configurado",
         "Rotate to browse": "Gira para explorar",
-        "Unknown favorite": "Favorito desconocido"
+        "Unknown favorite": "Favorito desconocido",
+        "Left": "Izquierda",
+        "Center": "Centro",
+        "Right": "Derecha",
+        "None": "Ninguno",
+        "Particles": "Partículas",
+        "EQ Effect": "Efecto EQ",
+        "None (track info only)": "Ninguno (solo info de pista)",
+        "-- Select Command --": "-- Seleccionar comando --",
+        "Mute / Preset": "Silenciar / Preset",
+        "Volume Up": "Subir volumen",
+        "Volume Down": "Bajar volumen",
+        "Volume Preset": "Preset de volumen",
+        "Next Track": "Siguiente pista",
+        "Previous Track": "Pista anterior",
+        "Toggle Shuffle": "Aleatorio",
+        "Toggle Repeat": "Repetir"
     }
 }

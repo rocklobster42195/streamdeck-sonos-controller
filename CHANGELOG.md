@@ -4,6 +4,40 @@
 
 ---
 
+## [0.2.6] — 2026-06-29
+
+### Property Inspector
+
+- Select dropdowns no longer appear white — vendored and patched `sdpi-components.js` to add `-webkit-appearance:none`
+- Settings now apply reliably — switched from static to datasource-based `<sdpi-select>`; sdpi-components manages settings merging internally
+- Dropdown labels are now localized via `en.json` / `de.json` / `es.json` instead of hardcoded inline strings
+
+### Favorites Dial
+
+- Browse → mosaic transition is now a smooth fade-through-black: browse view fades to black, then mosaic fades in — no more hard cut
+- Touch-tap to return to now-playing also triggers the fade
+- Rotating during a fade cancels it cleanly
+
+### Panorama Particles
+
+- Gradient overlay behind track info text for better legibility when text sits on a bright background
+
+### Volume Dial
+
+- Added option to hide volume number and device name text on the dial canvas
+
+### Play / Pause Toggle
+
+- Cover art no longer fails silently when Sonos returns an empty HTTP body — empty responses are now detected and skipped
+- Responses with non-image MIME types are rejected cleanly
+
+### Standby recovery
+
+- Cover art is re-fetched during the background poll when missing, so the display recovers after a device wakes from standby
+- Radio station logo is fetched via the Sonos `/getaa` endpoint as a fallback when `getCurrentTrack()` returns no metadata
+
+---
+
 ## [0.2.0] — 2026-06-27
 
 ### Rocklobster

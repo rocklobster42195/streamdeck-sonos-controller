@@ -1,12 +1,13 @@
-<!DOCTYPE html>
+﻿﻿﻿<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SONOS Dial Volume Settings</title>
     <script src="i18n.js" defer></script>
-    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
+    <script src="sdpi-components.js" defer></script>
     <style>
+        :root { color-scheme: dark; }
         #pv-row, #pc-row, #ps-row { display: flex; align-items: center; gap: 8px; width: 100%; }
         #pvRange, #pcRange, #psRange { flex: 1; min-width: 0; }
         .num-field {
@@ -21,19 +22,6 @@
             font-family: inherit;
         }
         .num-field:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
-        .sdpi-select {
-            width: 100%;
-            background: var(--sdpi-background, #1e1e1e);
-            color: var(--sdpi-color, #ccc);
-            border: 1px solid var(--sdpi-borderColor, #555);
-            border-radius: 3px;
-            padding: 4px 6px;
-            font-size: 12px;
-            font-family: inherit;
-            cursor: pointer;
-            box-sizing: border-box;
-        }
-        .sdpi-select:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
         .hidden { display: none !important; }
     </style>
   </head>
@@ -49,18 +37,14 @@
             <input type="number" id="pvNumber" class="num-field" min="0" max="100" step="1" title="Preset Volume">
         </div>
     </sdpi-item>
+    <sdpi-item label="Show text" data-i18n="show_text">
+        <sdpi-checkbox setting="showText"></sdpi-checkbox>
+    </sdpi-item>
     <sdpi-item label="Alignment" data-i18n="alignment">
-        <select id="alignSelect" class="sdpi-select" title="Alignment">
-            <option value="left"   data-i18n="align_left">Left</option>
-            <option value="center" data-i18n="align_center">Center</option>
-            <option value="right"  data-i18n="align_right">Right</option>
-        </select>
+        <sdpi-select setting="align" datasource="get-align-options"></sdpi-select>
     </sdpi-item>
     <sdpi-item label="Background" data-i18n="background">
-        <select id="vizMode" class="sdpi-select" title="Background">
-            <option value="none"      data-i18n="bg_none">None</option>
-            <option value="particles" data-i18n="bg_particles">Particles</option>
-        </select>
+        <sdpi-select setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
     </sdpi-item>
     <sdpi-item id="pcItem" label="Particle count" data-i18n="particle_count" class="hidden">
         <div id="pc-row">
@@ -84,13 +68,11 @@
         var psNumber    = document.getElementById('psNumber');
         var pcItem      = document.getElementById('pcItem');
         var psItem      = document.getElementById('psItem');
-        var alignSelect = document.getElementById('alignSelect');
-        var vizMode     = document.getElementById('vizMode');
         var inPanorama  = false;
-        var currentSettings = {};
+        var currentVizMode = 'none';
 
         function updateParticleVisibility() {
-            var show = vizMode.value === 'particles' && !inPanorama;
+            var show = currentVizMode === 'particles' && !inPanorama;
             pcItem.classList.toggle('hidden', !show);
             psItem.classList.toggle('hidden', !show);
         }
@@ -110,24 +92,17 @@
         wireSlider(pcRange, pcNumber);
         wireSlider(psRange, psNumber);
 
-        alignSelect.addEventListener('change', function () {
-            currentSettings = Object.assign({}, currentSettings, { align: alignSelect.value });
-            if (window.streamDeckClient) streamDeckClient.setSettings(currentSettings);
-        });
-
-        vizMode.addEventListener('change', function () {
-            currentSettings = Object.assign({}, currentSettings, { visualizerMode: vizMode.value });
-            if (window.streamDeckClient) streamDeckClient.setSettings(currentSettings);
+        document.querySelector('sdpi-select[setting="visualizerMode"]').addEventListener('valuechange', function(e) {
+            currentVizMode = e.target.value;
             updateParticleVisibility();
         });
 
         document.addEventListener('settingsDidChange', function (ev) {
-            currentSettings = ev.detail || {};
-            if (currentSettings.align          != null) alignSelect.value = currentSettings.align;
-            if (currentSettings.visualizerMode != null) vizMode.value     = currentSettings.visualizerMode;
-            if (currentSettings.presetVolume   != null) pvNumber.value    = currentSettings.presetVolume;
-            if (currentSettings.particleCount  != null) pcNumber.value    = currentSettings.particleCount;
-            if (currentSettings.particleSpeed  != null) psNumber.value    = currentSettings.particleSpeed;
+            var s = ev.detail || {};
+            if (s.visualizerMode != null) currentVizMode = s.visualizerMode;
+            if (s.presetVolume   != null) pvNumber.value  = s.presetVolume;
+            if (s.particleCount  != null) pcNumber.value  = s.particleCount;
+            if (s.particleSpeed  != null) psNumber.value  = s.particleSpeed;
             updateParticleVisibility();
         });
 
@@ -146,6 +121,7 @@
                 setTimeout(function () { tryClient(n - 1); }, 100);
             }
         }(20));
+
     </script>
   </body>
 </html>

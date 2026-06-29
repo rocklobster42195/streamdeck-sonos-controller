@@ -1,12 +1,13 @@
-<!DOCTYPE html>
+﻿﻿﻿<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SONOS Track Dial Settings</title>
     <script src="i18n.js" defer></script>
-    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js" defer></script>
+    <script src="sdpi-components.js" defer></script>
     <style>
+        :root { color-scheme: dark; }
         #pc-row, #ps-row { display: flex; align-items: center; gap: 8px; width: 100%; }
         #pcRange, #psRange { flex: 1; min-width: 0; }
         .num-field {
@@ -21,19 +22,6 @@
             font-family: inherit;
         }
         .num-field:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
-        .sdpi-select {
-            width: 100%;
-            background: var(--sdpi-background, #1e1e1e);
-            color: var(--sdpi-color, #ccc);
-            border: 1px solid var(--sdpi-borderColor, #555);
-            border-radius: 3px;
-            padding: 4px 6px;
-            font-size: 12px;
-            font-family: inherit;
-            cursor: pointer;
-            box-sizing: border-box;
-        }
-        .sdpi-select:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
         .hidden { display: none !important; }
     </style>
   </head>
@@ -45,11 +33,7 @@
     </sdpi-item>
 
     <sdpi-item label="Background" data-i18n="background">
-        <select id="vizMode" class="sdpi-select" title="Background">
-            <option value="none" data-i18n="bg_none_track">None (track info only)</option>
-            <option value="eq" data-i18n="bg_eq">EQ Effect</option>
-            <option value="particles" data-i18n="bg_particles">Particles</option>
-        </select>
+        <sdpi-select setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
     </sdpi-item>
     <sdpi-item id="pcItem" label="Particle count" data-i18n="particle_count" class="hidden">
         <div id="pc-row">
@@ -71,12 +55,11 @@
         var psNumber = document.getElementById('psNumber');
         var pcItem   = document.getElementById('pcItem');
         var psItem   = document.getElementById('psItem');
-        var vizMode  = document.getElementById('vizMode');
         var inPanorama = false;
-        var currentSettings = {};
+        var currentVizMode = 'none';
 
         function updateParticleVisibility() {
-            var show = vizMode.value === 'particles' && !inPanorama;
+            var show = currentVizMode === 'particles' && !inPanorama;
             pcItem.classList.toggle('hidden', !show);
             psItem.classList.toggle('hidden', !show);
         }
@@ -95,17 +78,16 @@
         wireSlider(pcRange, pcNumber);
         wireSlider(psRange, psNumber);
 
-        vizMode.addEventListener('change', function () {
-            currentSettings = Object.assign({}, currentSettings, { visualizerMode: vizMode.value });
-            if (window.streamDeckClient) streamDeckClient.setSettings(currentSettings);
+        document.querySelector('sdpi-select[setting="visualizerMode"]').addEventListener('valuechange', function(e) {
+            currentVizMode = e.target.value;
             updateParticleVisibility();
         });
 
         document.addEventListener('settingsDidChange', function (ev) {
-            currentSettings = ev.detail || {};
-            if (currentSettings.visualizerMode != null) vizMode.value = currentSettings.visualizerMode;
-            if (currentSettings.particleCount   != null) pcNumber.value = currentSettings.particleCount;
-            if (currentSettings.particleSpeed   != null) psNumber.value = currentSettings.particleSpeed;
+            var s = ev.detail || {};
+            if (s.visualizerMode != null) currentVizMode = s.visualizerMode;
+            if (s.particleCount  != null) pcNumber.value = s.particleCount;
+            if (s.particleSpeed  != null) psNumber.value = s.particleSpeed;
             updateParticleVisibility();
         });
 
@@ -124,6 +106,7 @@
                 setTimeout(function () { tryClient(n - 1); }, 100);
             }
         }(20));
+
     </script>
   </body>
 </html>

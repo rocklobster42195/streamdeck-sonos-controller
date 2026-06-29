@@ -14,6 +14,7 @@ import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { generatePlaybackIcon } from "../utils/icons";
+import { piT } from "../utils/pi-i18n";
 
 type SonosPlaybackSettings = {
     deviceIp?: string;
@@ -178,6 +179,18 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
                 await streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
                     items: [{ label: "-- Choose device --", value: "" }, ...deviceItems]
+                });
+            }
+            if (ev.payload.event === 'get-command-options') {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'get-command-options',
+                    items: [
+                        { label: piT('-- Select Command --'), value: '' },
+                        { label: piT('Next Track'), value: 'next' },
+                        { label: piT('Previous Track'), value: 'previous' },
+                        { label: piT('Toggle Shuffle'), value: 'shuffle' },
+                        { label: piT('Toggle Repeat'), value: 'repeat' },
+                    ],
                 });
             }
         }

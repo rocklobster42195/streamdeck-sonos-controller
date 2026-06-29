@@ -48,6 +48,9 @@
             show_title:         'Titel anzeigen',
             browse_timeout:     'Rückkehr-Timeout',
             fav_hint:           'Drehen zum Blättern durch alle Sonos-Favoriten.<br>Drücken zum Abspielen. Tippen oder warten, um zur aktuellen Wiedergabe zurückzukehren.',
+            show_text:          'Text anzeigen',
+            show_text_yes:      'Lautstärke % und Gerätename',
+            show_text_no:       'Nur Tortendiagramm',
         },
         es: {
             sonos_device:       'Dispositivo SONOS',
@@ -90,6 +93,9 @@
             show_title:         'Mostrar título',
             browse_timeout:     'Tiempo de retorno',
             fav_hint:           'Gira para explorar tus favoritos de Sonos.<br>Pulsa para reproducir. Toca o espera para volver a la reproducción actual.',
+            show_text:          'Mostrar texto',
+            show_text_yes:      'Volumen % y nombre del dispositivo',
+            show_text_no:       'Solo gráfico circular',
         },
     };
 

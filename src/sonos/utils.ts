@@ -25,10 +25,18 @@ export async function loadImageFromUri(uri: string, device: SonosDevice): Promis
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    const base64String = Buffer.from(arrayBuffer).toString("base64");
-    const mimeType = response.headers.get('content-type') ?? 'image/jpeg';
-    streamDeck.logger.debug(`Image MIME type: ${mimeType}`);
+    if (arrayBuffer.byteLength === 0) {
+      streamDeck.logger.error(`Empty image body from ${fullImageUrl}`);
+      return "";
+    }
 
+    const mimeType = response.headers.get('content-type') ?? 'image/jpeg';
+    if (!mimeType.startsWith('image/') && !mimeType.startsWith('binary/')) {
+      streamDeck.logger.error(`Non-image MIME type "${mimeType}" from ${fullImageUrl}`);
+      return "";
+    }
+
+    const base64String = Buffer.from(arrayBuffer).toString("base64");
     const dataUri = `data:${mimeType};base64,${base64String}`;
     return dataUri;
   } catch (error) {

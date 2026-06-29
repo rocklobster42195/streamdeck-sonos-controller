@@ -21,6 +21,7 @@ import { getDominantColor } from "../utils/colorExtract";
 import { particleEngine } from "../utils/ParticleEngine";
 import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset } from "./sonos-dial-particles";
 import { TrackInfo } from "../sonos/SonosTypes";
+import { piT } from "../utils/pi-i18n";
 
 type SonosSettings = {
     deviceIp?: string;
@@ -385,6 +386,16 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'particle-state',
                     inPanorama: !!panoramaContextGroupKey.get(ev.action.id),
+                });
+            }
+            if (ev.payload.event === 'get-viz-options') {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'get-viz-options',
+                    items: [
+                        { label: piT('None (track info only)'), value: 'none' },
+                        { label: piT('EQ Effect'), value: 'eq' },
+                        { label: piT('Particles'), value: 'particles' },
+                    ],
                 });
             }
         }

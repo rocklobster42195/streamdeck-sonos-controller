@@ -101,7 +101,18 @@ export class SonosDeviceController {
           this.volumeInfoCallbacks.forEach(cb => cb({ volume: newVol, mute: newMute }));
         }
 
-        // Poll track info every 3rd tick (~15 s) when playing — covers UPnP-dead scenarios.
+        // Re-fetch cover if still missing while playing (e.g. device was not yet online after standby).
+        if (ts === 'PLAYING' && !this.lastKnownCover) {
+          const cover = await this.getCurrentTrackCover().catch(() => undefined);
+          if (cover) {
+            this.lastKnownCover = cover;
+            if (!this.currentTrack) this.currentTrack = { albumArtDataUri: cover } as TrackInfo;
+            else this.currentTrack.albumArtDataUri = cover;
+            this.trackInfoCallbacks.forEach(cb => cb(this.currentTrack!));
+          }
+        }
+
+        // Poll track info every 3rd tick (~24 s) when playing — covers UPnP-dead scenarios.
         trackPollTick++;
         if (trackPollTick % 3 === 0 && ts === 'PLAYING') {
           const track = await this.getCurrentTrack();
@@ -145,7 +156,18 @@ export class SonosDeviceController {
             (track.AlbumArtUri ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri) : false);
         if (track.AlbumArtUri) {
             const cover = await loadImageFromUri(track.AlbumArtUri, this.sonosDevice);
-            if (cover) this.currentTrack.albumArtDataUri = cover;
+            if (cover) { this.currentTrack.albumArtDataUri = cover; this.lastKnownCover = cover; }
+        }
+    }
+
+    // For radio streams getCurrentTrack() returns undefined (string metadata).
+    // Fetch cover via /getaa so the station logo shows immediately after restart.
+    if (!this.lastKnownCover) {
+        const cover = await this.getCurrentTrackCover().catch(() => undefined);
+        if (cover) {
+            if (!this.currentTrack) this.currentTrack = { albumArtDataUri: cover } as TrackInfo;
+            else this.currentTrack.albumArtDataUri = cover;
+            this.lastKnownCover = cover;
         }
     }
   }

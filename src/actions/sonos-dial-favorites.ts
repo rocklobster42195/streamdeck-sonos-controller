@@ -31,6 +31,8 @@ interface FavDialState {
     transportState: string;
     currentTrack?: TrackInfo;
     playingFav?: { Title: string; AlbumArtUri?: string };
+    fadeOpacity?: number;       // black overlay opacity (1=fully black, 0=gone), undefined=no fade
+    fadeTimer?: NodeJS.Timeout;
 }
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-favorites" })
@@ -93,11 +95,51 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         state.browseTimeoutId = setTimeout(() => {
             const s = this.states.get(context);
             if (!s) return;
-            s.currentIndex = -1;
             s.browseTimeoutId = undefined;
-            marqueeAnimator.update(context, { text: s.playingFav?.Title ?? '', availableWidth: 97 });
-            this.queueRender(context);
+            this.startFadeThroughBlack(context);
         }, state.browseTimeoutMs);
+    }
+
+    // Two-phase fade: browse fades to black, then mosaic/now-playing fades in from black.
+    private startFadeThroughBlack(context: string): void {
+        const state = this.states.get(context);
+        if (!state) return;
+        if (state.fadeTimer) { clearInterval(state.fadeTimer); state.fadeTimer = undefined; }
+
+        const STEPS = 6;
+        const INTERVAL_MS = 30;
+        let phase: 1 | 2 = 1;
+        let step = 0;
+
+        state.fadeOpacity = 0;
+        void this.renderDial(context);
+
+        state.fadeTimer = setInterval(() => {
+            const s = this.states.get(context);
+            if (!s) return;
+            step++;
+
+            if (phase === 1) {
+                s.fadeOpacity = step / STEPS;
+                if (step >= STEPS) {
+                    // Fully black: switch to now-playing/mosaic
+                    phase = 2;
+                    step = 0;
+                    s.currentIndex = -1;
+                    s.fadeOpacity = 1.0;
+                    marqueeAnimator.update(context, { text: s.playingFav?.Title ?? '', availableWidth: 97 });
+                }
+            } else {
+                s.fadeOpacity = Math.max(0, 1 - step / STEPS);
+                if (step >= STEPS) {
+                    s.fadeOpacity = undefined;
+                    clearInterval(s.fadeTimer!);
+                    s.fadeTimer = undefined;
+                }
+            }
+
+            void this.renderDial(context);
+        }, INTERVAL_MS);
     }
 
     private async onInstanceUpdate(ev: WillAppearEvent<SonosFavDialSettings> | DidReceiveSettingsEvent<SonosFavDialSettings>): Promise<void> {
@@ -191,6 +233,7 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         const context = ev.action.id;
         const state = this.states.get(context);
         if (state?.browseTimeoutId) clearTimeout(state.browseTimeoutId);
+        if (state?.fadeTimer) clearInterval(state.fadeTimer);
 
         const controller = this.controllers.get(context);
         if (controller) {
@@ -211,6 +254,12 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         const state = this.states.get(context);
         const favs = this.getFavorites();
         if (!state || favs.length === 0) return;
+
+        if (state.fadeTimer) {
+            clearInterval(state.fadeTimer);
+            state.fadeTimer = undefined;
+            state.fadeOpacity = undefined;
+        }
 
         const n = favs.length;
         if (state.currentIndex === -1) {
@@ -244,7 +293,6 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             if (state.browseTimeoutId) clearTimeout(state.browseTimeoutId);
             state.currentIndex = -1;
             state.browseTimeoutId = undefined;
-            // Show the selected favorite immediately without waiting for the track-info event.
             state.playingFav = { Title: fav.Title, AlbumArtUri: fav.AlbumArtUri };
             marqueeAnimator.update(context, { text: fav.Title ?? '', availableWidth: 97 });
             this.queueRender(context);
@@ -258,10 +306,12 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         const state = this.states.get(context);
         if (!state) return;
         if (state.browseTimeoutId) clearTimeout(state.browseTimeoutId);
-        state.currentIndex = -1;
         state.browseTimeoutId = undefined;
-        marqueeAnimator.update(context, { text: state.playingFav?.Title ?? '', availableWidth: 97 });
-        this.queueRender(context);
+        if (state.currentIndex !== -1) {
+            this.startFadeThroughBlack(context);
+        } else {
+            this.queueRender(context);
+        }
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosFavDialSettings>): Promise<void> {
@@ -328,6 +378,10 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
                 return `<text x="100" y="30" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="14" clip-path="url(#tc)">${this.escapeXml(fallback)}</text>`;
             })();
 
+        const fadeOverlay = state.fadeOpacity !== undefined
+            ? `<rect width="200" height="100" fill="#000" opacity="${state.fadeOpacity.toFixed(3)}"/>`
+            : '';
+
         const svg = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
             '<defs>',
@@ -341,6 +395,7 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             `<text x="197" y="62" fill="#666" font-family="Arial,sans-serif" font-size="10" text-anchor="end">${this.escapeXml(positionText)}</text>`,
             isBrowsing ? this.renderDots(state.currentIndex, favs.length) : '',
             isBrowsing ? '<rect x="0.5" y="0.5" width="199" height="99" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.15" rx="2"/>' : '',
+            fadeOverlay,
             '</svg>'
         ].join('');
 

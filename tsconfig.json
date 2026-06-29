@@ -6,7 +6,8 @@
 		],
 		"module": "ES2022",
 		"moduleResolution": "Bundler",
-		"noImplicitOverride": true
+		"noImplicitOverride": true,
+		"resolveJsonModule": true
 	},
 	"include": [
 		"src/**/*.ts"

@@ -32,6 +32,22 @@
         "Press to play": "Press to play",
         "No device set": "No device set",
         "Rotate to browse": "Rotate to browse",
-        "Unknown favorite": "Unknown favorite"
+        "Unknown favorite": "Unknown favorite",
+        "Left": "Left",
+        "Center": "Center",
+        "Right": "Right",
+        "None": "None",
+        "Particles": "Particles",
+        "EQ Effect": "EQ Effect",
+        "None (track info only)": "None (track info only)",
+        "-- Select Command --": "-- Select Command --",
+        "Mute / Preset": "Mute / Preset",
+        "Volume Up": "Volume Up",
+        "Volume Down": "Volume Down",
+        "Volume Preset": "Volume Preset",
+        "Next Track": "Next Track",
+        "Previous Track": "Previous Track",
+        "Toggle Shuffle": "Toggle Shuffle",
+        "Toggle Repeat": "Toggle Repeat"
     }
 }

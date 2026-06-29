@@ -15,6 +15,7 @@ import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { generateFaderSvg } from "../sonos/utils";
 import { generateVolumeButtonIcon } from "../utils/icons";
+import { piT } from "../utils/pi-i18n";
 
 type SonosKeyVolumeSettings = {
     deviceIp?: string;
@@ -260,6 +261,18 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
                 await streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
                     items: itemsWithPlaceholder
+                });
+            }
+            if (ev.payload.event === 'get-command-options') {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'get-command-options',
+                    items: [
+                        { label: piT('-- Select Command --'), value: '' },
+                        { label: piT('Mute / Preset'), value: 'mute' },
+                        { label: piT('Volume Up'), value: 'vol-up' },
+                        { label: piT('Volume Down'), value: 'vol-down' },
+                        { label: piT('Volume Preset'), value: 'vol-preset' },
+                    ],
                 });
             }
         }

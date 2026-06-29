@@ -32,6 +32,22 @@
         "Press to play": "Zum Abspielen drücken",
         "No device set": "Kein Gerät ausgewählt",
         "Rotate to browse": "Drehen zum Blättern",
-        "Unknown favorite": "Unbekannter Favorit"
+        "Unknown favorite": "Unbekannter Favorit",
+        "Left": "Links",
+        "Center": "Mitte",
+        "Right": "Rechts",
+        "None": "Keiner",
+        "Particles": "Partikel",
+        "EQ Effect": "EQ-Effekt",
+        "None (track info only)": "Keiner (nur Track-Info)",
+        "-- Select Command --": "-- Befehl wählen --",
+        "Mute / Preset": "Stumm / Preset",
+        "Volume Up": "Lauter",
+        "Volume Down": "Leiser",
+        "Volume Preset": "Lautstärke-Preset",
+        "Next Track": "Nächster Titel",
+        "Previous Track": "Vorheriger Titel",
+        "Toggle Shuffle": "Zufallswiedergabe",
+        "Toggle Repeat": "Wiederholen"
     }
 }

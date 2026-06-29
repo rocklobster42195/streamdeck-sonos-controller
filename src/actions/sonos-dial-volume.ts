@@ -18,11 +18,13 @@ import { SonosDevice } from "@svrooij/sonos";
 import { particleEngine } from "../utils/ParticleEngine";
 import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset } from "./sonos-dial-particles";
 import { mdiVolumeOff } from "@mdi/js";
+import { piT } from "../utils/pi-i18n";
 
 type SonosDialVolumeSettings = {
     deviceIp?: string;
     presetVolume?: number;
     align?: 'left' | 'center' | 'right';
+    showText?: boolean;
     visualizerMode?: 'none' | 'particles';
     particleCount?: number;
     particleSpeed?: number;
@@ -183,6 +185,25 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
                     inPanorama: !!panoramaContextGroupKey.get(ev.action.id),
                 });
             }
+            if (ev.payload.event === 'get-align-options') {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'get-align-options',
+                    items: [
+                        { label: piT('Left'), value: 'left' },
+                        { label: piT('Center'), value: 'center' },
+                        { label: piT('Right'), value: 'right' },
+                    ],
+                });
+            }
+            if (ev.payload.event === 'get-viz-options') {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'get-viz-options',
+                    items: [
+                        { label: piT('None'), value: 'none' },
+                        { label: piT('Particles'), value: 'particles' },
+                    ],
+                });
+            }
         }
     }
 
@@ -214,21 +235,17 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         return parts;
     }
 
-    private buildTextParts(cx: number, volume: number, isMuted: boolean, deviceName: string, align: string): string[] {
+    private buildTextParts(cx: number, volume: number, isMuted: boolean, deviceName: string, align: string, showText: boolean): string[] {
+        if (align === 'center' || !showText) return [];
+
         const volumeText = isMuted ? 'MUTE' : `${volume}%`;
         const name = deviceName.replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] ?? c));
-        const color = '#CCCCCC';
-        const dim = '#999999';
-
-        if (align === 'center') {
-            return [];
-        }
 
         const textX = align === 'right' ? 55 : 145;
         const parts: string[] = [
-            `<text x="${textX}" y="46" fill="${color}" font-family="Arial,sans-serif" font-size="18" font-weight="bold" text-anchor="middle">${volumeText}</text>`,
+            `<text x="${textX}" y="46" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="18" font-weight="bold" text-anchor="middle">${volumeText}</text>`,
         ];
-        if (name) parts.push(`<text x="${textX}" y="64" fill="${dim}" font-family="Arial,sans-serif" font-size="11" text-anchor="middle">${name}</text>`);
+        if (name) parts.push(`<text x="${textX}" y="64" fill="#CCCCCC" font-family="Arial,sans-serif" font-size="11" text-anchor="middle">${name}</text>`);
         return parts;
     }
 
@@ -239,6 +256,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         const settings = this.settingsMap.get(context);
         const state = this.states.get(context);
         const align = settings?.align ?? 'left';
+        const showText = settings?.showText ?? true;
         const visualizerMode = settings?.visualizerMode ?? 'none';
 
         if (!settings?.deviceIp) {
@@ -262,7 +280,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         const cy = 50;
 
         const pieParts = this.buildPieParts(cx, cy, volume, isMuted, '#CCCCCC');
-        const textParts = this.buildTextParts(cx, volume, isMuted, deviceName, align);
+        const textParts = this.buildTextParts(cx, volume, isMuted, deviceName, align, showText);
 
         const panoramaKey = visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
         const standaloneParticles = visualizerMode === 'particles' && !panoramaKey;
