@@ -8,7 +8,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 > **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
 
-![Favorites Dial — browse and play Sonos favorites](assets/favorite_demo.gif)
+<img src="assets/favorite_demo.gif" width="340" alt="Favorites Dial — browse and play Sonos favorites"/>
 
 ---
 
