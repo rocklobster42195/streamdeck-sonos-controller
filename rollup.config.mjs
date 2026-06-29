@@ -26,7 +26,7 @@ const config = {
 	plugins: [
         copy({
             targets: [
-                { src: 'assets', dest: sdPlugin }
+                { src: 'assets/OpenSans-Bold.ttf', dest: `${sdPlugin}/assets` },
             ]
         }),
 		{
