@@ -29,7 +29,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 Toggles playback on your Sonos speaker. While playing, the key displays the current album or radio station cover art. A scrolling marquee shows track title and artist.
 
-<img src="assets/screenshots/key-play-pause.png" width="160" alt="Play / Pause Key showing cover art"/>
+<img src="assets/play-pause_toggle_demo.gif" width="100" alt="Play / Pause Key showing cover art"/>
 
 | Setting | Description |
 |---------|-------------|
@@ -45,7 +45,7 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 
 The centerpiece of the plugin. The LCD panel shows the album or station cover art, a scrolling track title, artist name, and a progress bar — tinted to match the cover art palette.
 
-<img src="assets/screenshots/track-dial.png" width="400" alt="Track Dial showing cover art and EQ Effect"/>
+<img src="assets/track_dial_eq.gif" alt="Track Dial showing cover art and EQ Effect"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -66,7 +66,7 @@ The centerpiece of the plugin. The LCD panel shows the album or station cover ar
 
 Dedicated volume control with a live pie chart showing the current level. When muted, a volume-off icon replaces the pie.
 
-<img src="assets/screenshots/volume-dial.png" width="400" alt="Volume Dial at 65% volume"/>
+<img src="assets/volume_dial_demo.gif" width="200" alt="Volume Dial"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -87,7 +87,7 @@ Dedicated volume control with a live pie chart showing the current level. When m
 
 Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art, title, and position indicator for the highlighted item.
 
-<img src="assets/screenshots/favorites-dial.png" width="400" alt="Favorites Dial browsing the list"/>
+<img src="assets/favorites_dial_demo.gif" width="200" alt="Favorites Dial browsing the list"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -106,7 +106,7 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 
 Ambient particle network animation that spans multiple adjacent LCD panels as one continuous scene. Place two or more side by side to connect them into a seamless panorama.
 
-![Panorama Particles across 4 LCD panels](assets/screenshots/panorama-particles.png)
+![Panorama Particles across 4 LCD panels](assets/panorama_particle_demo.gif)
 
 | Interaction | Effect |
 |-------------|--------|
@@ -119,7 +119,7 @@ Ambient particle network animation that spans multiple adjacent LCD panels as on
 
 Increase, decrease, mute, or set a preset volume with a single key press.
 
-<img src="assets/screenshots/key-volume.png" width="160" alt="Volume Key"/>
+<img src="assets/screenshots/key-volume.png" width="100" alt="Volume Key"/>
 
 | Setting | Description |
 |---------|-------------|
@@ -134,8 +134,8 @@ Increase, decrease, mute, or set a preset volume with a single key press.
 
 Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim automatically** when a radio station is playing, since seek controls are unavailable for live streams.
 
-<img src="assets/screenshots/key-playback-control.png" width="160" alt="Playback Control Key — Next"/>
-<img src="assets/screenshots/key-playback-control-radio.png" width="160" alt="Playback Control Key dimmed during radio"/>
+<img src="assets/screenshots/key-playback-control.png" width="100" alt="Playback Control Key — Next"/>
+<img src="assets/screenshots/key-playback-control-radio.png" width="100" alt="Playback Control Key dimmed during radio"/>
 
 | Setting | Description |
 |---------|-------------|
