@@ -16,3 +16,8 @@ docs/
 
 # Editor
 .vscode/
+
+# Local tools and generated previews (not for public repo)
+tools/
+assets/preview-*
+assets/bg-particles-1080.png
