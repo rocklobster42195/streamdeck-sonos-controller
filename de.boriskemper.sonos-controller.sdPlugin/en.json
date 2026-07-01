@@ -48,6 +48,13 @@
         "Next Track": "Next Track",
         "Previous Track": "Previous Track",
         "Toggle Shuffle": "Toggle Shuffle",
-        "Toggle Repeat": "Toggle Repeat"
+        "Toggle Repeat": "Toggle Repeat",
+        "Group Volume": "Group Volume",
+        "Control the volume of your entire Sonos group with a dial.": "Control the volume of your entire Sonos group with a dial.",
+        "Mute group": "Mute group",
+        "Adjust group volume": "Adjust group volume",
+        "Preset group volume": "Preset group volume",
+        "Group Volume Control": "Group Volume Control",
+        "Control your Sonos group volume with a key.": "Control your Sonos group volume with a key."
     }
 }

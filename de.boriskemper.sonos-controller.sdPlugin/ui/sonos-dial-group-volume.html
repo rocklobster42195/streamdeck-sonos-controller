@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SONOS Dial Volume Settings</title>
+    <title>Group Volume Dial Settings</title>
     <script src="i18n.js" defer></script>
     <script src="sdpi-components.js" defer></script>
     <style>
@@ -60,15 +60,15 @@
     </sdpi-item>
 
     <script>
-        var pvRange     = document.getElementById('pvRange');
-        var pvNumber    = document.getElementById('pvNumber');
-        var pcRange     = document.getElementById('pcRange');
-        var pcNumber    = document.getElementById('pcNumber');
-        var psRange     = document.getElementById('psRange');
-        var psNumber    = document.getElementById('psNumber');
-        var pcItem      = document.getElementById('pcItem');
-        var psItem      = document.getElementById('psItem');
-        var inPanorama  = false;
+        var pvRange = document.getElementById('pvRange');
+        var pvNumber = document.getElementById('pvNumber');
+        var pcRange = document.getElementById('pcRange');
+        var pcNumber = document.getElementById('pcNumber');
+        var psRange = document.getElementById('psRange');
+        var psNumber = document.getElementById('psNumber');
+        var pcItem = document.getElementById('pcItem');
+        var psItem = document.getElementById('psItem');
+        var inPanorama = false;
         var currentVizMode = 'none';
 
         function updateParticleVisibility() {
@@ -92,7 +92,7 @@
         wireSlider(pcRange, pcNumber);
         wireSlider(psRange, psNumber);
 
-        document.querySelector('sdpi-select[setting="visualizerMode"]').addEventListener('valuechange', function(e) {
+        document.querySelector('sdpi-select[setting="visualizerMode"]').addEventListener('valuechange', function (e) {
             currentVizMode = e.target.value;
             updateParticleVisibility();
         });
@@ -100,9 +100,9 @@
         document.addEventListener('settingsDidChange', function (ev) {
             var s = ev.detail || {};
             if (s.visualizerMode != null) currentVizMode = s.visualizerMode;
-            if (s.presetVolume   != null) pvNumber.value  = s.presetVolume;
-            if (s.particleCount  != null) pcNumber.value  = s.particleCount;
-            if (s.particleSpeed  != null) psNumber.value  = s.particleSpeed;
+            if (s.presetVolume  != null) { pvNumber.value = s.presetVolume;  pvRange.value = s.presetVolume; }
+            if (s.particleCount != null) { pcNumber.value = s.particleCount; pcRange.value = s.particleCount; }
+            if (s.particleSpeed != null) { psNumber.value = s.particleSpeed; psRange.value = s.particleSpeed; }
             updateParticleVisibility();
         });
 
@@ -121,7 +121,6 @@
                 setTimeout(function () { tryClient(n - 1); }, 100);
             }
         }(20));
-
     </script>
   </body>
 </html>

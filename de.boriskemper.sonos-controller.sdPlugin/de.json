@@ -48,6 +48,13 @@
         "Next Track": "Nächster Titel",
         "Previous Track": "Vorheriger Titel",
         "Toggle Shuffle": "Zufallswiedergabe",
-        "Toggle Repeat": "Wiederholen"
+        "Toggle Repeat": "Wiederholen",
+        "Group Volume": "Gruppen-Lautstärke",
+        "Control the volume of your entire Sonos group with a dial.": "Lautstärke der gesamten Sonos-Gruppe per Regler steuern.",
+        "Mute group": "Gruppe stummschalten",
+        "Adjust group volume": "Gruppen-Lautstärke anpassen",
+        "Preset group volume": "Gruppen-Lautstärke-Preset",
+        "Group Volume Control": "Gruppen-Lautstärke-Taste",
+        "Control your Sonos group volume with a key.": "Sonos-Gruppen-Lautstärke per Taste steuern."
     }
 }

@@ -159,6 +159,44 @@
 					"Image": "imgs/actions/sonos-dial-track/icon"
 				}
 			]
+		},
+		{
+			"Name": "Group Volume",
+			"UUID": "de.boriskemper.sonos-controller.sonos-dial-group-volume",
+			"Icon": "imgs/actions/sonos-dial-volume/icon",
+			"Tooltip": "Control the volume of your entire Sonos group with a dial.",
+			"PropertyInspectorPath": "ui/sonos-dial-group-volume.html",
+			"Controllers": [
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/canvas.json",
+				"TriggerDescription": {
+					"Push": "Mute group",
+					"Rotate": "Adjust group volume",
+					"Touch": "Preset group volume"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/sonos-dial-volume/icon"
+				}
+			]
+		},
+		{
+			"Name": "Group Volume Control",
+			"UUID": "de.boriskemper.sonos-controller.sonos-key-group-volume",
+			"Icon": "imgs/actions/sonos-key-volume/icon",
+			"Tooltip": "Control your Sonos group volume with a key.",
+			"PropertyInspectorPath": "ui/sonos-key-group-volume.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/sonos-key-volume/icon"
+				}
+			]
 		}
 	],
 	"Category": "SONOS-Controller",

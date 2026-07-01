@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SONOS Volume Settings</title>
+  <title>Group Volume Key Settings</title>
   <script src="i18n.js" defer></script>
   <script src="sdpi-components.js" defer></script>
   <style>
@@ -24,11 +23,10 @@
         font-family: inherit;
     }
     #pvNumber:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
-</style>
+  </style>
 </head>
 
 <body>
-
   <sdpi-item label="SONOS device" data-i18n="sonos_device">
     <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
       <option value="" data-i18n="choose_device">-- Choose Device --</option>
@@ -56,61 +54,54 @@
   </div>
 
   <script>
-    var pvRange              = document.getElementById('pvRange');
-    var pvNumber             = document.getElementById('pvNumber');
-    var showShowVolumeWrap   = document.getElementById('show-volume-wrapper');
-    var showPresetCheckbox   = document.querySelector('sdpi-checkbox[setting="showPreset"]');
-    var showVolumeCheckbox   = document.querySelector('sdpi-checkbox[setting="showVolume"]');
-    var relevantCommands     = ['mute', 'vol-up', 'vol-down'];
-    var currentCommand       = '';
+    var pvRange            = document.getElementById('pvRange');
+    var pvNumber           = document.getElementById('pvNumber');
+    var showVolumeWrap     = document.getElementById('show-volume-wrapper');
+    var showPresetCheckbox = document.querySelector('sdpi-checkbox[setting="showPreset"]');
+    var showVolumeCheckbox = document.querySelector('sdpi-checkbox[setting="showVolume"]');
+    var relevantCommands   = ['group-mute', 'group-vol-up', 'group-vol-down'];
+    var currentCommand     = '';
 
-    pvRange.addEventListener('valuechange', function (e) {
-        pvNumber.value = e.target.value;
-    });
-
+    pvRange.addEventListener('valuechange', function (e) { pvNumber.value = e.target.value; });
     pvNumber.addEventListener('change', function () {
         var n = Math.max(0, Math.min(100, parseInt(pvNumber.value) || 0));
-        pvNumber.value = n;
-        pvRange.value = n;
+        pvNumber.value = n; pvRange.value = n;
         pvRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
     });
 
     function applyVisibility(command) {
-      showShowVolumeWrap.classList.toggle('hidden', !relevantCommands.includes(command));
+        showVolumeWrap.classList.toggle('hidden', !relevantCommands.includes(command));
     }
 
-    document.querySelector('sdpi-select[setting="command"]').addEventListener('valuechange', function(e) {
-        var command = e.target.value;
-        currentCommand = command;
-        applyVisibility(command);
-        if (relevantCommands.includes(command) && showPresetCheckbox.value && showVolumeCheckbox.value) {
+    document.querySelector('sdpi-select[setting="command"]').addEventListener('valuechange', function (e) {
+        currentCommand = e.target.value;
+        applyVisibility(currentCommand);
+        if (relevantCommands.includes(currentCommand) && showPresetCheckbox.value && showVolumeCheckbox.value) {
             showVolumeCheckbox.value = false;
             showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
         }
     });
 
-    showPresetCheckbox.addEventListener('valuechange', function (event) {
-      if (relevantCommands.includes(currentCommand) && event.target.value) {
-        showVolumeCheckbox.value = false;
-        showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
-      }
+    showPresetCheckbox.addEventListener('valuechange', function (e) {
+        if (relevantCommands.includes(currentCommand) && e.target.value) {
+            showVolumeCheckbox.value = false;
+            showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        }
     });
 
-    showVolumeCheckbox.addEventListener('valuechange', function (event) {
-      if (relevantCommands.includes(currentCommand) && event.target.value) {
-        showPresetCheckbox.value = false;
-        showPresetCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
-      }
+    showVolumeCheckbox.addEventListener('valuechange', function (e) {
+        if (relevantCommands.includes(currentCommand) && e.target.value) {
+            showPresetCheckbox.value = false;
+            showPresetCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        }
     });
 
     document.addEventListener('settingsDidChange', function (ev) {
         var s = ev.detail || {};
-        if (s.presetVolume != null) pvNumber.value = s.presetVolume;
+        if (s.presetVolume != null) { pvNumber.value = s.presetVolume; pvRange.value = s.presetVolume; }
         if (s.command      != null) currentCommand = s.command;
         applyVisibility(currentCommand);
     });
-
   </script>
 </body>
-
 </html>
