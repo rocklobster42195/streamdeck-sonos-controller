@@ -58,6 +58,14 @@
         "Control your Sonos group volume with a key.": "Sonos-Gruppen-Lautstärke per Taste steuern.",
         "Battery Indicator": "Batterieanzeige",
         "Battery Status": "Batteriestatus",
-        "Show battery level and charging state for Sonos Move / Roam.": "Akkustand und Ladezustand für Sonos Move / Roam anzeigen."
+        "Show battery level and charging state for Sonos Move / Roam.": "Akkustand und Ladezustand für Sonos Move / Roam anzeigen.",
+        "Queue Navigator": "Warteschlangen-Navigator",
+        "Browse and play tracks from the current Sonos queue.": "Tracks aus der aktuellen Sonos-Warteschlange durchsuchen und abspielen.",
+        "Seek to browsed track": "Zum angezeigten Track springen",
+        "Browse queue": "Warteschlange durchsuchen",
+        "Return to playing track": "Zum spielenden Track zurückkehren",
+        "View mode": "Ansicht",
+        "Cover + track info": "Cover + Track-Info",
+        "Queue list (3 tracks)": "Warteschlangenliste (3 Tracks)"
     }
 }

@@ -212,6 +212,29 @@
 					"Image": "imgs/actions/sonos-key-volume/icon"
 				}
 			]
+		},
+		{
+			"Name": "Queue Navigator",
+			"UUID": "de.boriskemper.sonos-controller.sonos-dial-queue",
+			"Icon": "imgs/actions/sonos-dial-favorites/icon",
+			"Tooltip": "Browse and play tracks from the current Sonos queue.",
+			"PropertyInspectorPath": "ui/sonos-dial-queue.html",
+			"Controllers": [
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/canvas.json",
+				"TriggerDescription": {
+					"Push": "Seek to browsed track",
+					"Rotate": "Browse queue",
+					"Touch": "Return to playing track"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/sonos-dial-favorites/icon"
+				}
+			]
 		}
 	],
 	"Category": "SONOS-Controller",

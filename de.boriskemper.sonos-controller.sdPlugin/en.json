@@ -58,6 +58,14 @@
         "Control your Sonos group volume with a key.": "Control your Sonos group volume with a key.",
         "Battery Indicator": "Battery Indicator",
         "Battery Status": "Battery Status",
-        "Show battery level and charging state for Sonos Move / Roam.": "Show battery level and charging state for Sonos Move / Roam."
+        "Show battery level and charging state for Sonos Move / Roam.": "Show battery level and charging state for Sonos Move / Roam.",
+        "Queue Navigator": "Queue Navigator",
+        "Browse and play tracks from the current Sonos queue.": "Browse and play tracks from the current Sonos queue.",
+        "Seek to browsed track": "Seek to browsed track",
+        "Browse queue": "Browse queue",
+        "Return to playing track": "Return to playing track",
+        "View mode": "View mode",
+        "Cover + track info": "Cover + track info",
+        "Queue list (3 tracks)": "Queue list (3 tracks)"
     }
 }
