@@ -86,8 +86,8 @@
         document.addEventListener('settingsDidChange', function (ev) {
             var s = ev.detail || {};
             if (s.visualizerMode != null) currentVizMode = s.visualizerMode;
-            if (s.particleCount  != null) pcNumber.value = s.particleCount;
-            if (s.particleSpeed  != null) psNumber.value = s.particleSpeed;
+            if (s.particleCount  != null) { pcNumber.value = s.particleCount; pcRange.value = s.particleCount; }
+            if (s.particleSpeed  != null) { psNumber.value = s.particleSpeed; psRange.value = s.particleSpeed; }
             updateParticleVisibility();
         });
 

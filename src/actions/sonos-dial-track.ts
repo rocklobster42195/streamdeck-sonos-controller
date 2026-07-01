@@ -60,7 +60,8 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         if (!state) return;
         state.transportState = transportState;
         const settings = this.settingsMap.get(context);
-        const inPanorama = settings?.visualizerMode === 'particles' && !!panoramaContextGroupKey.get(context);
+        const panoKey0 = settings?.visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
+        const inPanorama = !!(panoKey0 && particleEngine.isPanoramaActive(panoKey0));
         if (transportState === 'PLAYING' || inPanorama) {
             this.startAnimTimer(context);
             if (transportState === 'PLAYING') {
@@ -93,7 +94,13 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 const s = this.states.get(context);
                 if (!s) return;
                 s.dominantColor = color;
-                particleEngine.setColor(context, this.ensureVisibleColor(color));
+                const visibleColor = this.ensureVisibleColor(color);
+                const pk = panoramaContextGroupKey.get(context);
+                if (pk && particleEngine.isPanoramaActive(pk)) {
+                    particleEngine.transitionPanoramaColor(pk, visibleColor);
+                } else {
+                    particleEngine.setColor(context, visibleColor);
+                }
                 void this.renderDial(context);
             }).catch(() => {});
         }
@@ -117,12 +124,13 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
             const s = this.states.get(context);
             if (!s) { this.stopAnimTimer(context); return; }
             const settings = this.settingsMap.get(context);
-            const inPanorama = settings?.visualizerMode === 'particles' && !!panoramaContextGroupKey.get(context);
+            const pk1 = settings?.visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
+            const inPanorama = !!(pk1 && particleEngine.isPanoramaActive(pk1));
             if (!inPanorama && s.transportState !== 'PLAYING') {
                 this.stopAnimTimer(context);
                 return;
             }
-            // Tick standalone particles only when not in a panorama group.
+            // Tick standalone particles only when not in an active panorama group.
             if (settings?.visualizerMode === 'particles' && !inPanorama) particleEngine.tick(context);
             void this.renderDial(context);
         }, 100);
@@ -276,7 +284,13 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                     const s = this.states.get(context);
                     if (!s) return;
                     s.dominantColor = c;
-                    particleEngine.setColor(context, this.ensureVisibleColor(c));
+                    const visibleColor = this.ensureVisibleColor(c);
+                    const pk = panoramaContextGroupKey.get(context);
+                    if (pk && particleEngine.isPanoramaActive(pk)) {
+                        particleEngine.transitionPanoramaColor(pk, visibleColor);
+                    } else {
+                        particleEngine.setColor(context, visibleColor);
+                    }
                     void this.renderDial(context);
                 }).catch(() => {});
 
@@ -383,9 +397,10 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 });
             }
             if (ev.payload.event === 'get-particle-state') {
+                const pk = panoramaContextGroupKey.get(ev.action.id);
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'particle-state',
-                    inPanorama: !!panoramaContextGroupKey.get(ev.action.id),
+                    inPanorama: !!(pk && particleEngine.isPanoramaActive(pk)),
                 });
             }
             if (ev.payload.event === 'get-viz-options') {
@@ -534,7 +549,8 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 }
             }
 
-            const panoramaKey = visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
+            const rawPanoKey = visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
+            const panoramaKey = rawPanoKey && particleEngine.isPanoramaActive(rawPanoKey) ? rawPanoKey : undefined;
 
             if (panoramaKey) {
                 // Panorama mode: particles as full-canvas background; text layout same as 'none' (bottom-aligned).
@@ -551,26 +567,32 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                     }
                 }
 
+                // Text background pills — only as wide as the respective text.
+                const titleText = state.trackInfo?.Title ?? '';
+                const titlePillW = settings?.showTrackTitle !== false && titleText
+                    ? Math.min(99, this.estimateTextWidth(titleText, fontSize) + 8) : 0;
+                const artistPillW = artist
+                    ? Math.min(99, this.estimateTextWidth(artist, 11) + 8) : 0;
+                const titlePillY = Math.round(68 - fontSize * 0.8);
+                const titlePillH = Math.round(fontSize * 1.1);
+
                 svg = [
                     '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                     '<defs>',
                     '  <clipPath id="c"><rect width="200" height="100"/></clipPath>',
-                    '  <linearGradient id="overlay" x1="0" x2="0" y1="0" y2="1">',
-                    '    <stop offset="40%" stop-color="black" stop-opacity="0"/>',
-                    '    <stop offset="100%" stop-color="black" stop-opacity="0.75"/>',
-                    '  </linearGradient>',
                     '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
                     '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
                     '</defs>',
                     '<rect width="200" height="100" fill="#000"/>',
                     `<g clip-path="url(#c)">${particleFrag}</g>`,
-                    '<rect width="200" height="100" fill="url(#overlay)"/>',
+                    titlePillW > 0 ? `<rect x="5" y="${titlePillY}" width="${titlePillW}" height="${titlePillH}" fill="black" opacity="0.55" rx="3"/>` : '',
+                    artistPillW > 0 ? `<rect x="5" y="73" width="${artistPillW}" height="13" fill="black" opacity="0.55" rx="3"/>` : '',
                     `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                     panoTitleFrag,
                     `  <text x="8" y="82" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
                     '</g>',
-                    `<rect x="8" y="91" width="97" height="3" fill="white" opacity="0.12" rx="1.5"/>`,
-                    progressPct > 0 ? `<rect x="8" y="91" width="${Math.round(97 * progress)}" height="3" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="1.5"/>` : '',
+                    `<rect x="8" y="91" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
+                    progressPct > 0 ? `<rect x="8" y="91" width="${Math.round(97 * progress)}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
                     `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
                     '</svg>',
                 ].join('');
