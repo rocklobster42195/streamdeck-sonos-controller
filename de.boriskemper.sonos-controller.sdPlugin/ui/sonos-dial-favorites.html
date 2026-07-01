@@ -8,6 +8,7 @@
   <script src="sdpi-components.js" defer></script>
   <style>
     :root { color-scheme: dark; }
+    .hint { font-size: 11px; color: #888; line-height: 1.4; }
     #bt-row { display: flex; align-items: center; gap: 8px; width: 100%; }
     #btRange { flex: 1; min-width: 0; }
     #btNumber {
@@ -38,7 +39,7 @@
   </sdpi-item>
 
   <sdpi-item label="">
-    <sdpi-item-value style="font-size:11px; color:#888; line-height:1.4" data-i18n-html="fav_hint">
+    <sdpi-item-value class="hint" data-i18n-html="fav_hint">
       Rotate to browse all your Sonos favorites.<br>
       Press to play. Touch or wait to return to now playing.
     </sdpi-item-value>
