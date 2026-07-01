@@ -56,6 +56,8 @@
         "Preset group volume": "Gruppen-Lautstärke-Preset",
         "Group Volume Control": "Gruppen-Lautstärke-Taste",
         "Control your Sonos group volume with a key.": "Sonos-Gruppen-Lautstärke per Taste steuern.",
-        "Battery Indicator": "Batterieanzeige"
+        "Battery Indicator": "Batterieanzeige",
+        "Battery Status": "Batteriestatus",
+        "Show battery level and charging state for Sonos Move / Roam.": "Akkustand und Ladezustand für Sonos Move / Roam anzeigen."
     }
 }

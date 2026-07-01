@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Battery Status Settings</title>
+  <script src="i18n.js" defer></script>
+  <script src="sdpi-components.js" defer></script>
+  <style>
+    :root { color-scheme: dark; }
+    .hint { font-size: 11px; color: #888; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <sdpi-item label="SONOS device" data-i18n="sonos_device">
+    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
+      <option value="">-- Choose Device --</option>
+    </sdpi-select>
+  </sdpi-item>
+  <sdpi-item label="">
+    <sdpi-item-value class="hint" data-i18n-html="battery_key_hint">
+      Works with Sonos Move and Roam only.<br>
+      Short press: toggle button lock.<br>
+      Long press: toggle LED ring.
+    </sdpi-item-value>
+  </sdpi-item>
+</body>
+</html>

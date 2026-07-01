@@ -56,6 +56,8 @@
         "Preset group volume": "Preset group volume",
         "Group Volume Control": "Group Volume Control",
         "Control your Sonos group volume with a key.": "Control your Sonos group volume with a key.",
-        "Battery Indicator": "Battery Indicator"
+        "Battery Indicator": "Battery Indicator",
+        "Battery Status": "Battery Status",
+        "Show battery level and charging state for Sonos Move / Roam.": "Show battery level and charging state for Sonos Move / Roam."
     }
 }

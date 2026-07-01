@@ -197,6 +197,21 @@
 					"Image": "imgs/actions/sonos-key-volume/icon"
 				}
 			]
+		},
+		{
+			"Name": "Battery Status",
+			"UUID": "de.boriskemper.sonos-controller.sonos-key-battery",
+			"Icon": "imgs/actions/sonos-key-volume/icon",
+			"Tooltip": "Show battery level and charging state for Sonos Move / Roam.",
+			"PropertyInspectorPath": "ui/sonos-key-battery.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/sonos-key-volume/icon"
+				}
+			]
 		}
 	],
 	"Category": "SONOS-Controller",
