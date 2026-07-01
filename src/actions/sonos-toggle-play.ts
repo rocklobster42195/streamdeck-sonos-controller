@@ -24,6 +24,7 @@ type SonosSettings = {
     showDeviceName?: boolean;
     showCoverArt?: boolean;
     showTrackTitle?: boolean;
+    showBattery?: boolean;
     fontColor?: string;
     fontSize?: number;
 };
@@ -33,6 +34,32 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private currentSettings: Map<string, SonosSettings> = new Map();
     private currentCover: Map<string, string | undefined> = new Map();
+    private batteryListeners: Map<string, (evt: any) => void> = new Map();
+    private batteryLevels: Map<string, number | null> = new Map();
+    private hasBattery: Map<string, boolean> = new Map();
+
+    private parseBattPct(info: string): number | null {
+        const m = info.match(/BattPct=(\d+)/);
+        return m ? parseInt(m[1], 10) : null;
+    }
+
+    private batteryDotUri(baseUri: string, battPct: number): string {
+        const color = battPct > 40 ? '#44CC44' : battPct > 20 ? '#FFCC00' : '#FF4444';
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 72 72">`
+            + `<image href="${baseUri}" width="72" height="72"/>`
+            + `<circle cx="63" cy="9" r="5" fill="${color}"/>`
+            + `</svg>`;
+        return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+    }
+
+    private withBattery(uri: string, context: string): string {
+        const level = this.batteryLevels.get(context);
+        if (level == null) return uri;
+        const settings = this.currentSettings.get(context);
+        // Always show red dot on low battery; full indicator only when enabled in PI.
+        if (!settings?.showBattery && level >= 20) return uri;
+        return this.batteryDotUri(uri, level);
+    }
 
     private onTrackInfoChanged(context: string, trackInfo: TrackInfo): void {
         const newCover = trackInfo.albumArtDataUri || undefined;
@@ -95,9 +122,9 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             } else {
                 titleAnimator.stop(context);
                 if (settings.showCoverArt && cover) {
-                    await action.setImage(cover);
+                    await action.setImage(this.withBattery(cover, context));
                 } else {
-                    await action.setImage(generateTransportIcon('play'));
+                    await action.setImage(this.withBattery(generateTransportIcon('play'), context));
                 }
             }
         } else {
@@ -105,10 +132,10 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
 
             switch (transportState) {
                 case "TRANSITIONING":
-                    await action.setImage(generateTransportIcon('loading'));
+                    await action.setImage(this.withBattery(generateTransportIcon('loading'), context));
                     break;
                 default: // PAUSED, STOPPED
-                    await action.setImage(generateTransportIcon('play'));
+                    await action.setImage(this.withBattery(generateTransportIcon('play'), context));
                     break;
             }
         }
@@ -123,9 +150,16 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             const oldController = this.controllers.get(context)!;
             oldController.unregisterTransportStateCallback(context);
             oldController.unregisterTrackInfoCallback(context);
+            const oldBattListener = this.batteryListeners.get(context);
+            if (oldBattListener) {
+                oldController.sonosDevice.DevicePropertiesService.Events.removeListener('serviceEvent', oldBattListener);
+                this.batteryListeners.delete(context);
+            }
             this.controllers.delete(context);
         }
         this.currentCover.delete(context);
+        this.batteryLevels.delete(context);
+        this.hasBattery.delete(context);
 
         if (!settings.deviceIp) {
             titleAnimator.stop(context);
@@ -147,6 +181,31 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             controller.registerTrackInfoCallback(context, (trackInfo) => {
                 this.onTrackInfoChanged(context, trackInfo);
             });
+
+            // Always probe for battery capability so the PI can show/hide the checkbox.
+            let hasBatt = false;
+            try {
+                const info = await controller.sonosDevice.DevicePropertiesService.GetZoneInfo();
+                const initPct = this.parseBattPct(info.ExtraInfo ?? '');
+                hasBatt = initPct !== null;
+                this.hasBattery.set(context, hasBatt);
+                if (hasBatt) {
+                    this.batteryLevels.set(context, initPct!);
+                    const battListener = (evt: any) => {
+                        const pct = this.parseBattPct(evt.MoreInfo ?? '');
+                        if (pct !== null) {
+                            this.batteryLevels.set(context, pct);
+                            const ctrl = this.controllers.get(context);
+                            if (ctrl) ctrl.getTransportState().then(s => this.handleTransportStateChange(context, s));
+                        }
+                    };
+                    this.batteryListeners.set(context, battListener);
+                    controller.sonosDevice.DevicePropertiesService.Events.on('serviceEvent', battListener);
+                }
+            } catch (e) {
+                streamDeck.logger.debug('DevicePropertiesService probe failed', e);
+            }
+            streamDeck.ui.sendToPropertyInspector({ event: 'device-info', hasBattery: hasBatt });
 
             if (settings.showDeviceName) {
                 const zoneAttributes = await controller.getZoneAttributes();
@@ -191,6 +250,10 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         if (controller) {
             controller.unregisterTransportStateCallback(context);
             controller.unregisterTrackInfoCallback(context);
+            const battListener = this.batteryListeners.get(context);
+            if (battListener) {
+                controller.sonosDevice.DevicePropertiesService.Events.removeListener('serviceEvent', battListener);
+            }
             if (ev.payload.settings.deviceIp) {
                 sonosDeviceManager.releaseController(ev.payload.settings.deviceIp);
             }
@@ -198,6 +261,8 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         this.controllers.delete(context);
         this.currentSettings.delete(context);
         this.currentCover.delete(context);
+        this.batteryListeners.delete(context);
+        this.batteryLevels.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<SonosSettings>): Promise<void> {
@@ -208,20 +273,21 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            switch (ev.payload.event) {
-                case 'get-devices': {
-                    await discoveryPromise;
-                    const items = sonosManager.Devices.map((device: SonosDevice) => ({
-                        label: device.Name,
-                        value: device.Host
-                    }));
-                    streamDeck.ui.sendToPropertyInspector({
-                        event: 'get-devices',
-                        items: items
-                    });
-                    break;
-                }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch (ev.payload.event) {
+            case 'get-devices': {
+                await discoveryPromise;
+                const items = sonosManager.Devices.map((device: SonosDevice) => ({
+                    label: device.Name,
+                    value: device.Host
+                }));
+                streamDeck.ui.sendToPropertyInspector({ event: 'get-devices', items });
+                break;
+            }
+            case 'get-device-info': {
+                const hasBatt = this.hasBattery.get(ev.action.id) ?? false;
+                streamDeck.ui.sendToPropertyInspector({ event: 'device-info', hasBattery: hasBatt });
+                break;
             }
         }
     }

@@ -6,7 +6,7 @@
   <meta charset="utf-8" />
   <script src="i18n.js" defer></script>
   <script src="sdpi-components.js" defer></script>
-  <style>:root { color-scheme: dark; }</style>
+  <style>:root { color-scheme: dark; } #battery-row { display: none; }</style>
 </head>
 
 <body>
@@ -23,12 +23,36 @@
   <sdpi-item label="Title (Artist)" data-i18n="title_artist">
     <sdpi-checkbox setting="showTrackTitle" value="true"></sdpi-checkbox>
   </sdpi-item>
+  <div id="battery-row">
+    <sdpi-item label="Battery Indicator" data-i18n="battery_indicator">
+      <sdpi-checkbox setting="showBattery"></sdpi-checkbox>
+    </sdpi-item>
+  </div>
   <sdpi-item label="FontSize" data-i18n="font_size">
     <sdpi-range setting="fontSize" min="10" max="20" step="1" showlabels></sdpi-range>
   </sdpi-item>
   <sdpi-item label="FontColor" data-i18n="font_color">
     <sdpi-color setting="fontColor"></sdpi-color>
   </sdpi-item>
+
+  <script>
+    var batteryRow = document.getElementById('battery-row');
+
+    document.addEventListener('sendToPropertyInspector', function (e) {
+      var d = e && e.detail;
+      if (d && d.event === 'device-info') {
+        batteryRow.style.display = d.hasBattery ? '' : 'none';
+      }
+    });
+
+    (function tryClient(n) {
+      if (window.streamDeckClient) {
+        streamDeckClient.sendToPlugin({ event: 'get-device-info' });
+      } else if (n > 0) {
+        setTimeout(function () { tryClient(n - 1); }, 100);
+      }
+    }(20));
+  </script>
 </body>
 
 </html>

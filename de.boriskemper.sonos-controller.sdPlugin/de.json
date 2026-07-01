@@ -55,6 +55,7 @@
         "Adjust group volume": "Gruppen-Lautstärke anpassen",
         "Preset group volume": "Gruppen-Lautstärke-Preset",
         "Group Volume Control": "Gruppen-Lautstärke-Taste",
-        "Control your Sonos group volume with a key.": "Sonos-Gruppen-Lautstärke per Taste steuern."
+        "Control your Sonos group volume with a key.": "Sonos-Gruppen-Lautstärke per Taste steuern.",
+        "Battery Indicator": "Batterieanzeige"
     }
 }
