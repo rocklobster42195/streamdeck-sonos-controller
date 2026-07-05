@@ -21,6 +21,14 @@ interface Particle {
     r: number;
 }
 
+interface NetworkLine {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    opacity: number;
+}
+
 type ResolvedConfig = Required<ParticleConfig>;
 
 /**
@@ -38,7 +46,13 @@ export class ParticleEngine {
     private configs: Map<string, ResolvedConfig> = new Map();
 
     // Panorama simulations — keyed by group key (e.g. "panorama-2").
-    private panoramas: Map<string, { config: ResolvedConfig; particles: Particle[] }> = new Map();
+    // `lines` caches the network-mode connections computed once per tickPanorama() call, in
+    // canvas-wide coordinates. Without this, every display in the panorama redid the same O(n^2)
+    // pairwise distance pass from scratch on every render — with N displays that's N times the
+    // work for no reason, since the connections don't depend on which slice is being drawn (only
+    // the projected line coordinates do). This measurably stalled rendering once a panorama grew
+    // past a couple of displays.
+    private panoramas: Map<string, { config: ResolvedConfig; particles: Particle[]; lines: NetworkLine[] }> = new Map();
 
     // Active color transitions for panoramas.
     private colorTransitions: Map<string, {
@@ -137,7 +151,7 @@ export class ParticleEngine {
      */
     initPanorama(key: string, config: ParticleConfig): void {
         const cfg = this.resolve(config);
-        this.panoramas.set(key, { config: cfg, particles: this.spawnMany(cfg) });
+        this.panoramas.set(key, { config: cfg, particles: this.spawnMany(cfg), lines: [] });
     }
 
     tickPanorama(key: string): void {
@@ -168,6 +182,28 @@ export class ParticleEngine {
             if (p.y - p.r < 0)           { p.y = p.r;               p.vy = Math.abs(p.vy); }
             if (p.y + p.r > cfg.height)   { p.y = cfg.height - p.r; p.vy = -Math.abs(p.vy); }
         }
+
+        // Recompute network connections once per tick, reused by every display's render call
+        // below instead of each one redoing this O(n^2) pass from scratch.
+        if (cfg.mode === 'network') {
+            const cd2 = cfg.connectDistance * cfg.connectDistance;
+            const lines: NetworkLine[] = [];
+            for (let i = 0; i < ps.length; i++) {
+                for (let j = i + 1; j < ps.length; j++) {
+                    const dx = ps[i].x - ps[j].x;
+                    const dy = ps[i].y - ps[j].y;
+                    const d2 = dx * dx + dy * dy;
+                    if (d2 < cd2) {
+                        const dist = Math.sqrt(d2);
+                        lines.push({
+                            x1: ps[i].x, y1: ps[i].y, x2: ps[j].x, y2: ps[j].y,
+                            opacity: (1 - dist / cfg.connectDistance) * cfg.opacity,
+                        });
+                    }
+                }
+            }
+            pano.lines = lines;
+        }
     }
 
     /**
@@ -183,27 +219,18 @@ export class ParticleEngine {
     renderPanoramaSlice(key: string, sliceOffsetX: number, canvasX = 0, canvasY = 0): string {
         const pano = this.panoramas.get(key);
         if (!pano) return '';
-        const { config: cfg, particles: ps } = pano;
+        const { config: cfg, particles: ps, lines } = pano;
         const parts: string[] = [];
         const col = cfg.color;
         const op = cfg.opacity;
 
         if (cfg.mode === 'network') {
-            const cd2 = cfg.connectDistance * cfg.connectDistance;
-            for (let i = 0; i < ps.length; i++) {
-                for (let j = i + 1; j < ps.length; j++) {
-                    const dx = ps[i].x - ps[j].x;
-                    const dy = ps[i].y - ps[j].y;
-                    if (dx * dx + dy * dy < cd2) {
-                        const dist = Math.sqrt(dx * dx + dy * dy);
-                        const lo = ((1 - dist / cfg.connectDistance) * op).toFixed(2);
-                        const x1 = (ps[i].x - sliceOffsetX + canvasX).toFixed(1);
-                        const y1 = (ps[i].y + canvasY).toFixed(1);
-                        const x2 = (ps[j].x - sliceOffsetX + canvasX).toFixed(1);
-                        const y2 = (ps[j].y + canvasY).toFixed(1);
-                        parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="2.5" opacity="${lo}"/>`);
-                    }
-                }
+            for (const line of lines) {
+                const x1 = (line.x1 - sliceOffsetX + canvasX).toFixed(1);
+                const y1 = (line.y1 + canvasY).toFixed(1);
+                const x2 = (line.x2 - sliceOffsetX + canvasX).toFixed(1);
+                const y2 = (line.y2 + canvasY).toFixed(1);
+                parts.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="2.5" opacity="${line.opacity.toFixed(2)}"/>`);
             }
         }
 

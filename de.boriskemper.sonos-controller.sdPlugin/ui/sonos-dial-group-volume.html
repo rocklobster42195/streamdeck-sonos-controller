@@ -1,0 +1,123 @@
+﻿﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SONOS Dial Group Volume Settings</title>
+    <script src="i18n.js" defer></script>
+    <script src="sdpi-components.js" defer></script>
+    <style>
+        :root { color-scheme: dark; }
+        #pc-row, #ps-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+        #pcRange, #psRange { flex: 1; min-width: 0; }
+        .num-field {
+            width: 46px;
+            background: var(--sdpi-background, #1e1e1e);
+            color: var(--sdpi-color, #ccc);
+            border: 1px solid var(--sdpi-borderColor, #555);
+            border-radius: 3px;
+            padding: 3px 4px;
+            text-align: center;
+            font-size: 12px;
+            font-family: inherit;
+        }
+        .num-field:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
+        .hidden { display: none !important; }
+    </style>
+  </head>
+
+  <body>
+    <sdpi-item label="SONOS Group" data-i18n="sonos_group">
+        <sdpi-select setting="groupIp" datasource="get-groups" loading="Fetching groups…" data-i18n-loading="fetching_groups" hot-reload>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="">
+        <sdpi-item-value style="font-size:11px; color:#888; line-height:1.4" data-i18n-html="group_preset_hint">
+            Long-press the touch strip to save every speaker's current volume as a preset.<br>
+            Tap to recall it.
+        </sdpi-item-value>
+    </sdpi-item>
+    <sdpi-item label="Show text" data-i18n="show_text">
+        <sdpi-checkbox setting="showText"></sdpi-checkbox>
+    </sdpi-item>
+    <sdpi-item label="Alignment" data-i18n="alignment">
+        <sdpi-select setting="align" datasource="get-align-options"></sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Background" data-i18n="background">
+        <sdpi-select setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
+    </sdpi-item>
+    <sdpi-item id="pcItem" label="Particle count" data-i18n="particle_count" class="hidden">
+        <div id="pc-row">
+            <sdpi-range id="pcRange" setting="particleCount" min="5" max="40" step="1"></sdpi-range>
+            <input type="number" id="pcNumber" class="num-field" min="5" max="40" step="1" title="Particle count">
+        </div>
+    </sdpi-item>
+    <sdpi-item id="psItem" label="Particle speed" data-i18n="particle_speed" class="hidden">
+        <div id="ps-row">
+            <sdpi-range id="psRange" setting="particleSpeed" min="1" max="10" step="1"></sdpi-range>
+            <input type="number" id="psNumber" class="num-field" min="1" max="10" step="1" title="Particle speed">
+        </div>
+    </sdpi-item>
+
+    <script>
+        var pcRange     = document.getElementById('pcRange');
+        var pcNumber    = document.getElementById('pcNumber');
+        var psRange     = document.getElementById('psRange');
+        var psNumber    = document.getElementById('psNumber');
+        var pcItem      = document.getElementById('pcItem');
+        var psItem      = document.getElementById('psItem');
+        var inPanorama  = false;
+        var currentVizMode = 'none';
+
+        function updateParticleVisibility() {
+            var show = currentVizMode === 'particles' && !inPanorama;
+            pcItem.classList.toggle('hidden', !show);
+            psItem.classList.toggle('hidden', !show);
+        }
+
+        function wireSlider(range, number) {
+            range.addEventListener('valuechange', function (e) { number.value = e.target.value; });
+            number.addEventListener('change', function () {
+                var min = +number.min, max = +number.max;
+                var n = Math.max(min, Math.min(max, parseInt(number.value) || min));
+                number.value = n;
+                range.value = n;
+                range.dispatchEvent(new InputEvent('input', { bubbles: true }));
+            });
+        }
+
+        wireSlider(pcRange, pcNumber);
+        wireSlider(psRange, psNumber);
+
+        document.querySelector('sdpi-select[setting="visualizerMode"]').addEventListener('valuechange', function(e) {
+            currentVizMode = e.target.value;
+            updateParticleVisibility();
+        });
+
+        document.addEventListener('settingsDidChange', function (ev) {
+            var s = ev.detail || {};
+            if (s.visualizerMode != null) currentVizMode = s.visualizerMode;
+            if (s.particleCount  != null) pcNumber.value  = s.particleCount;
+            if (s.particleSpeed  != null) psNumber.value  = s.particleSpeed;
+            updateParticleVisibility();
+        });
+
+        document.addEventListener('sendToPropertyInspector', function (e) {
+            var d = e && e.detail;
+            if (d && d.event === 'particle-state') {
+                inPanorama = !!d.inPanorama;
+                updateParticleVisibility();
+            }
+        });
+
+        (function tryClient(n) {
+            if (window.streamDeckClient) {
+                streamDeckClient.sendToPlugin({ event: 'get-particle-state' });
+            } else if (n > 0) {
+                setTimeout(function () { tryClient(n - 1); }, 100);
+            }
+        }(20));
+
+    </script>
+  </body>
+</html>

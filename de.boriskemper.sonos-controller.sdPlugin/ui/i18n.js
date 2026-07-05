@@ -9,6 +9,8 @@
     var dict = {
         de: {
             sonos_device:       'SONOS-Gerät',
+            sonos_group:        'SONOS-Gruppe',
+            fetching_groups:    'Gruppen werden geladen…',
             fetching_devices:   'Geräte werden geladen…',
             fetching_favorites: 'Favoriten werden geladen…',
             choose_device:      '-- Gerät wählen --',
@@ -51,9 +53,12 @@
             show_text:          'Text anzeigen',
             show_text_yes:      'Lautstärke % und Gerätename',
             show_text_no:       'Nur Tortendiagramm',
+            group_preset_hint:  'Lange drücken, um die aktuelle Lautstärke jedes Lautsprechers als Preset zu speichern.<br>Tippen zum Wiederherstellen.',
         },
         es: {
             sonos_device:       'Dispositivo SONOS',
+            sonos_group:        'Grupo SONOS',
+            fetching_groups:    'Cargando grupos…',
             fetching_devices:   'Cargando dispositivos…',
             fetching_favorites: 'Cargando favoritos…',
             choose_device:      '-- Elegir dispositivo --',
@@ -96,6 +101,7 @@
             show_text:          'Mostrar texto',
             show_text_yes:      'Volumen % y nombre del dispositivo',
             show_text_no:       'Solo gráfico circular',
+            group_preset_hint:  'Mantén pulsado para guardar el volumen actual de cada altavoz como preset.<br>Toca para restaurarlo.',
         },
     };
 

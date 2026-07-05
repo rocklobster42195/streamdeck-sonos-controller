@@ -20,7 +20,8 @@
         "Displays current track info and controls volume.": "Displays current track info and controls volume.",
         "Mute": "Mute",
         "Adjust Volume": "Adjust Volume",
-        "Preset Volume": "Preset Volume",
+        "Recall preset (hold: save preset)": "Recall preset (hold: save preset)",
+        "Recall group preset (hold: save preset)": "Recall group preset (hold: save preset)",
         "Play selected favorite": "Play selected favorite",
         "Browse favorites list": "Browse favorites list",
         "Return to now playing": "Return to now playing",
@@ -48,6 +49,10 @@
         "Next Track": "Next Track",
         "Previous Track": "Previous Track",
         "Toggle Shuffle": "Toggle Shuffle",
-        "Toggle Repeat": "Toggle Repeat"
+        "Toggle Repeat": "Toggle Repeat",
+        "Group Volume": "Group Volume",
+        "Control the volume of an entire SONOS group with a dial.": "Control the volume of an entire SONOS group with a dial.",
+        "Mute group": "Mute group",
+        "Adjust group volume": "Adjust group volume"
     }
 }

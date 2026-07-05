@@ -20,7 +20,7 @@
         "Displays current track info and controls volume.": "Zeigt aktuelle Track-Informationen und steuert die Lautstärke.",
         "Mute": "Stummschalten",
         "Adjust Volume": "Lautstärke anpassen",
-        "Preset Volume": "Lautstärke-Preset",
+        "Recall preset (hold: save preset)": "Preset abrufen (halten: Preset speichern)",
         "Play selected favorite": "Ausgewählten Favoriten abspielen",
         "Browse favorites list": "Favoritenliste durchsuchen",
         "Return to now playing": "Zur aktuellen Wiedergabe zurückkehren",
@@ -48,6 +48,11 @@
         "Next Track": "Nächster Titel",
         "Previous Track": "Vorheriger Titel",
         "Toggle Shuffle": "Zufallswiedergabe",
-        "Toggle Repeat": "Wiederholen"
+        "Toggle Repeat": "Wiederholen",
+        "Group Volume": "Gruppenlautstärke",
+        "Control the volume of an entire SONOS group with a dial.": "Steuert die Lautstärke einer ganzen SONOS-Gruppe per Regler.",
+        "Mute group": "Gruppe stummschalten",
+        "Adjust group volume": "Gruppenlautstärke anpassen",
+        "Recall group preset (hold: save preset)": "Gruppen-Preset abrufen (halten: Preset speichern)"
     }
 }

@@ -82,12 +82,35 @@
 				"TriggerDescription": {
 					"Push": "Mute",
 					"Rotate": "Adjust Volume",
-					"Touch": "Preset Volume"
+					"Touch": "Recall preset (hold: save preset)"
 				}
 			},
 			"States": [
 				{
 					"Image": "imgs/actions/sonos-dial-volume/icon"
+				}
+			]
+		},
+		{
+			"Name": "Group Volume",
+			"UUID": "de.boriskemper.sonos-controller.sonos-dial-group-volume",
+			"Icon": "imgs/actions/sonos-dial-group-volume/icon",
+			"Tooltip": "Control the volume of an entire SONOS group with a dial.",
+			"PropertyInspectorPath": "ui/sonos-dial-group-volume.html",
+			"Controllers": [
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/canvas.json",
+				"TriggerDescription": {
+					"Push": "Mute group",
+					"Rotate": "Adjust group volume",
+					"Touch": "Recall group preset (hold: save preset)"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/sonos-dial-group-volume/icon"
 				}
 			]
 		},

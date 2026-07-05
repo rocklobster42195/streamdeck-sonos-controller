@@ -123,6 +123,11 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             const oldController = this.controllers.get(context)!;
             oldController.unregisterTransportStateCallback(context);
             oldController.unregisterTrackInfoCallback(context);
+            // Must release here — getController() below unconditionally increments refCount,
+            // so skipping this leaked one refCount per re-init (every onWillAppear/settings
+            // change), permanently orphaning the controller and its polling/event timers once
+            // this instance eventually disappears (onWillDisappear only releases once).
+            sonosDeviceManager.releaseController(oldController.deviceIp);
             this.controllers.delete(context);
         }
         this.currentCover.delete(context);

@@ -9,6 +9,12 @@ type ControllerEntry = {
 class SonosDeviceManager {
     private controllerEntries: Map<string, ControllerEntry> = new Map();
     private pendingInitializations: Map<string, Promise<SonosDeviceController>> = new Map();
+    // Counts releaseController() calls that arrived while a getController() for the same IP was
+    // still initializing. Without this, such a release found no entry yet (only created once
+    // initialize() resolves) and was silently dropped — the controller would then start with
+    // refCount=1 despite the caller already considering it released, leaking it (and its
+    // background polling/event timers) forever. See feedback-volume-dial-animation-tuning memory.
+    private pendingReleases: Map<string, number> = new Map();
 
     public async getController(ip: string): Promise<SonosDeviceController> {
         const entry = this.controllerEntries.get(ip);
@@ -35,14 +41,24 @@ class SonosDeviceManager {
             }
             return controller;
         }
-        
+
         const promise = (async () => {
             try {
                 streamDeck.logger.debug(`[SonosDeviceManager] Creating new controller for IP: ${ip}`);
                 const controller = new SonosDeviceController(ip);
                 await controller.initialize();
-                // The first request gets a refCount of 1.
-                this.controllerEntries.set(ip, { controller, refCount: 1 });
+
+                // Account for any releases that arrived while we were still initializing.
+                const queuedReleases = this.pendingReleases.get(ip) ?? 0;
+                this.pendingReleases.delete(ip);
+                const refCount = 1 - queuedReleases;
+                if (refCount <= 0) {
+                    streamDeck.logger.debug(`[SonosDeviceManager] Controller for IP: ${ip} was released before initialization finished — destroying immediately.`);
+                    controller.destroy();
+                    return controller;
+                }
+
+                this.controllerEntries.set(ip, { controller, refCount });
                 return controller;
             } finally {
                 this.pendingInitializations.delete(ip);
@@ -64,9 +80,16 @@ class SonosDeviceManager {
                 entry.controller.destroy();
                 this.controllerEntries.delete(ip);
             }
-        } else {
-            streamDeck.logger.warn(`[SonosDeviceManager] Attempted to release a controller for an unknown IP: ${ip}`);
+            return;
         }
+
+        if (this.pendingInitializations.has(ip)) {
+            this.pendingReleases.set(ip, (this.pendingReleases.get(ip) ?? 0) + 1);
+            streamDeck.logger.debug(`[SonosDeviceManager] Queued release for IP: ${ip} — initialization still in flight.`);
+            return;
+        }
+
+        streamDeck.logger.warn(`[SonosDeviceManager] Attempted to release a controller for an unknown IP: ${ip}`);
     }
 }
 

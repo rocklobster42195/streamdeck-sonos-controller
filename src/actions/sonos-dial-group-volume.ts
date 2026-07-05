@@ -10,19 +10,21 @@ import streamDeck, {
     DidReceiveSettingsEvent,
     WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
-import { SonosDeviceController } from "../sonos/SonosDeviceController";
+import { sonosGroupManager } from "../sonos/SonosGroupManager";
+import { SonosGroupController } from "../sonos/SonosGroupController";
 import { VolumeInfo } from "../sonos/SonosTypes";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
 import { particleEngine } from "../utils/ParticleEngine";
 import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset } from "./sonos-dial-particles";
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { piT } from "../utils/pi-i18n";
 
-type SonosDialVolumeSettings = {
-    deviceIp?: string;
-    presetVolume?: number;
+type SonosDialGroupVolumeSettings = {
+    groupIp?: string;
+    // Per-member volumes captured via long-touch — host -> volume. Deliberately not a single
+    // absolute number: a group preset should restore each speaker's own balance (e.g. a Port at
+    // 50% next to satellites at 20%), not flatten everyone to the same level.
+    presetMemberVolumes?: Record<string, number>;
     align?: 'left' | 'center' | 'right';
     showText?: boolean;
     visualizerMode?: 'none' | 'particles';
@@ -34,17 +36,17 @@ interface DialState {
     volume?: number;
     displayVolume?: number;
     isMuted?: boolean;
-    deviceName?: string;
+    groupName?: string;
 }
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-volume" })
-export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
-    private controllers: Map<string, SonosDeviceController> = new Map();
+@action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-group-volume" })
+export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSettings> {
+    private controllers: Map<string, SonosGroupController> = new Map();
     private states: Map<string, DialState> = new Map();
-    private settingsMap: Map<string, SonosDialVolumeSettings> = new Map();
+    private settingsMap: Map<string, SonosDialGroupVolumeSettings> = new Map();
     private animTimers: Map<string, NodeJS.Timeout> = new Map();
     private contextColumns: Map<string, number> = new Map();
-    private rotateSend: Map<string, { target: number; timer?: NodeJS.Timeout; sending: boolean; resendNeeded: boolean; lastSentAt: number }> = new Map();
+    private rotateSend: Map<string, { pendingDelta: number; timer?: NodeJS.Timeout; sending: boolean; lastSentAt: number }> = new Map();
     private feedbackSuppressUntil: Map<string, number> = new Map();
     private volumeAnimTimers: Map<string, NodeJS.Timeout> = new Map();
     private presetSavedUntil: Map<string, number> = new Map();
@@ -55,18 +57,18 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
     // Brief on-device confirmation that a long-touch preset save succeeded — dial actions have
     // no showOk()/showAlert()-style flash for this, so swap the pie for a checkmark momentarily.
     private flashPresetSaved(context: string): void {
-        this.presetSavedUntil.set(context, Date.now() + SonosDialVolume.PRESET_SAVED_FLASH_MS);
+        this.presetSavedUntil.set(context, Date.now() + SonosDialGroupVolume.PRESET_SAVED_FLASH_MS);
         void this.renderDial(context);
         setTimeout(() => {
             this.presetSavedUntil.delete(context);
             void this.renderDial(context);
-        }, SonosDialVolume.PRESET_SAVED_FLASH_MS);
+        }, SonosDialGroupVolume.PRESET_SAVED_FLASH_MS);
     }
 
     private onVolumeInfoChanged(context: string, volumeInfo: VolumeInfo): void {
         // While the user is actively turning the dial, our own optimistic value is more
         // current than feedback echoed back from Sonos (which can arrive out of order
-        // relative to the rapid-fire SetVolume calls and briefly report a stale volume).
+        // relative to the rapid-fire SetGroupVolume calls and briefly report a stale volume).
         if (Date.now() < (this.feedbackSuppressUntil.get(context) ?? 0)) return;
         const state = this.states.get(context);
         if (state) {
@@ -104,49 +106,54 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
     }
 
     // Throttled (not debounced): during continuous rotation a send must go out roughly every
-    // SEND_THROTTLE_MS so the actual Sonos volume keeps pace, instead of only jumping once
-    // the user stops turning (which reads as "very slow" to react while spinning fast).
-    private scheduleVolumeSend(context: string, controller: SonosDeviceController, target: number): void {
+    // SEND_THROTTLE_MS so the actual group volume keeps pace, instead of only jumping once the
+    // user stops turning. Accumulates raw tick deltas (rather than tracking an absolute target)
+    // so the send never depends on a locally cached "current volume" baseline that could go
+    // stale mid-rotation and produce a wrong (jumpy) relative adjustment.
+    private scheduleVolumeAdjust(context: string, controller: SonosGroupController, delta: number): void {
         let entry = this.rotateSend.get(context);
         if (!entry) {
-            entry = { target, sending: false, resendNeeded: false, lastSentAt: 0 };
+            entry = { pendingDelta: delta, sending: false, lastSentAt: 0 };
             this.rotateSend.set(context, entry);
         } else {
-            entry.target = target;
+            entry.pendingDelta += delta;
         }
 
-        if (entry.sending) {
-            entry.resendNeeded = true;
-            return;
-        }
+        if (entry.sending) return; // flushVolumeAdjust's finally block will pick up the accumulated delta.
 
         const elapsed = Date.now() - entry.lastSentAt;
-        if (elapsed >= SonosDialVolume.SEND_THROTTLE_MS) {
+        if (elapsed >= SonosDialGroupVolume.SEND_THROTTLE_MS) {
             if (entry.timer) { clearTimeout(entry.timer); entry.timer = undefined; }
-            void this.flushVolumeSend(context, controller);
+            void this.flushVolumeAdjust(context, controller);
         } else if (!entry.timer) {
-            entry.timer = setTimeout(() => void this.flushVolumeSend(context, controller), SonosDialVolume.SEND_THROTTLE_MS - elapsed);
+            entry.timer = setTimeout(() => void this.flushVolumeAdjust(context, controller), SonosDialGroupVolume.SEND_THROTTLE_MS - elapsed);
         }
-        // else: a timer is already scheduled and will pick up the latest entry.target when it fires.
+        // else: a timer is already scheduled and will flush the accumulated delta when it fires.
     }
 
-    private async flushVolumeSend(context: string, controller: SonosDeviceController): Promise<void> {
+    private async flushVolumeAdjust(context: string, controller: SonosGroupController): Promise<void> {
         const entry = this.rotateSend.get(context);
         if (!entry) return;
         entry.timer = undefined;
         entry.sending = true;
-        entry.resendNeeded = false;
         entry.lastSentAt = Date.now();
-        const target = entry.target;
+        const delta = entry.pendingDelta;
+        entry.pendingDelta = 0;
         try {
-            await controller.setVolume(target);
+            await controller.adjustVolume(delta);
         } catch (e) {
-            streamDeck.logger.error(`SonosDialVolume: error setting volume for ${context}`, e);
+            streamDeck.logger.error(`SonosDialGroupVolume: error adjusting group volume for ${context}`, e);
+            entry.pendingDelta += delta; // don't lose the delta — retry it along with whatever accumulates next.
         } finally {
             entry.sending = false;
             this.feedbackSuppressUntil.set(context, Date.now() + 800);
-            if (entry.resendNeeded) {
-                this.scheduleVolumeSend(context, controller, entry.target);
+            if (entry.pendingDelta !== 0) {
+                const elapsed = Date.now() - entry.lastSentAt;
+                if (elapsed >= SonosDialGroupVolume.SEND_THROTTLE_MS) {
+                    void this.flushVolumeAdjust(context, controller);
+                } else if (!entry.timer) {
+                    entry.timer = setTimeout(() => void this.flushVolumeAdjust(context, controller), SonosDialGroupVolume.SEND_THROTTLE_MS - elapsed);
+                }
             }
         }
     }
@@ -175,7 +182,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         const oldController = this.controllers.get(context);
         if (oldController) {
             oldController.unregisterVolumeCallback(context);
-            sonosDeviceManager.releaseController(oldController.deviceIp);
+            sonosGroupManager.releaseController(oldController.anchorIp);
             this.controllers.delete(context);
         }
         this.states.delete(context);
@@ -188,7 +195,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         this.presetSavedUntil.delete(context);
     }
 
-    async onInstanceUpdate(ev: WillAppearEvent<SonosDialVolumeSettings> | DidReceiveSettingsEvent<SonosDialVolumeSettings>): Promise<void> {
+    async onInstanceUpdate(ev: WillAppearEvent<SonosDialGroupVolumeSettings> | DidReceiveSettingsEvent<SonosDialGroupVolumeSettings>): Promise<void> {
         const context = ev.action.id;
         const settings = ev.payload.settings;
 
@@ -196,7 +203,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         this.settingsMap.set(context, settings);
         this.states.set(context, {});
 
-        if (!settings.deviceIp) {
+        if (!settings.groupIp) {
             void this.renderDial(context);
             return;
         }
@@ -214,71 +221,70 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         }
 
         try {
-            const controller = await sonosDeviceManager.getController(settings.deviceIp);
+            const controller = await sonosGroupManager.getController(settings.groupIp);
             this.controllers.set(context, controller);
             controller.registerVolumeCallback(context, (vi: VolumeInfo) => this.onVolumeInfoChanged(context, vi));
 
-            const [zone, vol] = await Promise.all([controller.getZoneAttributes(), controller.getVolume()]);
+            const vol = await controller.getVolume();
             const state = this.states.get(context);
             if (state) {
-                state.deviceName = zone.CurrentZoneName;
+                state.groupName = controller.getGroupName();
                 state.volume = vol.volume;
                 state.displayVolume = vol.volume;
                 state.isMuted = vol.mute;
             }
             void this.renderDial(context);
         } catch (e) {
-            streamDeck.logger.error(`SonosDialVolume: error getting initial state for ${settings.deviceIp}`, e);
+            streamDeck.logger.error(`SonosDialGroupVolume: error getting initial state for ${settings.groupIp}`, e);
         }
     }
 
-    override async onWillAppear(ev: WillAppearEvent<SonosDialVolumeSettings>): Promise<void> {
+    override async onWillAppear(ev: WillAppearEvent<SonosDialGroupVolumeSettings>): Promise<void> {
         const col = 'coordinates' in ev.payload ? (ev.payload.coordinates as { column: number }).column : 0;
         this.contextColumns.set(ev.action.id, col);
         await this.onInstanceUpdate(ev);
     }
 
-    override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SonosDialVolumeSettings>): Promise<void> {
+    override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SonosDialGroupVolumeSettings>): Promise<void> {
         await this.onInstanceUpdate(ev);
     }
 
-    override async onWillDisappear(ev: WillDisappearEvent<SonosDialVolumeSettings>): Promise<void> {
+    override async onWillDisappear(ev: WillDisappearEvent<SonosDialGroupVolumeSettings>): Promise<void> {
         this.cleanupInstance(ev.action.id);
         this.contextColumns.delete(ev.action.id);
     }
 
-    override async onDialDown(ev: DialDownEvent<SonosDialVolumeSettings>): Promise<void> {
+    override async onDialDown(ev: DialDownEvent<SonosDialGroupVolumeSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         const state = this.states.get(context);
         if (!controller || !state) return;
-        // Use the resolved new-mute value directly instead of waiting for the device's own
-        // echo (UPnP event or next poll tick) to update the icon — that echo can lag by several
-        // seconds, while toggleMute()'s own SOAP round trip resolves almost immediately.
+        // Use the resolved new-mute value directly instead of waiting for each member's own
+        // echo (UPnP event or next poll tick) to update the icon.
         state.isMuted = await controller.toggleMute();
         void this.renderDial(context);
     }
 
-    override async onTouchTap(ev: TouchTapEvent<SonosDialVolumeSettings>): Promise<void> {
+    override async onTouchTap(ev: TouchTapEvent<SonosDialGroupVolumeSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         if (!controller) return;
 
         if (ev.payload.hold) {
-            // Long touch: save the current volume as the new preset.
-            const state = this.states.get(context);
-            if (state?.volume === undefined) return;
-            const settings: SonosDialVolumeSettings = { ...ev.payload.settings, presetVolume: state.volume };
+            // Long touch: save each member's current volume as the new preset.
+            const snapshot = await controller.getMemberVolumeSnapshot();
+            const settings: SonosDialGroupVolumeSettings = { ...ev.payload.settings, presetMemberVolumes: snapshot };
             this.settingsMap.set(context, settings);
             await ev.action.setSettings(settings);
             this.flashPresetSaved(context);
             return;
         }
 
-        await controller.setVolume(ev.payload.settings.presetVolume ?? 50);
+        const preset = ev.payload.settings.presetMemberVolumes;
+        if (preset) await controller.recallMemberVolumes(preset);
     }
 
-    override async onDialRotate(ev: DialRotateEvent<SonosDialVolumeSettings>): Promise<void> {
+    override async onDialRotate(ev: DialRotateEvent<SonosDialGroupVolumeSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         const state = this.states.get(context);
@@ -290,6 +296,10 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         const isFastSpin = Math.abs(ticks) > 3;
         const newVolume = Math.min(100, Math.max(0, state.volume + ticks * (isFastSpin ? 2 : 1)));
         if (newVolume !== state.volume) {
+            // The delta actually applied after clamping to [0, 100] — this is what gets sent to
+            // Sonos, not the absolute newVolume, so the network command never depends on any
+            // locally cached "current group volume" baseline.
+            const appliedDelta = newVolume - state.volume;
             state.volume = newVolume;
             if (isFastSpin) {
                 // Large per-event jump (Stream Deck already coalesced several detents into
@@ -304,18 +314,25 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
             // Suppress immediately so an in-flight echo from a previous tick can't
             // clobber this optimistic value before our own send completes.
             this.feedbackSuppressUntil.set(context, Date.now() + 800);
-            this.scheduleVolumeSend(context, controller, newVolume);
+            this.scheduleVolumeAdjust(context, controller, appliedDelta);
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosDialVolumeSettings>): Promise<void> {
+    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosDialGroupVolumeSettings>): Promise<void> {
         if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            if (ev.payload.event === 'get-devices') {
+            if (ev.payload.event === 'get-groups') {
                 await discoveryPromise;
-                const items = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
+                const seen = new Set<string>();
+                const items: { label: string; value: string }[] = [];
+                for (const d of sonosManager.Devices) {
+                    const coordinator = d.Coordinator ?? d;
+                    if (seen.has(coordinator.Host)) continue;
+                    seen.add(coordinator.Host);
+                    items.push({ label: d.GroupName ?? coordinator.Name, value: coordinator.Host });
+                }
                 streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-devices',
-                    items: [{ label: '-- Choose Device --', value: '' }, ...items],
+                    event: 'get-groups',
+                    items: [{ label: '-- Choose Group --', value: '' }, ...items],
                 });
             }
             if (ev.payload.event === 'get-particle-state') {
@@ -381,7 +398,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         return [`<g transform="translate(${cx - rOuter},${cy - rOuter}) scale(${scale.toFixed(3)})"><path fill="#4CAF50" d="${mdiCheck}"/></g>`];
     }
 
-    private buildTextParts(cx: number, cy: number, volume: number, isMuted: boolean, deviceName: string, align: string, showText: boolean): string[] {
+    private buildTextParts(cx: number, cy: number, volume: number, isMuted: boolean, groupName: string, align: string, showText: boolean): string[] {
         if (!showText) return [];
 
         const volumeText = isMuted ? 'MUTE' : `${volume}%`;
@@ -398,7 +415,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
             ];
         }
 
-        const name = deviceName.replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] ?? c));
+        const name = groupName.replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] ?? c));
         const textX = align === 'right' ? 55 : 145;
         const chipW = 90;
         const chipH = name ? 42 : 26;
@@ -421,12 +438,12 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         const showText = settings?.showText ?? true;
         const visualizerMode = settings?.visualizerMode ?? 'none';
 
-        if (!settings?.deviceIp) {
+        if (!settings?.groupIp) {
             const svg = [
                 '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                 '<rect width="200" height="100" fill="#0a0a0a"/>',
                 '<text x="100" y="48" fill="#2a2a2a" font-family="Arial,sans-serif" font-size="34" text-anchor="middle">♪</text>',
-                '<text x="100" y="68" fill="#333" font-family="Arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="2">SONOS</text>',
+                '<text x="100" y="68" fill="#333" font-family="Arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="2">GROUP</text>',
                 '</svg>',
             ].join('');
             await sdAction.setFeedback({
@@ -438,7 +455,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         const volume = state?.volume ?? 0;
         const displayVolume = state?.displayVolume ?? volume;
         const isMuted = state?.isMuted ?? false;
-        const deviceName = state?.deviceName ?? '';
+        const groupName = state?.groupName ?? '';
         const cx = align === 'center' ? 100 : align === 'right' ? 150 : 50;
         const cy = 50;
 
@@ -446,7 +463,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         const pieParts = showSavedFlash
             ? this.buildSavedIcon(cx, cy)
             : this.buildPieParts(cx, cy, displayVolume, isMuted, '#CCCCCC');
-        const textParts = this.buildTextParts(cx, cy, volume, isMuted, deviceName, align, showText);
+        const textParts = this.buildTextParts(cx, cy, volume, isMuted, groupName, align, showText);
 
         const panoramaKey = visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
         const standaloneParticles = visualizerMode === 'particles' && !panoramaKey;

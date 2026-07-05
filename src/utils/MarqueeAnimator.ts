@@ -58,7 +58,7 @@ export class MarqueeAnimator {
             speed,
             pauseTicks: 0,
             pauseDuration,
-            availableWidth
+            availableWidth,
         };
 
         this.states.set(context, state);

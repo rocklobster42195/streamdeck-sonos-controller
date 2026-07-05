@@ -81,8 +81,12 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
         }
 
         try {
+            // Always release before reacquiring, even when deviceIp is unchanged — getController()
+            // below unconditionally increments refCount, so releasing only on an IP change leaked
+            // one refCount per settings change (onDidReceiveSettings wipes initializedHash above,
+            // so the early-return dedup never actually prevents this path from running).
             const oldController = this.controllers.get(context);
-            if (oldController && oldController.deviceIp !== deviceIp) {
+            if (oldController) {
                 oldController.unregisterPlayModeCallback(context);
                 oldController.unregisterTrackInfoCallback(context);
                 sonosDeviceManager.releaseController(oldController.deviceIp);

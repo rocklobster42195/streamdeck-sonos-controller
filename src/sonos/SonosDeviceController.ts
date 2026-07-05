@@ -28,6 +28,13 @@ export class SonosDeviceController {
   private currentTrack: TrackInfo | undefined;
   // Only ever set when a cover is successfully loaded; never cleared by track events with no art.
   private lastKnownCover: string | undefined;
+  // Bounds the "still missing" cover retry in the poll loop below — without this it retried an
+  // HTTP fetch every single 8s tick forever whenever a track's cover genuinely never loads (e.g.
+  // a radio stream with no logo), flooding logs and network with failed requests indefinitely
+  // for the lifetime of the controller. Resets when playback stops so a later track gets a fresh
+  // set of attempts.
+  private coverFetchAttempts = 0;
+  private static readonly MAX_COVER_FETCH_ATTEMPTS = 5;
 
   static isRadioStream(uri: string | undefined): boolean {
     if (!uri) return false;
@@ -91,6 +98,8 @@ export class SonosDeviceController {
         if (ts !== this.lastPolledTransportState) {
           this.lastPolledTransportState = ts;
           this.transportStateCallbacks.forEach(cb => cb(ts));
+          // Give a later (possibly different) track a fresh set of cover-fetch attempts.
+          if (ts !== 'PLAYING') this.coverFetchAttempts = 0;
         }
 
         const newVol = volInfo.CurrentVolume;
@@ -102,10 +111,13 @@ export class SonosDeviceController {
         }
 
         // Re-fetch cover if still missing while playing (e.g. device was not yet online after standby).
-        if (ts === 'PLAYING' && !this.lastKnownCover) {
+        // Bounded — see coverFetchAttempts comment above.
+        if (ts === 'PLAYING' && !this.lastKnownCover && this.coverFetchAttempts < SonosDeviceController.MAX_COVER_FETCH_ATTEMPTS) {
+          this.coverFetchAttempts++;
           const cover = await this.getCurrentTrackCover().catch(() => undefined);
           if (cover) {
             this.lastKnownCover = cover;
+            this.coverFetchAttempts = 0;
             if (!this.currentTrack) this.currentTrack = { albumArtDataUri: cover } as TrackInfo;
             else this.currentTrack.albumArtDataUri = cover;
             this.trackInfoCallbacks.forEach(cb => cb(this.currentTrack!));

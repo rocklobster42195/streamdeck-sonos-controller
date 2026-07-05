@@ -576,16 +576,19 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         // With text-anchor="end", long titles overflow leftward into adjacent displays naturally.
         const textAnchorX = 196 + (maxCol - myCol) * DISPLAY_W;
 
+        const titleW = trackInfo?.title ? this.estimateTextWidth(trackInfo.title, 20, true) : 0;
+        const artistW = trackInfo?.artist ? this.estimateTextWidth(trackInfo.artist, 15) : 0;
+
         const svg = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
             '<defs>',
             '  <clipPath id="c"><rect width="200" height="100"/></clipPath>',
-            (showTrackInfo && isRightmost && (trackInfo?.title || trackInfo?.artist)) ? '  <linearGradient id="tg" x1="0" x2="0" y1="0" y2="1"><stop offset="30%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity="0.75"/></linearGradient>' : '',
             '</defs>',
             '<rect width="200" height="100" fill="#000"/>',
             `<g clip-path="url(#c)">${fragment}</g>`,
-            (showTrackInfo && isRightmost && (trackInfo?.title || trackInfo?.artist)) ? '<rect width="200" height="100" fill="url(#tg)"/>' : '',
+            trackInfo?.title ? `<rect x="${textAnchorX - titleW - 4}" y="49" width="${titleW + 8}" height="27" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : '',
             trackInfo?.title ? `<text x="${textAnchorX}" y="72" fill="#fff" font-family="Arial,sans-serif" font-size="20" font-weight="500" text-anchor="end" clip-path="url(#c)">${this.escapeXml(trackInfo.title)}</text>` : '',
+            trackInfo?.artist ? `<rect x="${textAnchorX - artistW - 4}" y="77" width="${artistW + 8}" height="20" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : '',
             trackInfo?.artist ? `<text x="${textAnchorX}" y="93" fill="#aaa" font-family="Arial,sans-serif" font-size="15" text-anchor="end" clip-path="url(#c)">${this.escapeXml(trackInfo.artist)}</text>` : '',
             '</svg>',
         ].join('');
@@ -607,6 +610,10 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             'title': '',
             'indicator': { 'value': indicatorValue },
         }).catch(() => {});
+    }
+
+    private estimateTextWidth(text: string, fontSize: number, bold = false): number {
+        return Math.ceil(text.length * fontSize * (bold ? 0.58 : 0.55)) + 4;
     }
 
     private escapeXml(s: string): string {
