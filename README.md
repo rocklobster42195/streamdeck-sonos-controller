@@ -20,6 +20,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 | **Playback Control** — next · previous · shuffle · repeat | **Volume Dial** — pie chart · mute · preset |
 | **Volume Key** — up · down · mute · preset | **Favorites Dial** — browse & play your favorites list |
 | **Play Favorite** — one tap to play a saved favorite | **Panorama Particles** — ambient art spanning multiple panels |
+| | **Group Volume Dial** — control a whole Sonos group's volume together |
 
 ---
 
@@ -73,11 +74,33 @@ Dedicated volume control with a live pie chart showing the current level. When m
 | Rotate | Adjust volume (±1% per tick, ±2% for fast rotation) |
 | Press | Toggle mute |
 | Touch | Set volume to configured preset |
+| Long-touch | Save the current volume as the new preset |
 
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Preset Volume | Target volume for touch |
+| Show text | Show/hide the volume percentage and device name on the dial |
+| Alignment | Position of the pie: `Left`, `Center`, or `Right` |
+| Background | `None` or `Particles` |
+
+---
+
+### Group Volume Dial *(Stream Deck+ only)*
+
+Controls the volume of an entire Sonos group — all speakers currently grouped together — instead of a single device. Rotating moves every group member by the same number of percentage points, so a speaker that's already louder than the others (e.g. a Sonos Port next to quieter satellites) keeps its relative balance instead of being flattened to match them. Automatically follows the group even if its membership or coordinator changes later.
+
+| Interaction | Effect |
+|-------------|--------|
+| Rotate | Adjust the whole group's volume together |
+| Press | Toggle mute for the entire group |
+| Touch | Recall the saved per-speaker volume preset |
+| Long-touch | Save each speaker's current volume as the preset |
+
+| Setting | Description |
+|---------|-------------|
+| Group | Which Sonos group to control (selected by any of its member speakers) |
+| Show text | Show/hide the volume percentage on the dial |
 | Alignment | Position of the pie: `Left`, `Center`, or `Right` |
 | Background | `None` or `Particles` |
 
