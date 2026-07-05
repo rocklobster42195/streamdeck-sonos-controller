@@ -14,5 +14,8 @@ node_modules/
 # Local docs
 docs/
 
+# Local scratch/WIP files (prototype assets, generator scripts not yet wired in)
+local/
+
 # Editor
 .vscode/
