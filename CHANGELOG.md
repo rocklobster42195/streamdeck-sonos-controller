@@ -4,6 +4,43 @@
 
 ---
 
+## [0.2.7] — 2026-07-05
+
+### Group Volume Dial (new)
+
+- New dial action controlling the volume of an entire Sonos group (all speakers grouped together), following whichever group its selected device currently belongs to — even if membership or the coordinator changes later
+- Rotating adjusts every group member by the same number of percentage points, preserving the balance between speakers (e.g. a Sonos Port already louder than its satellites stays proportionally louder instead of being flattened to match them)
+- Long-touch saves each member's individual volume as a preset; tapping recalls it
+- Mute affects the whole group with a single press
+- Same pie-chart canvas, particle background, and alignment options as the regular Volume Dial
+
+### Volume Dial
+
+- Long-touch now saves the current volume as the new preset and updates the Property Inspector to match
+- Volume percentage text can now be shown at every alignment, including centered — a translucent background chip keeps it legible over the pie or particle background
+- Fixed rare cases where rotating or muting could feel delayed, or the dial's visual update could lag behind actual rotation
+
+### Volume Key
+
+- Mute now updates the icon immediately instead of waiting on the device's own feedback
+
+### Reliability
+
+- Fixed a background connection leak that could accumulate over a long session and gradually slow down volume/playback controls (affected the Volume Key, Play/Pause Toggle, and Playback Control actions)
+- Fixed cover-art fetching retrying forever for tracks with no available artwork (e.g. some radio stations), which could flood logs and background network traffic over time
+- Panorama particle backgrounds no longer redo their full connection-line computation once per display — noticeably reduces load when multiple particle-enabled dials share a panorama
+
+### Track Dial
+
+- Fixed dominant cover color being ignored, particle count/speed controls having no effect, and the dial incorrectly detecting itself as part of a panorama group when used standalone with a particle background
+
+### Property Inspector
+
+- Added missing `lang`/`viewport` meta tags to remaining Property Inspector pages
+- Minor styling cleanup in the Favorites Dial's Property Inspector
+
+---
+
 ## [0.2.6] — 2026-06-29
 
 ### Property Inspector
