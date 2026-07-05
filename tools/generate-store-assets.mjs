@@ -1,11 +1,11 @@
 import sharp from 'sharp';
 import fs from 'fs';
 
-fs.mkdirSync('assets', { recursive: true });
+fs.mkdirSync('store', { recursive: true });
 
 // ── 288×288 Icon ─────────────────────────────────────────────────────────────
 
-const lobsterSrc = 'de.boriskemper.sonos-controller.sdPlugin/assets/lobster_icon.png';
+const lobsterSrc = 'store/lobster_icon.png';
 const { data, info } = await sharp(lobsterSrc)
     .ensureAlpha()
     .raw()
@@ -27,9 +27,9 @@ for (let i = 0; i < info.width * info.height; i++) {
 await sharp(out, { raw: { width: info.width, height: info.height, channels: 4 } })
     .resize(288, 288)
     .png()
-    .toFile('assets/store-icon-288.png');
+    .toFile('store/store-icon-288.png');
 
-console.log('✓ assets/store-icon-288.png (288×288)');
+console.log('✓ store/store-icon-288.png (288×288)');
 
 // ── 1920×960 Thumbnail ───────────────────────────────────────────────────────
 
@@ -128,5 +128,5 @@ ${dotsSvg.join('\n')}
 <text x="${TX}" y="${TY_META}"   fill="${SAGE}"  font-size="28" font-family="Arial, Helvetica, sans-serif" opacity="0.9">▶  Rocklobster</text>
 </svg>`;
 
-await sharp(Buffer.from(svg)).png().toFile('assets/store-thumbnail-1920x960.png');
-console.log('✓ assets/store-thumbnail-1920x960.png (1920×960)');
+await sharp(Buffer.from(svg)).png().toFile('store/store-thumbnail-1920x960.png');
+console.log('✓ store/store-thumbnail-1920x960.png (1920×960)');

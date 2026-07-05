@@ -26,7 +26,10 @@ const config = {
 	plugins: [
         copy({
             targets: [
-                { src: 'assets', dest: sdPlugin }
+                // Only the font is actually needed at runtime (see TitleAnimator.ts) — copying
+                // the whole assets/ folder used to also bundle README screenshots and Marketplace
+                // store images into the shipped .streamDeckPlugin for no reason.
+                { src: 'assets/OpenSans-Bold.ttf', dest: `${sdPlugin}/assets` }
             ]
         }),
 		{

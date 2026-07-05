@@ -47,7 +47,7 @@ const dotsSvg = particles.map(p =>
 );
 
 // Process high-res lobster: brightness → alpha, RGB → white
-const lobsterSrc = 'de.boriskemper.sonos-controller.sdPlugin/assets/lobster_icon.png';
+const lobsterSrc = 'store/lobster_icon.png';
 const { data, info } = await sharp(lobsterSrc)
     .ensureAlpha()
     .raw()
@@ -110,6 +110,6 @@ ${dotsSvg.join('\n')}
 
 </svg>`;
 
-fs.mkdirSync('assets', { recursive: true });
-await sharp(Buffer.from(svg)).png().toFile('assets/store-banner.png');
-console.log('✓ assets/store-banner.png (1280×640)');
+fs.mkdirSync('store', { recursive: true });
+await sharp(Buffer.from(svg)).png().toFile('store/store-banner.png');
+console.log('✓ store/store-banner.png (1280×640)');

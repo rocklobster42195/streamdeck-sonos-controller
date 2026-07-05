@@ -2,13 +2,13 @@ import sharp from 'sharp';
 import fs from 'fs';
 import { mdiPlayCircle, mdiSkipNext, mdiVolumeHigh, mdiStar } from '@mdi/js';
 
-fs.mkdirSync('assets', { recursive: true });
+fs.mkdirSync('store', { recursive: true });
 
 const SAGE = '#87AE73';
 const SAGE_R = 0x87, SAGE_G = 0xAE, SAGE_B = 0x73;
 const W = 1920, H = 960;
 
-const lobsterSrc = 'de.boriskemper.sonos-controller.sdPlugin/assets/lobster_icon.png';
+const lobsterSrc = 'store/lobster_icon.png';
 const { data, info } = await sharp(lobsterSrc).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
 
 const outSage = Buffer.alloc(info.width * info.height * 4);
@@ -96,7 +96,7 @@ ${genParticles(42001)}
 <text x="${IX+20+PROG_W}" y="${PROG_Y-14}" fill="#555" font-size="22" font-family="Arial,Helvetica,sans-serif" text-anchor="end">3:49</text>
 ${eqBarsSvg}
 <text x="${W/2}" y="${H-38}" text-anchor="middle" fill="${SAGE}" font-size="30" font-family="Arial,Helvetica,sans-serif" font-weight="600">Track Dial — live cover art · track info · EQ Effect</text>
-</svg>`, 'assets/store-showcase-track.png');
+</svg>`, 'store/store-showcase-track.png');
 }
 
 // ── Image 2: Favorites Dial — faithful 5× scale mockup of the actual plugin UI
@@ -154,7 +154,7 @@ ${dotsSvg}
 <rect x="${PX+2}" y="${PY+2}" width="${PW-4}" height="${PH-4}" fill="none" stroke="#ffffff" stroke-width="${3*S}" stroke-opacity="0.12" rx="${8*S}"/>
 <!-- Caption -->
 <text x="${W/2}" y="${H-38}" text-anchor="middle" fill="${SAGE}" font-size="30" font-family="Arial,Helvetica,sans-serif" font-weight="600">Favorites Dial — browse &amp; play your Sonos favorites</text>
-</svg>`, 'assets/store-showcase-favorites.png');
+</svg>`, 'store/store-showcase-favorites.png');
 }
 
 // ── Image 3: Key Actions — MDI icons ─────────────────────────────────────────
@@ -198,5 +198,5 @@ ${mdiIcon(mdiStar, kcx[3], kcy, ICON_SIZE)}
 <text x="${kcx[3]}" y="${labelY}" text-anchor="middle" fill="#aaa" font-size="24" font-family="Arial,Helvetica,sans-serif">Play Favorite</text>
 
 <text x="${W/2}" y="${H-38}" text-anchor="middle" fill="${SAGE}" font-size="30" font-family="Arial,Helvetica,sans-serif" font-weight="600">8 actions — keys &amp; dials for full Sonos control</text>
-</svg>`, 'assets/store-showcase-keys.png');
+</svg>`, 'store/store-showcase-keys.png');
 }
