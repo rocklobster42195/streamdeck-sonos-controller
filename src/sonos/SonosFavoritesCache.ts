@@ -216,7 +216,7 @@ private async fetchAndScaleCoverArt(imageUrl: string, title: string): Promise<vo
         const base64Image = `data:image/png;base64,${scaledImageBuffer.toString('base64')}`;
         this.coverArtCache.set(imageUrl, base64Image);
 
-    } catch (error) {
+    } catch {
         streamDeck.logger.debug(`Cover processing for "${title}" skipped.`);
     }
 }

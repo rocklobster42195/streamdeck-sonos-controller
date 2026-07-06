@@ -246,7 +246,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
                 } else {
                     action.showAlert();
                 }
-            } catch (e) {
+            } catch {
                 action.showAlert();
             }
             return;
@@ -258,7 +258,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
                 try {
                     await controller.setVolume(preset);
                     this.longPressExecuted.set(action.id, true);
-                } catch (e) {
+                } catch {
                     action.showAlert();
                 }
             }, 500); // 500ms for long press
@@ -307,7 +307,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
                 case 'vol-up': await controller.volumeUp(2); break;
                 case 'vol-down': await controller.volumeDown(2); break;
             }
-        } catch (e) {
+        } catch {
             action.showAlert();
         }
     }

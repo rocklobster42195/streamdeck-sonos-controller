@@ -1,5 +1,4 @@
 import streamDeck from "@elgato/streamdeck";
-import { SonosDevice } from "@svrooij/sonos";
 import { sonosManager, discoveryPromise } from "./sonos-discovery";
 import { sonosDeviceManager } from "./SonosDeviceManager";
 import { SonosDeviceController } from "./SonosDeviceController";

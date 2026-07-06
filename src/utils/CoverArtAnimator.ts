@@ -1,5 +1,3 @@
-import { Action } from "@elgato/streamdeck";
-
 const FADE_INTERVAL = 50; // ms
 const FADE_STEP = 0.1;
 

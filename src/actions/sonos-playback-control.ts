@@ -165,7 +165,7 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
                 case 'shuffle':  await controller.toggleShuffle(); break;
                 case 'repeat':   await controller.toggleRepeat(); break;
             }
-        } catch (e) {
+        } catch {
             ev.action.showAlert();
         }
     }

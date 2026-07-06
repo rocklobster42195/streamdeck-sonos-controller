@@ -559,7 +559,6 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
 
         const key = this.contextGroupKey.get(context);
         const state = this.instanceStates.get(context);
-        const numDisplays = key ? (this.groupContexts.get(key)?.size ?? 1) : 1;
         const sliceOffsetX = this.getSliceOffset(context);
         const mode = key ? (this.groupDialMode.get(key) ?? 'particles') : 'particles';
 
@@ -568,7 +567,6 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         const myCol = panoramaColumns.get(context) ?? 0;
         const cols = key ? this.colsFromKey(key) : [myCol];
         const maxCol = Math.max(...cols);
-        const isRightmost = myCol === maxCol;
         const showTrackInfo = !!key && (this.groupShowTrackInfo.get(key) ?? false);
         const trackInfo = showTrackInfo ? (this.groupTrackInfo.get(key!) ?? null) : null;
 

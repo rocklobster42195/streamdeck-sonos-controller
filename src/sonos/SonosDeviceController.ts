@@ -250,7 +250,7 @@ export class SonosDeviceController {
         try {
             const actual = await this.getPlayMode();
             this.playModeCallbacks.forEach(cb => cb(actual));
-        } catch (e) {
+        } catch {
             this.playModeCallbacks.forEach(cb => cb(candidate));
         }
         return;
@@ -357,7 +357,7 @@ export class SonosDeviceController {
     return settings.PlayMode;
   }
   async isMuted(): Promise<boolean> {
-    let mute = await this.sonosDevice.RenderingControlService.GetMute({ InstanceID: 0, Channel: "Master" });
+    const mute = await this.sonosDevice.RenderingControlService.GetMute({ InstanceID: 0, Channel: "Master" });
     return mute.CurrentMute;
   }
 
@@ -392,7 +392,7 @@ export class SonosDeviceController {
           try {
             const keys = data && typeof data === 'object' ? Object.keys(data).join(',') : String(data);
             streamDeck.logger.debug(`[AVTransportService Event] keys=${keys}`);
-          } catch (e) { /* ignore logging errors */ }
+          } catch { /* ignore logging errors */ }
           if (typeof data.TransportState === 'string') this.transportStateCallbacks.forEach(cb => cb(data.TransportState));
           if (typeof data.CurrentPlayMode === 'string') this.playModeCallbacks.forEach(cb => cb(data.CurrentPlayMode));
           // Some devices may emit 'PlayMode' instead of 'CurrentPlayMode'
@@ -497,7 +497,7 @@ export class SonosDeviceController {
                 RequestedCount: 1000, 
                 SortCriteria: ''
              });
-          } catch(e) { /* ignore */ }
+          } catch { /* ignore */ }
 
           if (!result || !result.Result || !result.Result.includes('<item')) {
                const hashIndex = favorite.TrackUri.indexOf('#');
@@ -512,7 +512,7 @@ export class SonosDeviceController {
                           RequestedCount: 1000, 
                           SortCriteria: ''
                        });
-                   } catch (e2) {
+                   } catch {
                        try {
                            const encodedId = encodeURIComponent(realObjectId).replace(/%2F/g, '/').replace(/%3A/g, ':');
                            result = await this.sonosDevice.ContentDirectoryService.Browse({
@@ -523,7 +523,7 @@ export class SonosDeviceController {
                               RequestedCount: 1000, 
                               SortCriteria: ''
                            });
-                       } catch(e3) { /* ignore */ }
+                       } catch { /* ignore */ }
                    }
                }
           }
