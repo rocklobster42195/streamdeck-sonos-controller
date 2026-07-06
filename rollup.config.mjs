@@ -4,8 +4,10 @@ import nodeResolve from "@rollup/plugin-node-resolve";
 import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
 import copy from "rollup-plugin-copy";
+import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
+import { generateEffectsRegistry } from "./tools/generate-effects-registry.mjs";
 
 const isWatching = !!process.env.ROLLUP_WATCH;
 const sdPlugin = "de.boriskemper.sonos-controller.sdPlugin";
@@ -36,6 +38,15 @@ const config = {
 			name: "watch-externals",
 			buildStart: function () {
 				this.addWatchFile(`${sdPlugin}/manifest.json`);
+			},
+		},
+		{
+			name: "generate-effects-registry",
+			buildStart: function () {
+				generateEffectsRegistry();
+				for (const dir of fs.readdirSync("src/effects", { withFileTypes: true })) {
+					if (dir.isDirectory()) this.addWatchFile(path.join("src/effects", dir.name, "index.ts"));
+				}
 			},
 		},
 		typescript({

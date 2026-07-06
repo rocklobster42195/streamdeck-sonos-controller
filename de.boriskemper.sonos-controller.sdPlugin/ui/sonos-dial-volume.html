@@ -8,8 +8,8 @@
     <script src="sdpi-components.js" defer></script>
     <style>
         :root { color-scheme: dark; }
-        #pv-row, #pc-row, #ps-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-        #pvRange, #pcRange, #psRange { flex: 1; min-width: 0; }
+        #pv-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+        #pvRange { flex: 1; min-width: 0; }
         .num-field {
             width: 46px;
             background: var(--sdpi-background, #1e1e1e);
@@ -22,7 +22,6 @@
             font-family: inherit;
         }
         .num-field:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
-        .hidden { display: none !important; }
     </style>
   </head>
 
@@ -46,36 +45,10 @@
     <sdpi-item label="Background" data-i18n="background">
         <sdpi-select setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
     </sdpi-item>
-    <sdpi-item id="pcItem" label="Particle count" data-i18n="particle_count" class="hidden">
-        <div id="pc-row">
-            <sdpi-range id="pcRange" setting="particleCount" min="5" max="40" step="1"></sdpi-range>
-            <input type="number" id="pcNumber" class="num-field" min="5" max="40" step="1" title="Particle count">
-        </div>
-    </sdpi-item>
-    <sdpi-item id="psItem" label="Particle speed" data-i18n="particle_speed" class="hidden">
-        <div id="ps-row">
-            <sdpi-range id="psRange" setting="particleSpeed" min="1" max="10" step="1"></sdpi-range>
-            <input type="number" id="psNumber" class="num-field" min="1" max="10" step="1" title="Particle speed">
-        </div>
-    </sdpi-item>
 
     <script>
         var pvRange     = document.getElementById('pvRange');
         var pvNumber    = document.getElementById('pvNumber');
-        var pcRange     = document.getElementById('pcRange');
-        var pcNumber    = document.getElementById('pcNumber');
-        var psRange     = document.getElementById('psRange');
-        var psNumber    = document.getElementById('psNumber');
-        var pcItem      = document.getElementById('pcItem');
-        var psItem      = document.getElementById('psItem');
-        var inPanorama  = false;
-        var currentVizMode = 'none';
-
-        function updateParticleVisibility() {
-            var show = currentVizMode === 'particles' && !inPanorama;
-            pcItem.classList.toggle('hidden', !show);
-            psItem.classList.toggle('hidden', !show);
-        }
 
         function wireSlider(range, number) {
             range.addEventListener('valuechange', function (e) { number.value = e.target.value; });
@@ -89,39 +62,11 @@
         }
 
         wireSlider(pvRange, pvNumber);
-        wireSlider(pcRange, pcNumber);
-        wireSlider(psRange, psNumber);
-
-        document.querySelector('sdpi-select[setting="visualizerMode"]').addEventListener('valuechange', function(e) {
-            currentVizMode = e.target.value;
-            updateParticleVisibility();
-        });
 
         document.addEventListener('settingsDidChange', function (ev) {
             var s = ev.detail || {};
-            if (s.visualizerMode != null) currentVizMode = s.visualizerMode;
-            if (s.presetVolume   != null) pvNumber.value  = s.presetVolume;
-            if (s.particleCount  != null) pcNumber.value  = s.particleCount;
-            if (s.particleSpeed  != null) psNumber.value  = s.particleSpeed;
-            updateParticleVisibility();
+            if (s.presetVolume != null) pvNumber.value = s.presetVolume;
         });
-
-        document.addEventListener('sendToPropertyInspector', function (e) {
-            var d = e && e.detail;
-            if (d && d.event === 'particle-state') {
-                inPanorama = !!d.inPanorama;
-                updateParticleVisibility();
-            }
-        });
-
-        (function tryClient(n) {
-            if (window.streamDeckClient) {
-                streamDeckClient.sendToPlugin({ event: 'get-particle-state' });
-            } else if (n > 0) {
-                setTimeout(function () { tryClient(n - 1); }, 100);
-            }
-        }(20));
-
     </script>
   </body>
 </html>

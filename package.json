@@ -5,7 +5,8 @@
         "icons": "node tools/generate-icons.mjs",
         "lint": "eslint src",
         "lint:fix": "eslint src --fix",
-        "test": "vitest run"
+        "test": "vitest run",
+        "effects:preview": "node tools/run-effects-preview.mjs"
     },
     "type": "module",
     "devDependencies": {

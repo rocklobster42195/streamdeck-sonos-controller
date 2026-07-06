@@ -18,10 +18,15 @@ import { CoverArtAnimator } from "../utils/CoverArtAnimator";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { getDominantColor } from "../utils/colorExtract";
-import { particleEngine } from "../utils/ParticleEngine";
-import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset } from "./sonos-dial-particles";
+import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive, setContextEffectId, registerPanoramaRenderCallback, unregisterPanoramaRenderCallback } from "../effects/PanoramaOrchestrator";
+import { effectRegistry } from "../effects/registry.generated";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { piT } from "../utils/pi-i18n";
+
+// 'none' and 'eq' are not registered effects — everything else is looked up in effectRegistry.
+function isEffectMode(mode?: string): boolean {
+    return !!mode && mode !== 'none' && mode !== 'eq';
+}
 
 type SonosSettings = {
     deviceIp?: string;
@@ -30,9 +35,8 @@ type SonosSettings = {
     fontSize?: number;
     marqueeSpeed?: number;
     marqueePause?: number;
-    visualizerMode?: 'eq' | 'particles' | 'none';
-    particleCount?: number;
-    particleSpeed?: number;
+    // 'none' | 'eq' | any registered effect id (e.g. 'particles', 'boing-ball').
+    visualizerMode?: string;
 };
 
 interface DialState {
@@ -60,8 +64,8 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         if (!state) return;
         state.transportState = transportState;
         const settings = this.settingsMap.get(context);
-        const panoKey0 = settings?.visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
-        const inPanorama = !!(panoKey0 && particleEngine.isPanoramaActive(panoKey0));
+        const panoKey0 = isEffectMode(settings?.visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+        const inPanorama = isPanoramaEffectActive(panoKey0);
         if (transportState === 'PLAYING' || inPanorama) {
             this.startAnimTimer(context);
             if (transportState === 'PLAYING') {
@@ -96,10 +100,8 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 s.dominantColor = color;
                 const visibleColor = this.ensureVisibleColor(color);
                 const pk = panoramaContextGroupKey.get(context);
-                if (pk && particleEngine.isPanoramaActive(pk)) {
-                    particleEngine.transitionPanoramaColor(pk, visibleColor);
-                } else {
-                    particleEngine.setColor(context, visibleColor);
+                if (isPanoramaEffectActive(pk)) {
+                    groupEffects.get(pk!)?.onSettingsChange?.({ color: visibleColor });
                 }
                 void this.renderDial(context);
             }).catch(() => {});
@@ -115,25 +117,25 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         void this.renderDial(context);
     }
 
-    // Drives re-renders for progress bar and animations.
-    // In panorama particles mode the timer stays alive regardless of play state;
-    // the panorama group timer handles physics ticking.
+    // Drives re-renders for progress bar and animations. While in an active effect group
+    // (grouped or solo singleton), the shared tick's render callback drives rendering instead —
+    // this timer just keeps ticking for the progress bar / cover animation, and skips its own
+    // render call to avoid two independent, potentially-out-of-phase render sources for the same
+    // effect (that's what caused it to look briefly "mirrored"/desynced every few bounces).
     private startAnimTimer(context: string): void {
         if (this.animTimers.has(context)) return;
         const timer = setInterval(() => {
             const s = this.states.get(context);
             if (!s) { this.stopAnimTimer(context); return; }
             const settings = this.settingsMap.get(context);
-            const pk1 = settings?.visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
-            const inPanorama = !!(pk1 && particleEngine.isPanoramaActive(pk1));
+            const pk1 = isEffectMode(settings?.visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+            const inPanorama = isPanoramaEffectActive(pk1);
             if (!inPanorama && s.transportState !== 'PLAYING') {
                 this.stopAnimTimer(context);
                 return;
             }
-            // Tick standalone particles only when not in an active panorama group.
-            if (settings?.visualizerMode === 'particles' && !inPanorama) particleEngine.tick(context);
-            void this.renderDial(context);
-        }, 100);
+            if (!inPanorama) void this.renderDial(context);
+        }, 50);
         this.animTimers.set(context, timer);
     }
 
@@ -228,25 +230,17 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
             trackPositionTime: Date.now(),
         });
 
-        if (settings.visualizerMode === 'particles') {
-            // Standalone engine as fallback when no adjacent Panorama Particles dials form a group.
-            particleEngine.init(context, {
-                width: 100, height: 38,
-                color: '#CCCCCC',
-                mode: 'network',
-                connectDistance: 40,
-                minRadius: 1.5,
-                maxRadius: 3,
-                opacity: 0.85,
-                count: settings.particleCount ?? 12,
-                maxSpeed: settings.particleSpeed != null ? settings.particleSpeed / 10 : 0.4,
-            });
-            // Register in shared panorama column map so adjacent Panorama Particles dials
-            // can include this display in their group (auto-adjacency detection).
+        if (isEffectMode(settings.visualizerMode)) {
+            // Register in the shared panorama system — an adjacent dial wanting the SAME effect
+            // merges into one shared instance; otherwise this renders its own effect solo (a
+            // "group" of one is exactly how solo rendering works, see PanoramaOrchestrator).
             const col = this.contextColumns.get(context) ?? 0;
             registerInPanorama(context, col);
+            setContextEffectId(context, settings.visualizerMode!);
+            registerPanoramaRenderCallback(context, () => this.renderDial(context));
         } else {
             unregisterFromPanorama(context);
+            unregisterPanoramaRenderCallback(context);
         }
 
         await this.renderDial(context);
@@ -267,7 +261,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
 
             const state = this.states.get(context)!;
             state.transportState = transportState;
-            if (transportState === 'PLAYING' || settings.visualizerMode === 'particles') this.startAnimTimer(context);
+            if (transportState === 'PLAYING' || isEffectMode(settings.visualizerMode)) this.startAnimTimer(context);
             if (track) state.trackInfo = track;
 
             await this.fetchAndStorePosition(context, controller);
@@ -286,10 +280,8 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                     s.dominantColor = c;
                     const visibleColor = this.ensureVisibleColor(c);
                     const pk = panoramaContextGroupKey.get(context);
-                    if (pk && particleEngine.isPanoramaActive(pk)) {
-                        particleEngine.transitionPanoramaColor(pk, visibleColor);
-                    } else {
-                        particleEngine.setColor(context, visibleColor);
+                    if (isPanoramaEffectActive(pk)) {
+                        groupEffects.get(pk!)?.onSettingsChange?.({ color: visibleColor });
                     }
                     void this.renderDial(context);
                 }).catch(() => {});
@@ -332,7 +324,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
 
         this.stopAnimTimer(context);
         unregisterFromPanorama(context);
-        particleEngine.destroy(context);
+        unregisterPanoramaRenderCallback(context);
 
         const animator = this.animators.get(context);
         if (animator) { animator.destroy(context); this.animators.delete(context); }
@@ -396,20 +388,13 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                     items: [{ label: '-- Choose Device --', value: '' }, ...deviceItems]
                 });
             }
-            if (ev.payload.event === 'get-particle-state') {
-                const pk = panoramaContextGroupKey.get(ev.action.id);
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'particle-state',
-                    inPanorama: !!(pk && particleEngine.isPanoramaActive(pk)),
-                });
-            }
             if (ev.payload.event === 'get-viz-options') {
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-viz-options',
                     items: [
                         { label: piT('None (track info only)'), value: 'none' },
                         { label: piT('EQ Effect'), value: 'eq' },
-                        { label: piT('Particles'), value: 'particles' },
+                        ...[...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })),
                     ],
                 });
             }
@@ -549,13 +534,13 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 }
             }
 
-            const rawPanoKey = visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
-            const panoramaKey = rawPanoKey && particleEngine.isPanoramaActive(rawPanoKey) ? rawPanoKey : undefined;
+            const rawPanoKey = isEffectMode(visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+            const panoramaKey = isPanoramaEffectActive(rawPanoKey) ? rawPanoKey : undefined;
 
             if (panoramaKey) {
-                // Panorama mode: particles as full-canvas background; text layout same as 'none' (bottom-aligned).
+                // Panorama mode: effect as full-canvas background; text layout same as 'none' (bottom-aligned).
                 const sliceOffset = getPanoramaSliceOffset(context);
-                const particleFrag = particleEngine.renderPanoramaSlice(panoramaKey, sliceOffset);
+                const particleFrag = renderPanoramaEffectSlice(panoramaKey, sliceOffset);
 
                 let panoTitleFrag = '';
                 if (settings?.showTrackTitle !== false) {
@@ -597,20 +582,15 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                     '</svg>',
                 ].join('');
             } else {
-                // Eq / standalone-particles layout: dark background, visualizer bottom-left.
-                const isParticles = visualizerMode === 'particles';
-                const visualizer = isPlaying
-                    ? (isParticles
-                        ? `<g clip-path="url(#particleClip)">${particleEngine.render(context, 8, 56)}</g>`
-                        : this.renderEqualizerBars(accentColor, eqAmplitude))
-                    : '';
+                // EQ layout (or a brief transient moment before an effect's group resolves):
+                // dark background, visualizer bottom-left.
+                const visualizer = isPlaying ? this.renderEqualizerBars(accentColor, eqAmplitude) : '';
 
                 svg = [
                     '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                     '<defs>',
                     '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
                     '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
-                    '  <clipPath id="particleClip"><rect x="8" y="56" width="100" height="38"/></clipPath>',
                     '</defs>',
                     '<rect width="200" height="100" fill="black"/>',
                     `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,

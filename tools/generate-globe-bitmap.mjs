@@ -1,0 +1,102 @@
+// One-time generator: rasterizes the world-atlas 110m land polygons into a compact, bit-packed,
+// deflate-compressed bitmap and writes it as a committed TS source file
+// (src/effects/boing-globe/landBitmap.ts). Run manually whenever the source resolution/data
+// changes (rare) via `node tools/generate-globe-bitmap.mjs` — NOT part of the regular build.
+//
+// Why bake this in instead of rasterizing at plugin runtime: topojson-client + world-atlas would
+// otherwise need to ship inside plugin.js and re-rasterize ~50 country polygons on every plugin
+// launch. Baking the result once means Boing Globe only ever needs a ~15KB compressed bitmap and
+// zlib.inflateSync at runtime — no geo libraries in the shipped bundle at all.
+
+import { readFileSync, writeFileSync } from 'fs';
+import { createRequire } from 'module';
+import zlib from 'zlib';
+
+const require = createRequire(import.meta.url);
+const topojson = require('topojson-client');
+
+const BM_W = 720, BM_H = 360;
+const bitmap = new Uint8Array(BM_W * BM_H); // 1 = land, 0 = ocean
+
+function rasterizeRing(ring, value) {
+    // Rings that straddle the antimeridian (small Pacific islands split into a sliver at ±180°
+    // by topojson clipping) must have their longitudes "unwrapped" into a contiguous range
+    // before scanline-filling. Without this, two crossings that are actually ~1° apart across
+    // the dateline (one just under +180°, one just over -180°) sort as ~359° apart (the long way
+    // around) and the fill covers nearly the ENTIRE latitude band as false "land" — this is
+    // exactly what produced a spurious land band from Australia to Chile in an earlier version
+    // (a tiny real Pacific island's clipping sliver, not a real landmass spanning the ocean).
+    //
+    // Deliberately NOT based on the ring's overall longitude bounding box (max-min > 180): huge
+    // continents (Eurasia+Africa) legitimately span more than 180° of real longitude without
+    // ever wrapping, and unwrapping them whole corrupts their western half instead (found via a
+    // second bug this same fix introduced — a good reminder to re-verify after a fix, not just
+    // assume the first anomaly found is the only one). Only treat a ring as a dateline sliver
+    // when EVERY one of its points sits within 10° of ±180° — true for the tiny clipped island
+    // slivers, never true for a real continent.
+    const straddles = ring.every(([lo]) => Math.abs(lo) > 170);
+    const points = straddles ? ring.map(([lo, la]) => [lo < 0 ? lo + 360 : lo, la]) : ring;
+
+    let minLat = Infinity, maxLat = -Infinity;
+    for (const [, la] of points) {
+        if (la < minLat) minLat = la;
+        if (la > maxLat) maxLat = la;
+    }
+    const by0 = Math.max(0, Math.floor((90 - maxLat) / 180 * BM_H) - 1);
+    const by1 = Math.min(BM_H - 1, Math.ceil((90 - minLat) / 180 * BM_H) + 1);
+    const n = points.length;
+
+    for (let by = by0; by <= by1; by++) {
+        const la = 90 - (by + 0.5) / BM_H * 180;
+        const xs = [];
+        for (let i = 0, j = n - 1; i < n; j = i++) {
+            const [xi, yi] = points[i], [xj, yj] = points[j];
+            // Non-straddling rings can still have a real antimeridian-clipping edge (topojson
+            // artifact, not coastline) — skip those. Straddling rings were already unwrapped
+            // above, so every edge in `points` is real and none should be skipped.
+            if (!straddles && Math.abs(xi - xj) >= 180) continue;
+            if ((yi > la) === (yj > la)) continue;
+            xs.push((xj - xi) * (la - yi) / (yj - yi) + xi);
+        }
+        xs.sort((a, b) => a - b);
+        for (let k = 0; k + 1 < xs.length; k += 2) {
+            const bx0 = Math.floor((xs[k] + 180) / 360 * BM_W);
+            const bx1 = Math.ceil((xs[k + 1] + 180) / 360 * BM_W);
+            // Wrap (not clamp) column indices — an unwrapped straddling ring can produce x
+            // slightly above +180 (e.g. 180.1), which must map back to bx near 0, not BM_W-1.
+            for (let bx = bx0; bx <= bx1; bx++) bitmap[by * BM_W + (((bx % BM_W) + BM_W) % BM_W)] = value;
+        }
+    }
+}
+
+const world = JSON.parse(readFileSync('./node_modules/world-atlas/countries-110m.json', 'utf8'));
+const land = topojson.feature(world, world.objects.land);
+const geom = land.type === 'Feature' ? land.geometry : land.features[0].geometry;
+const polys = geom.type === 'MultiPolygon' ? geom.coordinates
+            : geom.type === 'Polygon' ? [geom.coordinates] : [];
+
+for (const poly of polys) {
+    rasterizeRing(poly[0], 1);
+    for (let h = 1; h < poly.length; h++) rasterizeRing(poly[h], 0);
+}
+
+// Bit-pack (8 pixels/byte) then deflate — coastlines compress very well.
+const packed = new Uint8Array(Math.ceil(BM_W * BM_H / 8));
+for (let i = 0; i < bitmap.length; i++) {
+    if (bitmap[i]) packed[i >> 3] |= 1 << (i & 7);
+}
+const compressed = zlib.deflateSync(packed);
+const b64 = compressed.toString('base64');
+
+const out = `// AUTO-GENERATED by tools/generate-globe-bitmap.mjs — committed, not rebuilt automatically.
+// Re-run that script manually if the source resolution/data ever needs to change.
+// Bit-packed (1 bit/pixel, land=1/ocean=0), deflate-compressed, base64-encoded 720x360 world
+// land/ocean bitmap (Natural Earth 110m via world-atlas). Decode with zlib.inflateSync.
+
+export const BM_W = ${BM_W};
+export const BM_H = ${BM_H};
+export const LAND_BITMAP_B64 = '${b64}';
+`;
+
+writeFileSync('src/effects/boing-globe/landBitmap.ts', out);
+console.log(`Wrote src/effects/boing-globe/landBitmap.ts (${b64.length} base64 chars, ${compressed.length} bytes compressed, ${packed.length} bytes packed, ${bitmap.length} source pixels)`);

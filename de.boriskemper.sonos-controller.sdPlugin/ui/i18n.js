@@ -54,6 +54,9 @@
             show_text_yes:      'Lautstärke % und Gerätename',
             show_text_no:       'Nur Tortendiagramm',
             group_preset_hint:  'Lange drücken, um die aktuelle Lautstärke jedes Lautsprechers als Preset zu speichern.<br>Tippen zum Wiederherstellen.',
+            effect:             'Effekt',
+            primary_color:      'Primärfarbe',
+            secondary_color:    'Sekundärfarbe',
         },
         es: {
             sonos_device:       'Dispositivo SONOS',
@@ -102,6 +105,9 @@
             show_text_yes:      'Volumen % y nombre del dispositivo',
             show_text_no:       'Solo gráfico circular',
             group_preset_hint:  'Mantén pulsado para guardar el volumen actual de cada altavoz como preset.<br>Toca para restaurarlo.',
+            effect:             'Efecto',
+            primary_color:      'Color primario',
+            secondary_color:    'Color secundario',
         },
     };
 

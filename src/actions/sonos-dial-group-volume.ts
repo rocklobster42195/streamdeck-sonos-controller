@@ -14,10 +14,15 @@ import { sonosGroupManager } from "../sonos/SonosGroupManager";
 import { SonosGroupController } from "../sonos/SonosGroupController";
 import { VolumeInfo } from "../sonos/SonosTypes";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { particleEngine } from "../utils/ParticleEngine";
-import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset } from "./sonos-dial-particles";
+import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, setContextEffectId, registerPanoramaRenderCallback, unregisterPanoramaRenderCallback } from "../effects/PanoramaOrchestrator";
+import { effectRegistry } from "../effects/registry.generated";
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { piT } from "../utils/pi-i18n";
+
+// 'none' is not a registered effect — everything else is looked up in effectRegistry.
+function isEffectMode(mode?: string): boolean {
+    return !!mode && mode !== 'none';
+}
 
 type SonosDialGroupVolumeSettings = {
     groupIp?: string;
@@ -27,9 +32,8 @@ type SonosDialGroupVolumeSettings = {
     presetMemberVolumes?: Record<string, number>;
     align?: 'left' | 'center' | 'right';
     showText?: boolean;
-    visualizerMode?: 'none' | 'particles';
-    particleCount?: number;
-    particleSpeed?: number;
+    // 'none' | any registered effect id (e.g. 'particles', 'boing-ball').
+    visualizerMode?: string;
 };
 
 interface DialState {
@@ -158,15 +162,18 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
         }
     }
 
+    // While in an active effect group (grouped or solo singleton), the shared tick's render
+    // callback drives rendering instead — this timer just keeps the interval alive and skips its
+    // own render call, avoiding two independent, potentially out-of-phase render sources for the
+    // same effect (that caused a brief "mirrored"/desynced look every few bounces).
     private startAnimTimer(context: string): void {
         if (this.animTimers.has(context)) return;
         const timer = setInterval(() => {
             const settings = this.settingsMap.get(context);
-            if (settings?.visualizerMode !== 'particles') { this.stopAnimTimer(context); return; }
-            const inPanorama = !!panoramaContextGroupKey.get(context);
-            if (!inPanorama) particleEngine.tick(context);
-            void this.renderDial(context);
-        }, 100);
+            if (!isEffectMode(settings?.visualizerMode)) { this.stopAnimTimer(context); return; }
+            const inPanorama = isPanoramaEffectActive(panoramaContextGroupKey.get(context));
+            if (!inPanorama) void this.renderDial(context);
+        }, 50);
         this.animTimers.set(context, timer);
     }
 
@@ -177,8 +184,8 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
 
     private cleanupInstance(context: string): void {
         unregisterFromPanorama(context);
+        unregisterPanoramaRenderCallback(context);
         this.stopAnimTimer(context);
-        particleEngine.destroy(context);
         const oldController = this.controllers.get(context);
         if (oldController) {
             oldController.unregisterVolumeCallback(context);
@@ -208,15 +215,13 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
             return;
         }
 
-        if (settings.visualizerMode === 'particles') {
-            particleEngine.init(context, {
-                width: 200, height: 100, color: '#CCCCCC',
-                mode: 'network', connectDistance: 50,
-                minRadius: 1.5, maxRadius: 3, opacity: 0.85,
-                count: settings.particleCount ?? 20,
-                maxSpeed: settings.particleSpeed != null ? settings.particleSpeed / 10 : 0.4,
-            });
+        if (isEffectMode(settings.visualizerMode)) {
+            // Register in the shared panorama system — an adjacent dial wanting the SAME effect
+            // merges into one shared instance; otherwise this renders its own effect solo (a
+            // "group" of one is exactly how solo rendering works, see PanoramaOrchestrator).
             registerInPanorama(context, this.contextColumns.get(context) ?? 0);
+            setContextEffectId(context, settings.visualizerMode!);
+            registerPanoramaRenderCallback(context, () => this.renderDial(context));
             this.startAnimTimer(context);
         }
 
@@ -335,12 +340,6 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
                     items: [{ label: '-- Choose Group --', value: '' }, ...items],
                 });
             }
-            if (ev.payload.event === 'get-particle-state') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'particle-state',
-                    inPanorama: !!panoramaContextGroupKey.get(ev.action.id),
-                });
-            }
             if (ev.payload.event === 'get-align-options') {
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-align-options',
@@ -356,7 +355,7 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
                     event: 'get-viz-options',
                     items: [
                         { label: piT('None'), value: 'none' },
-                        { label: piT('Particles'), value: 'particles' },
+                        ...[...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })),
                     ],
                 });
             }
@@ -465,17 +464,10 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
             : this.buildPieParts(cx, cy, displayVolume, isMuted, '#CCCCCC');
         const textParts = this.buildTextParts(cx, cy, volume, isMuted, groupName, align, showText);
 
-        const panoramaKey = visualizerMode === 'particles' ? panoramaContextGroupKey.get(context) : undefined;
-        const standaloneParticles = visualizerMode === 'particles' && !panoramaKey;
-
-        let particleFrag = '';
-        if (panoramaKey) {
-            particleFrag = particleEngine.renderPanoramaSlice(panoramaKey, getPanoramaSliceOffset(context));
-        } else if (standaloneParticles) {
-            particleFrag = particleEngine.render(context, 0, 0);
-        }
-
-        const hasParticles = !!(panoramaKey || standaloneParticles);
+        const rawPanoramaKey = isEffectMode(visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+        const panoramaKey = isPanoramaEffectActive(rawPanoramaKey) ? rawPanoramaKey : undefined;
+        const particleFrag = panoramaKey ? renderPanoramaEffectSlice(panoramaKey, getPanoramaSliceOffset(context)) : '';
+        const hasParticles = !!panoramaKey;
         const svgParts: string[] = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
         ];

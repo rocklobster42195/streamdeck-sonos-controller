@@ -3,38 +3,83 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Panorama Particles Settings</title>
+    <title>Panorama Effects Settings</title>
     <script src="i18n.js" defer></script>
     <script src="sdpi-components.js" defer></script>
-    <style>:root { color-scheme: dark; }</style>
+    <style>
+      :root { color-scheme: dark; }
+      .hidden { display: none !important; }
+    </style>
   </head>
 
   <body>
-    <sdpi-item label="SONOS device" data-i18n="sonos_device">
+    <sdpi-item id="deviceItem" label="SONOS device" data-i18n="sonos_device">
       <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
       </sdpi-select>
     </sdpi-item>
 
+    <sdpi-item label="Effect" data-i18n="effect">
+      <sdpi-select setting="effectId" datasource="get-effects"></sdpi-select>
+    </sdpi-item>
+
+    <!-- Particles-specific settings -->
     <sdpi-item id="colorItem" label="Particle color" data-i18n="particle_color">
       <sdpi-color setting="staticColor"></sdpi-color>
     </sdpi-item>
 
-    <sdpi-item label="Track info" data-i18n="track_info">
+    <sdpi-item id="trackInfoItem" label="Track info" data-i18n="track_info">
       <sdpi-checkbox setting="showTrackInfo"></sdpi-checkbox>
     </sdpi-item>
 
+    <!-- Boing Ball-specific settings -->
+    <sdpi-item id="primaryColorItem" label="Primary color" data-i18n="primary_color" class="hidden">
+      <sdpi-color setting="primaryColor"></sdpi-color>
+    </sdpi-item>
+
+    <sdpi-item id="secondaryColorItem" label="Secondary color" data-i18n="secondary_color" class="hidden">
+      <sdpi-color setting="secondaryColor"></sdpi-color>
+    </sdpi-item>
+
     <script>
-      function setColorVisible(deviceIp) {
-        document.getElementById('colorItem').style.display = deviceIp ? 'none' : '';
+      var deviceItem = document.getElementById('deviceItem');
+      var colorItem = document.getElementById('colorItem');
+      var trackInfoItem = document.getElementById('trackInfoItem');
+      var primaryColorItem = document.getElementById('primaryColorItem');
+      var secondaryColorItem = document.getElementById('secondaryColorItem');
+
+      var currentEffectId = 'particles';
+      var currentDeviceIp = '';
+
+      function updateVisibility() {
+        var isParticles = currentEffectId === 'particles' || !currentEffectId;
+        deviceItem.classList.toggle('hidden', !isParticles);
+        trackInfoItem.classList.toggle('hidden', !isParticles);
+        // Particle color only makes sense when there's no device driving the ambient color.
+        colorItem.classList.toggle('hidden', !isParticles || !!currentDeviceIp);
+
+        var isBoingBall = currentEffectId === 'boing-ball';
+        primaryColorItem.classList.toggle('hidden', !isBoingBall);
+        secondaryColorItem.classList.toggle('hidden', !isBoingBall);
       }
 
       // Initial state when PI opens and receives current settings.
-      document.addEventListener('settingsDidChange', (ev) => setColorVisible(ev.detail?.deviceIp));
+      document.addEventListener('settingsDidChange', (ev) => {
+        var s = ev.detail || {};
+        currentEffectId = s.effectId || 'particles';
+        currentDeviceIp = s.deviceIp || '';
+        updateVisibility();
+      });
 
-      // Immediate response to device select changes.
+      // Immediate response to effect/device select changes.
       document.addEventListener('change', (ev) => {
-        if (ev.target?.getAttribute?.('setting') === 'deviceIp') {
-          setColorVisible(ev.detail?.value ?? ev.target?.value);
+        var setting = ev.target?.getAttribute?.('setting');
+        if (setting === 'effectId') {
+          currentEffectId = ev.detail?.value ?? ev.target?.value;
+          updateVisibility();
+        }
+        if (setting === 'deviceIp') {
+          currentDeviceIp = ev.detail?.value ?? ev.target?.value;
+          updateVisibility();
         }
       });
     </script>

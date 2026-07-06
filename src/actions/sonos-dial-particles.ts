@@ -14,88 +14,71 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { getDominantColor } from "../utils/colorExtract";
-import { particleEngine } from "../utils/ParticleEngine";
+import { panoramaOrchestrator, panoramaColumns, panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, safeEffectCall, DISPLAY_W, DISPLAY_H } from "../effects/PanoramaOrchestrator";
+import { effectRegistry } from "../effects/registry.generated";
+import type { EffectInstance } from "../effects/types";
+import type { ParticlesEffectSettings } from "../effects/particles";
+import { piT } from "../utils/pi-i18n";
 
 type ParticlesSettings = {
+    // Which registered effect this dial runs. Optional so existing installs (saved before this
+    // field existed) fall back to the original behavior — see DEFAULT_EFFECT_ID.
+    effectId?: string;
     deviceIp?: string;
     staticColor?: string;
     showTrackInfo?: boolean;
+    // Mirror ParticlesEffectSettings' persisted fields — kept as a separate flat type (not an
+    // intersection) because intersecting with ParticlesEffectSettings breaks the Stream Deck
+    // SDK's JsonObject structural constraint check.
     savedDensity?: number; // particles per display — scales automatically with group size
     savedSpeed?: number;
+    // Boing Ball's settingsSchema fields. Flat and effect-specific rather than namespaced per
+    // effect id (e.g. `effectSettings.boing-ball.primaryColor`) — simplest thing that works with
+    // only two effects; revisit with namespacing once a field-name collision actually happens.
+    primaryColor?: string;
+    secondaryColor?: string;
 };
 
-interface InstanceState {
-    density: number; // particles per display
-    column: number;
-}
+const DEFAULT_EFFECT_ID = 'particles';
+const particlesEffect = effectRegistry.get(DEFAULT_EFFECT_ID)!;
 
-const DISPLAY_W = 200;
-const DISPLAY_H = 100;
 const TICK_INTERVAL = 50;
-const BASE_PER_DISPLAY = 14;
-const MIN_PER_DISPLAY = 4;
-const MAX_PER_DISPLAY = 30;
-const SPEED_MIN = 0.05;
-const SPEED_MAX = 1.5;
-const SPEED_DEFAULT = 0.25;
-const SPEED_STEP = 0.05;
 const DEFAULT_COLOR = '#404040';
-
-// Shared panorama registry — allows other actions (e.g. SonosDialTrack) to join a panorama group.
-export const panoramaColumns = new Map<string, number>();
-export const panoramaContextGroupKey = new Map<string, string>();
-let _scheduleSyncFn: (() => void) | null = null;
-
-export function registerInPanorama(context: string, column: number): void {
-    panoramaColumns.set(context, column);
-    _scheduleSyncFn?.();
-}
-
-export function unregisterFromPanorama(context: string): void {
-    const key = panoramaContextGroupKey.get(context);
-    if (key) panoramaContextGroupKey.delete(context);
-    panoramaColumns.delete(context);
-    _scheduleSyncFn?.();
-}
-
-export function getPanoramaSliceOffset(context: string): number {
-    const col = panoramaColumns.get(context) ?? 0;
-    const key = panoramaContextGroupKey.get(context);
-    if (!key) return 0;
-    const minCol = Math.min(...key.replace('panorama-cols-', '').split(',').map(Number));
-    return (col - minCol) * DISPLAY_W;
-}
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-particles" })
 export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
 
+    constructor() {
+        super();
+        // Registered once at plugin startup (this action is always instantiated in
+        // plugin.ts), independent of whether a Panorama Effects tile is currently placed —
+        // so Track/Volume/Group Volume dials can form a panorama group among themselves too.
+        panoramaOrchestrator.setGroupSyncHandler((grouping) => this.syncGroups(grouping));
+    }
+
     private groupContexts = new Map<string, Set<string>>();
+    // Full membership per group (own tiles AND external participants like Track Dial), used
+    // purely to dispatch a synchronized render after each tick — see PanoramaOrchestrator's
+    // renderCallbacks. `groupContexts` above stays scoped to "own tiles" for settings propagation.
+    private groupAllMembers = new Map<string, string[]>();
     private groupTimers = new Map<string, NodeJS.Timeout>();
     private groupControllers = new Map<string, { controller: SonosDeviceController; ip: string }>();
     private groupStaticColor = new Map<string, string>();
-    private groupDialMode = new Map<string, 'particles' | 'speed'>();
-    private groupSpeed = new Map<string, number>();
+    // Alias to the module-level map (see PanoramaOrchestrator.ts) so Track/Volume/Group Volume
+    // dial can render their own slice of whichever effect is running, without depending on this
+    // action's instance at all.
+    private groupEffects = groupEffects as Map<string, EffectInstance<ParticlesEffectSettings>>;
     private groupTrackInfo = new Map<string, { title: string; artist: string }>();
     private groupShowTrackInfo = new Map<string, boolean>();
 
     private settingsMap = new Map<string, ParticlesSettings>();
-    private instanceStates = new Map<string, InstanceState>();
     // Alias to module-level map so all code using this.contextGroupKey still works.
     private contextGroupKey = panoramaContextGroupKey;
     private renderGen = new Map<string, number>();
 
-    private syncTimer: NodeJS.Timeout | null = null;
     private persistTimers = new Map<string, NodeJS.Timeout>();
 
     // ── Helpers ─────────────────────────────────────────────────────────────
-
-    private panoramaKey(cols: number[]): string {
-        return 'panorama-cols-' + [...cols].sort((a, b) => a - b).join(',');
-    }
-
-    private colsFromKey(key: string): number[] {
-        return key.replace('panorama-cols-', '').split(',').map(Number);
-    }
 
     private getSliceOffset(context: string): number {
         return getPanoramaSliceOffset(context);
@@ -121,43 +104,11 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
     }
 
     // ── Auto-grouping ────────────────────────────────────────────────────────
+    // Group computation itself (column adjacency, connected components, debounced
+    // scheduling) lives in PanoramaOrchestrator; this method is registered there as the
+    // group-sync handler and owns everything effect/device/color-specific.
 
-    /**
-     * Compute connected components from the current column registry.
-     * Adjacent columns (differing by 1) form a group.
-     * Returns Map<groupKey, contexts[]>.
-     */
-    private computeAllGroups(): Map<string, string[]> {
-        const sorted = [...panoramaColumns.entries()]
-            .sort(([, a], [, b]) => a - b);
-        const result = new Map<string, string[]>();
-        let i = 0;
-        while (i < sorted.length) {
-            const cols = [sorted[i][1]];
-            const ctxs = [sorted[i][0]];
-            while (i + 1 < sorted.length && sorted[i + 1][1] === sorted[i][1] + 1) {
-                i++;
-                cols.push(sorted[i][1]);
-                ctxs.push(sorted[i][0]);
-            }
-            result.set(this.panoramaKey(cols), ctxs);
-            i++;
-        }
-        return result;
-    }
-
-    /** Debounce rapid appear/disappear events so one sync handles all at once. */
-    private scheduleSyncGroups(): void {
-        if (this.syncTimer) clearTimeout(this.syncTimer);
-        this.syncTimer = setTimeout(() => {
-            this.syncTimer = null;
-            void this.syncGroups();
-        }, 60);
-    }
-
-    private async syncGroups(): Promise<void> {
-        const newGrouping = this.computeAllGroups();
-
+    private async syncGroups(newGrouping: Map<string, string[]>): Promise<void> {
         // Find contexts whose group key has changed.
         const toRegroup = new Set<string>();
         for (const [key, ctxs] of newGrouping) {
@@ -204,27 +155,72 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         if (persistTimer) { clearTimeout(persistTimer); this.persistTimers.delete(key); }
         const timer = this.groupTimers.get(key);
         if (timer) { clearInterval(timer); this.groupTimers.delete(key); }
+        this.groupAllMembers.delete(key);
         const gc = this.groupControllers.get(key);
         if (gc) {
             gc.controller.unregisterTrackInfoCallback(`pano-color-${key}`);
             sonosDeviceManager.releaseController(gc.ip);
             this.groupControllers.delete(key);
         }
-        particleEngine.destroyPanorama(key);
+        this.groupEffects.get(key)?.destroy?.();
+        this.groupEffects.delete(key);
         // Clear group key for ALL participants, including external actions (e.g. Track Dial).
         for (const [ctx, k] of [...panoramaContextGroupKey.entries()]) {
             if (k === key) panoramaContextGroupKey.delete(ctx);
         }
         this.groupContexts.delete(key);
-        this.groupDialMode.delete(key);
-        this.groupSpeed.delete(key);
         this.groupStaticColor.delete(key);
         this.groupTrackInfo.delete(key);
         this.groupShowTrackInfo.delete(key);
     }
 
+    // Gathers every effect-relevant field from the group's members into one settings bag. Passed
+    // into initPanorama/onSettingsChange regardless of which effect is active — each effect only
+    // reads the keys it cares about (e.g. Particles reads color/savedDensity/savedSpeed, Boing
+    // Ball reads primaryColor/secondaryColor/savedSpeed) and ignores the rest.
+    private gatherEffectSettings(key: string, ctxs: string[]): Record<string, unknown> {
+        let savedDensity: number | undefined;
+        let savedSpeed: number | undefined;
+        let savedColor: string | undefined;
+        let primaryColor: string | undefined;
+        let secondaryColor: string | undefined;
+        for (const ctx of ctxs) {
+            const s = this.settingsMap.get(ctx);
+            if (!s) continue;
+            if (s.savedDensity !== undefined && savedDensity === undefined) savedDensity = s.savedDensity;
+            if (s.savedSpeed !== undefined && savedSpeed === undefined) savedSpeed = s.savedSpeed;
+            if (s.staticColor && !savedColor) savedColor = s.staticColor;
+            if (s.primaryColor && !primaryColor) primaryColor = s.primaryColor;
+            if (s.secondaryColor && !secondaryColor) secondaryColor = s.secondaryColor;
+        }
+        const color = this.groupStaticColor.get(key) ?? savedColor ?? DEFAULT_COLOR;
+        return { color, savedDensity, savedSpeed, primaryColor, secondaryColor };
+    }
+
+    // computeAllGroups() only ever merges contexts that share the same contextEffectId, so every
+    // member of `ctxs` is guaranteed to already agree — reading any one of them is enough.
+    private resolveEffectId(ctxs: string[]): string {
+        return panoramaOrchestrator.contextEffectId.get(ctxs[0]) ?? DEFAULT_EFFECT_ID;
+    }
+
+    // Destroys the group's current effect instance (if any) and creates+initializes a fresh one
+    // of the given effect id. Used both for first-time group setup and for a live effect switch
+    // triggered from the PI.
+    private switchGroupEffect(key: string, ctxs: string[], effectId: string): void {
+        this.groupEffects.get(key)?.destroy?.();
+        const def = effectRegistry.get(effectId) ?? particlesEffect;
+        const instance = def.createInstance();
+        instance.initPanorama({
+            width: ctxs.length * DISPLAY_W,
+            height: DISPLAY_H,
+            settings: this.gatherEffectSettings(key, ctxs),
+        });
+        this.groupEffects.set(key, instance);
+    }
+
     private async setupGroup(key: string, ctxs: string[]): Promise<void> {
         const numDisplays = ctxs.length;
+        this.groupAllMembers.set(key, ctxs);
 
         if (!this.groupContexts.has(key)) this.groupContexts.set(key, new Set());
         const group = this.groupContexts.get(key)!;
@@ -235,50 +231,29 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             this.contextGroupKey.set(ctx, key);
         }
 
-        if (!particleEngine.isPanoramaActive(key)) {
-            // Restore saved state from whichever group member has one.
-            let savedDensity: number | undefined;
-            let savedSpeed: number | undefined;
-            let savedColor: string | undefined;
-            for (const ctx of ctxs) {
-                const s = this.settingsMap.get(ctx);
-                if (!s) continue;
-                if (s.savedDensity !== undefined && savedDensity === undefined) savedDensity = s.savedDensity;
-                if (s.savedSpeed !== undefined && savedSpeed === undefined) savedSpeed = s.savedSpeed;
-                if (s.staticColor && !savedColor) savedColor = s.staticColor;
-            }
-
-            const density = savedDensity ?? BASE_PER_DISPLAY;
-            const count = density * numDisplays;
-            const speed = savedSpeed ?? SPEED_DEFAULT;
-            const color = this.groupStaticColor.get(key) ?? savedColor ?? DEFAULT_COLOR;
-
-            particleEngine.initPanorama(key, {
+        let effect = this.groupEffects.get(key);
+        if (!effect) {
+            this.switchGroupEffect(key, ctxs, this.resolveEffectId(ctxs));
+            effect = this.groupEffects.get(key)!;
+        } else {
+            // Membership changed (join/leave) — re-init with the new width. The instance itself
+            // decides whether to apply saved values (first creation) or just resize (regroup).
+            effect.initPanorama({
                 width: numDisplays * DISPLAY_W,
                 height: DISPLAY_H,
-                count,
-                color,
-                mode: 'network',
-                maxSpeed: speed,
-                connectDistance: 60,
-                minRadius: 2,
-                maxRadius: 5,
-                opacity: 0.9,
+                settings: this.gatherEffectSettings(key, ctxs),
             });
-
-            this.groupSpeed.set(key, speed);
-            for (const ctx of ctxs) {
-                if (!this.settingsMap.has(ctx)) continue; // Skip external participants
-                const col = panoramaColumns.get(ctx) ?? 0;
-                this.instanceStates.set(ctx, { density, column: col });
-            }
         }
 
         if (!this.groupTimers.has(key)) {
             const timer = setInterval(() => {
-                particleEngine.tickPanorama(key);
-                const g = this.groupContexts.get(key);
-                if (g) for (const ctx of g) this.queueRender(ctx);
+                const effect = this.groupEffects.get(key);
+                if (effect) safeEffectCall(() => effect.tickPanorama(TICK_INTERVAL), undefined, 'tickPanorama');
+                // Render every member (own tiles + external participants like Track Dial) from
+                // this exact tick, instead of each polling on its own independent timer — keeps
+                // every display in the group perfectly in sync.
+                const members = this.groupAllMembers.get(key);
+                if (members) panoramaOrchestrator.notifyGroupRender(members);
             }, TICK_INTERVAL);
             this.groupTimers.set(key, timer);
         }
@@ -295,10 +270,10 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         // Apply static color if no device is connected.
         if (!this.groupControllers.has(key)) {
             for (const ctx of ctxs) {
-                const color = this.settingsMap.get(ctx)?.staticColor;
-                if (color) {
-                    this.groupStaticColor.set(key, color);
-                    particleEngine.setPanoramaColor(key, color);
+                const staticColor = this.settingsMap.get(ctx)?.staticColor;
+                if (staticColor) {
+                    this.groupStaticColor.set(key, staticColor);
+                    effect.onSettingsChange?.({ color: staticColor });
                     break;
                 }
             }
@@ -350,7 +325,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             controller.getCurrentTrackCover().then(cover => {
                 if (!cover) return;
                 getDominantColor(cover).then(color => {
-                    particleEngine.setPanoramaColor(key, this.ensureVisibleColor(color));
+                    this.groupEffects.get(key)?.onSettingsChange?.({ color: this.ensureVisibleColor(color) });
                 }).catch(() => {});
             }).catch(() => {});
 
@@ -365,7 +340,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
                 const art = trackInfo.albumArtDataUri;
                 if (!art) return;
                 getDominantColor(art).then(color => {
-                    particleEngine.transitionPanoramaColor(key, this.ensureVisibleColor(color));
+                    this.groupEffects.get(key)?.onSettingsChange?.({ color: this.ensureVisibleColor(color) });
                 }).catch(() => {});
             });
 
@@ -410,18 +385,17 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
 
     private async saveGroupStateToSettings(context: string): Promise<void> {
         const key = this.contextGroupKey.get(context);
-        const state = this.instanceStates.get(context);
-        if (!key || !state) return;
+        const effect = key ? this.groupEffects.get(key) : undefined;
+        if (!key || !effect) return;
 
-        const speed = this.groupSpeed.get(key) ?? SPEED_DEFAULT;
-        const density = state.density;
+        const runtimeSettings = effect.getRuntimeSettings?.() ?? {};
         const group = this.groupContexts.get(key);
         if (!group) return;
 
         for (const ctx of group) {
             const ctxSettings = this.settingsMap.get(ctx);
             if (!ctxSettings) continue;
-            const updated = { ...ctxSettings, savedDensity: density, savedSpeed: speed };
+            const updated = { ...ctxSettings, ...runtimeSettings };
             if (JSON.stringify(updated) === JSON.stringify(ctxSettings)) continue;
             this.settingsMap.set(ctx, updated);
             const ctxAction = streamDeck.actions.getActionById(ctx);
@@ -432,7 +406,6 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
     // ── Instance lifecycle ───────────────────────────────────────────────────
 
     override async onWillAppear(ev: WillAppearEvent<ParticlesSettings>): Promise<void> {
-        _scheduleSyncFn = () => this.scheduleSyncGroups();
         const context = ev.action.id;
         const col = 'coordinates' in ev.payload
             ? (ev.payload.coordinates as { column: number }).column : 0;
@@ -440,12 +413,10 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
 
         this.settingsMap.set(context, settings);
         panoramaColumns.set(context, col);
-        this.instanceStates.set(context, {
-            density: settings.savedDensity ?? BASE_PER_DISPLAY,
-            column: col,
-        });
+        panoramaOrchestrator.contextEffectId.set(context, settings.effectId ?? DEFAULT_EFFECT_ID);
+        panoramaOrchestrator.registerRenderCallback(context, () => this.queueRender(context));
 
-        this.scheduleSyncGroups();
+        panoramaOrchestrator.requestSync();
     }
 
     override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ParticlesSettings>): Promise<void> {
@@ -453,6 +424,12 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         const oldSettings = this.settingsMap.get(context);
         const settings = ev.payload.settings;
         this.settingsMap.set(context, settings);
+
+        // Changing effectId can change which contexts belong together (a dial whose effect no
+        // longer matches its neighbor's must split off into its own group, and vice versa) — so
+        // this always goes through the normal debounced regroup, same as a column join/leave,
+        // rather than a special-cased in-place effect swap.
+        panoramaOrchestrator.setContextEffectId(context, settings.effectId ?? DEFAULT_EFFECT_ID);
 
         const key = this.contextGroupKey.get(context);
         if (!key) return;
@@ -464,9 +441,23 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         if (settings.staticColor && settings.staticColor !== oldSettings?.staticColor) {
             this.groupStaticColor.set(key, settings.staticColor);
             if (!this.groupControllers.has(key)) {
-                particleEngine.setPanoramaColor(key, settings.staticColor);
+                this.groupEffects.get(key)?.onSettingsChange?.({ color: settings.staticColor });
             }
             await this.propagateGroupSetting(key, (s) => ({ ...s, staticColor: settings.staticColor }), context);
+        }
+
+        if (
+            (settings.primaryColor && settings.primaryColor !== oldSettings?.primaryColor) ||
+            (settings.secondaryColor && settings.secondaryColor !== oldSettings?.secondaryColor)
+        ) {
+            const group = this.groupContexts.get(key);
+            const ctxs = group && group.size > 0 ? [...group] : [context];
+            this.groupEffects.get(key)?.onSettingsChange?.(this.gatherEffectSettings(key, ctxs));
+            await this.propagateGroupSetting(key, (s) => ({
+                ...s,
+                ...(settings.primaryColor ? { primaryColor: settings.primaryColor } : {}),
+                ...(settings.secondaryColor ? { secondaryColor: settings.secondaryColor } : {}),
+            }), context);
         }
 
         if (settings.showTrackInfo !== oldSettings?.showTrackInfo) {
@@ -486,11 +477,12 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         await this.saveGroupStateToSettings(context);
         this.leaveGroup(context);
         panoramaColumns.delete(context);
+        panoramaOrchestrator.contextEffectId.delete(context);
+        panoramaOrchestrator.unregisterRenderCallback(context);
         this.settingsMap.delete(context);
-        this.instanceStates.delete(context);
         this.renderGen.delete(context);
         // Remaining instances may form different groups (e.g. a gap opened).
-        this.scheduleSyncGroups();
+        panoramaOrchestrator.requestSync();
     }
 
     // ── Dial interaction ─────────────────────────────────────────────────────
@@ -498,42 +490,19 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
     override async onDialRotate(ev: DialRotateEvent<ParticlesSettings>): Promise<void> {
         const context = ev.action.id;
         const key = this.contextGroupKey.get(context);
-        const state = this.instanceStates.get(context);
-        if (!key || !state) return;
+        const effect = key ? this.groupEffects.get(key) : undefined;
+        if (!key || !effect) return;
 
-        const numDisplays = this.groupContexts.get(key)?.size ?? 1;
-        const mode = this.groupDialMode.get(key) ?? 'particles';
-
-        if (mode === 'speed') {
-            const current = this.groupSpeed.get(key) ?? SPEED_DEFAULT;
-            const raw = current + ev.payload.ticks * SPEED_STEP;
-            const newSpeed = parseFloat(Math.max(SPEED_MIN, Math.min(SPEED_MAX, raw)).toFixed(2));
-            if (newSpeed !== current) {
-                this.groupSpeed.set(key, newSpeed);
-                particleEngine.setPanoramaSpeed(key, newSpeed);
-                this.schedulePersist(key, context);
-            }
-        } else {
-            const newDensity = Math.min(MAX_PER_DISPLAY, Math.max(MIN_PER_DISPLAY, state.density + ev.payload.ticks));
-            if (newDensity !== state.density) {
-                const group = this.groupContexts.get(key);
-                if (group) for (const ctx of group) {
-                    const s = this.instanceStates.get(ctx);
-                    if (s) s.density = newDensity;
-                }
-                particleEngine.setParticleCount(key, newDensity * numDisplays);
-                this.schedulePersist(key, context);
-            }
-        }
+        safeEffectCall(() => effect.onRotate?.(ev.payload.ticks), undefined, 'onRotate');
+        this.schedulePersist(key, context);
     }
 
     // Press toggles between adjusting particle count and animation speed.
     override async onDialDown(ev: DialDownEvent<ParticlesSettings>): Promise<void> {
         const key = this.contextGroupKey.get(ev.action.id);
-        if (!key) return;
-        const newMode: 'particles' | 'speed' =
-            (this.groupDialMode.get(key) ?? 'particles') === 'particles' ? 'speed' : 'particles';
-        this.groupDialMode.set(key, newMode);
+        const effect = key ? this.groupEffects.get(key) : undefined;
+        if (!key || !effect) return;
+        safeEffectCall(() => effect.onPress?.(), undefined, 'onPress');
         const group = this.groupContexts.get(key);
         if (group) for (const ctx of group) this.queueRender(ctx);
     }
@@ -548,6 +517,10 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
                     items: [{ label: '-- No device (static color) --', value: '' }, ...deviceItems]
                 });
             }
+            if (ev.payload.event === 'get-effects') {
+                const items = [...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id }));
+                streamDeck.ui.sendToPropertyInspector({ event: 'get-effects', items });
+            }
         }
     }
 
@@ -558,14 +531,13 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         if (!sdAction || !sdAction.isDial()) return;
 
         const key = this.contextGroupKey.get(context);
-        const state = this.instanceStates.get(context);
+        const effect = key ? this.groupEffects.get(key) : undefined;
         const sliceOffsetX = this.getSliceOffset(context);
-        const mode = key ? (this.groupDialMode.get(key) ?? 'particles') : 'particles';
 
-        const fragment = key ? particleEngine.renderPanoramaSlice(key, sliceOffsetX) : '';
+        const fragment = effect ? safeEffectCall(() => effect.renderSlice(sliceOffsetX, DISPLAY_W, DISPLAY_H), '', 'renderSlice') : '';
 
         const myCol = panoramaColumns.get(context) ?? 0;
-        const cols = key ? this.colsFromKey(key) : [myCol];
+        const cols = key ? panoramaOrchestrator.colsFromKey(key) : [myCol];
         const maxCol = Math.max(...cols);
         const showTrackInfo = !!key && (this.groupShowTrackInfo.get(key) ?? false);
         const trackInfo = showTrackInfo ? (this.groupTrackInfo.get(key!) ?? null) : null;
@@ -591,14 +563,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             '</svg>',
         ].join('');
 
-        let indicatorValue: number;
-        if (mode === 'speed') {
-            const currentSpeed = key ? (this.groupSpeed.get(key) ?? SPEED_DEFAULT) : SPEED_DEFAULT;
-            indicatorValue = Math.round((currentSpeed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN) * 100);
-        } else {
-            const currentDensity = state?.density ?? BASE_PER_DISPLAY;
-            indicatorValue = Math.round((currentDensity - MIN_PER_DISPLAY) / (MAX_PER_DISPLAY - MIN_PER_DISPLAY) * 100);
-        }
+        const indicatorValue = effect ? safeEffectCall(() => effect.getIndicatorValue?.() ?? 0, 0, 'getIndicatorValue') : 0;
 
         const finalImage = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 

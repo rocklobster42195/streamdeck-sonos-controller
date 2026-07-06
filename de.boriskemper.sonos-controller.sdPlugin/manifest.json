@@ -138,10 +138,10 @@
 			]
 		},
 		{
-			"Name": "Panorama Particles",
+			"Name": "Panorama Effects",
 			"UUID": "de.boriskemper.sonos-controller.sonos-dial-particles",
 			"Icon": "imgs/actions/sonos-dial-particles/icon",
-			"Tooltip": "Particle animation spanning up to 4 LCD panels as one continuous scene.",
+			"Tooltip": "Visual effect animation spanning up to 4 LCD panels as one continuous scene.",
 			"PropertyInspectorPath": "ui/sonos-dial-particles.html",
 			"Controllers": [
 				"Encoder"
@@ -149,8 +149,8 @@
 			"Encoder": {
 				"layout": "$A0",
 				"TriggerDescription": {
-					"Push": "Toggle particle count / speed mode",
-					"Rotate": "Adjust particle count or speed",
+					"Push": "Toggle effect parameter mode",
+					"Rotate": "Adjust effect parameter",
 					"Touch": "None"
 				}
 			},

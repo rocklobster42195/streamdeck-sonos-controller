@@ -19,7 +19,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 | **Play / Pause** — cover art + scrolling title | **Track Dial** — cover art · title · progress · EQ Effect |
 | **Playback Control** — next · previous · shuffle · repeat | **Volume Dial** — pie chart · mute · preset |
 | **Volume Key** — up · down · mute · preset | **Favorites Dial** — browse & play your favorites list |
-| **Play Favorite** — one tap to play a saved favorite | **Panorama Particles** — ambient art spanning multiple panels |
+| **Play Favorite** — one tap to play a saved favorite | **Panorama Effects** — ambient art spanning multiple panels |
 | | **Group Volume Dial** — control a whole Sonos group's volume together |
 
 ---
@@ -125,11 +125,11 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 
 ---
 
-### Panorama Particles Dial *(Stream Deck+ only)*
+### Panorama Effects Dial *(Stream Deck+ only)*
 
-Ambient particle network animation that spans multiple adjacent LCD panels as one continuous scene. Place two or more side by side to connect them into a seamless panorama.
+Ambient visual effect animation that spans multiple adjacent LCD panels as one continuous scene. Place two or more side by side to connect them into a seamless panorama. Ships with a particle network effect today — see [CONTRIBUTING_EFFECTS.md](CONTRIBUTING_EFFECTS.md) if you want to add your own.
 
-![Panorama Particles across 4 LCD panels](assets/panorama_particle_demo.gif)
+![Panorama Effects across 4 LCD panels](assets/panorama_particle_demo.gif)
 
 | Interaction | Effect |
 |-------------|--------|
@@ -214,8 +214,8 @@ Play one of your saved Sonos favorites with a single key press. The key displays
 - The plugin uses UPnP event subscriptions for real-time updates. On an unstable network, a subscription may drop and recover automatically within 60 seconds.
 - If the problem persists, restart the Stream Deck software.
 
-**Panorama Particles not connecting across panels**
-- All Panorama Particles dials must be placed in **adjacent slots** in the same profile row.
+**Panorama Effects not connecting across panels**
+- All Panorama Effects dials must be placed in **adjacent slots** in the same profile row.
 - Each dial detects its neighbors automatically — no manual column setting is needed.
 
 ---
