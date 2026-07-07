@@ -10,9 +10,9 @@ export interface ParticlesEffectSettings {
 }
 
 const DEFAULT_COLOR = '#404040';
-const BASE_PER_DISPLAY = 20;
+const BASE_PER_DISPLAY = 28;
 const MIN_PER_DISPLAY = 4;
-const MAX_PER_DISPLAY = 30;
+const MAX_PER_DISPLAY = 40;
 const SPEED_MIN = 0.05;
 const SPEED_MAX = 1.5;
 const SPEED_DEFAULT = 0.25;
@@ -39,8 +39,13 @@ class ParticlesEffectInstance implements EffectInstance<ParticlesEffectSettings>
         if (!particleEngine.isPanoramaActive(this.key)) {
             // Only apply saved/restored values on first creation — a later call (membership
             // change) must not reset live-tuned density/speed back to the saved snapshot.
-            this.density = ctx.settings.savedDensity ?? this.density;
-            this.speed = ctx.settings.savedSpeed ?? this.speed;
+            // Clamped, not used verbatim: a tile saved before MIN/MAX_PER_DISPLAY existed (or
+            // before they were last retuned) can hold a stale value outside the current valid
+            // range — e.g. a saved density of 1-2 from long before MIN_PER_DISPLAY=4 existed,
+            // which would otherwise silently override BASE_PER_DISPLAY forever since only
+            // onRotate used to clamp, never the initial load.
+            this.density = Math.max(MIN_PER_DISPLAY, Math.min(MAX_PER_DISPLAY, ctx.settings.savedDensity ?? this.density));
+            this.speed = Math.max(SPEED_MIN, Math.min(SPEED_MAX, ctx.settings.savedSpeed ?? this.speed));
             particleEngine.initPanorama(this.key, {
                 width: ctx.width,
                 height: ctx.height,
