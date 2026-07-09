@@ -36,25 +36,13 @@ export class SonosDeviceController {
   private coverFetchAttempts = 0;
   private static readonly MAX_COVER_FETCH_ATTEMPTS = 5;
 
-  static isRadioStream(uri: string | undefined): boolean {
-    if (!uri) return false;
-    return uri.startsWith('x-sonosapi-stream:') ||
-           uri.startsWith('x-sonosapi-radio:')  ||
-           uri.startsWith('x-sonosapi-hls:')    ||
-           uri.startsWith('x-rincon-stream:')   ||
-           uri.startsWith('aac:')               ||
-           uri.startsWith('pndrradio:')         ||
-           // Sonos Radio (Deezer-powered) delivers individual tracks via x-sonos-http but they are not skippable.
-           (uri.startsWith('x-sonos-http:') && uri.includes('-DZR:'));
-  }
-
   private static isRadioAlbumArtUri(albumArtUri: string | undefined): boolean {
     if (!albumArtUri) return false;
     // Sonos Radio (Deezer-powered) serves cover art from sonosradio.imgix.net — no u= parameter.
     if (albumArtUri.includes('sonosradio.imgix.net')) return true;
     const match = albumArtUri.match(/[?&]u=([^&]+)/);
     if (!match) return false;
-    return SonosDeviceController.isRadioStream(decodeURIComponent(match[1]));
+    return MetaDataHelper.IsRadioStream(decodeURIComponent(match[1]));
   }
 
   constructor(deviceIp: string) {
@@ -139,7 +127,7 @@ export class SonosDeviceController {
             }
             newTrackInfo.albumArtDataUri = newTrackInfo.albumArtDataUri ?? this.lastKnownCover;
             newTrackInfo.isRadio =
-              SonosDeviceController.isRadioStream(track.TrackUri) ||
+              MetaDataHelper.IsRadioStream(track.TrackUri) ||
               (track.AlbumArtUri
                 ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri)
                 : (this.currentTrack?.isRadio ?? false));
@@ -164,7 +152,7 @@ export class SonosDeviceController {
     if (track) {
         this.currentTrack = track;
         this.currentTrack.isRadio =
-            SonosDeviceController.isRadioStream(track.TrackUri) ||
+            MetaDataHelper.IsRadioStream(track.TrackUri) ||
             (track.AlbumArtUri ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri) : false);
         if (track.AlbumArtUri) {
             const cover = await loadImageFromUri(track.AlbumArtUri, this.sonosDevice);
@@ -442,7 +430,7 @@ export class SonosDeviceController {
         // TrackUri is the primary signal (always carries the radio stream scheme).
         // Fall back to AlbumArtUri-based detection, then preserve previous state for news segments.
         newTrackInfo.isRadio =
-            SonosDeviceController.isRadioStream(track.TrackUri) ||
+            MetaDataHelper.IsRadioStream(track.TrackUri) ||
             (track.AlbumArtUri
                 ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri)
                 : (this.currentTrack?.isRadio ?? false));

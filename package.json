@@ -33,7 +33,7 @@
     "dependencies": {
         "@elgato/streamdeck": "^2.1.0",
         "@mdi/js": "^7.4.47",
-        "@svrooij/sonos": "^2.6.0-beta.13",
+        "@svrooij/sonos": "^2.7.0-beta.4",
         "opentype.js": "^2.0.0",
         "sharp": "^0.35.2"
     }
