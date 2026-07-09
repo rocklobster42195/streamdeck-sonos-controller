@@ -102,14 +102,6 @@
         showPresetCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
       }
     });
-
-    document.addEventListener('settingsDidChange', function (ev) {
-        var s = ev.detail || {};
-        if (s.presetVolume != null) pvNumber.value = s.presetVolume;
-        if (s.command      != null) currentCommand = s.command;
-        applyVisibility(currentCommand);
-    });
-
   </script>
 </body>
 

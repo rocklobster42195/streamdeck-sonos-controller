@@ -70,6 +70,11 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
     private groupEffects = groupEffects as Map<string, EffectInstance<ParticlesEffectSettings>>;
     private groupTrackInfo = new Map<string, { title: string; artist: string }>();
     private groupShowTrackInfo = new Map<string, boolean>();
+    // Which effect id is actually running for each group key. Needed because the group key
+    // itself is derived purely from column adjacency (see PanoramaOrchestrator.panoramaKey) —
+    // it does NOT change when a dial's chosen effect changes in place. Without this, syncGroups
+    // has no way to tell "same columns, different effect" apart from "nothing changed at all".
+    private groupEffectId = new Map<string, string>();
 
     private settingsMap = new Map<string, ParticlesSettings>();
     // Alias to module-level map so all code using this.contextGroupKey still works.
@@ -114,6 +119,15 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         for (const [key, ctxs] of newGrouping) {
             for (const ctx of ctxs) {
                 if (this.contextGroupKey.get(ctx) !== key) toRegroup.add(ctx);
+            }
+            // A pure effect switch (e.g. picking a different effect in the PI) leaves the
+            // column-based key and membership untouched, so the loop above sees nothing. Detect
+            // it separately by comparing the group's currently-running effect id against what its
+            // members now want — otherwise the old effect instance just keeps running forever.
+            if (!ctxs.some(c => toRegroup.has(c)) && this.groupEffects.has(key)) {
+                if (this.groupEffectId.get(key) !== this.resolveEffectId(ctxs)) {
+                    for (const ctx of ctxs) toRegroup.add(ctx);
+                }
             }
         }
         if (toRegroup.size === 0) return;
@@ -164,6 +178,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         }
         this.groupEffects.get(key)?.destroy?.();
         this.groupEffects.delete(key);
+        this.groupEffectId.delete(key);
         // Clear group key for ALL participants, including external actions (e.g. Track Dial).
         for (const [ctx, k] of [...panoramaContextGroupKey.entries()]) {
             if (k === key) panoramaContextGroupKey.delete(ctx);
@@ -216,6 +231,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             settings: this.gatherEffectSettings(key, ctxs),
         });
         this.groupEffects.set(key, instance);
+        this.groupEffectId.set(key, def.id);
     }
 
     private async setupGroup(key: string, ctxs: string[]): Promise<void> {

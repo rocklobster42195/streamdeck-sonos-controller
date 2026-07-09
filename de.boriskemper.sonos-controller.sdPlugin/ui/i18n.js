@@ -57,6 +57,7 @@
             effect:             'Effekt',
             primary_color:      'Primärfarbe',
             secondary_color:    'Sekundärfarbe',
+            reset_colors:       'Farben zurücksetzen',
         },
         es: {
             sonos_device:       'Dispositivo SONOS',
@@ -108,6 +109,7 @@
             effect:             'Efecto',
             primary_color:      'Color primario',
             secondary_color:    'Color secundario',
+            reset_colors:       'Restablecer colores',
         },
     };
 
