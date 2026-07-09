@@ -2,6 +2,16 @@
 
 <!-- NEXT -->
 
+### Panorama Effects
+
+- Fixed switching effects in the Property Inspector having no effect once a dial's panorama group was already running — the newly selected effect now actually starts
+- Track info can now be shown with any effect, not just Panorama Particles
+- Added a "Reset colors" button for Boing Ball
+
+### Property Inspector
+
+- Fixed several Property Inspector pages not reacting to setting changes after the initial load (relied on an event the underlying component library never fires)
+
 ---
 
 ## [0.3.0] — 2026-07-09
