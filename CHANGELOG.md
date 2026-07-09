@@ -4,6 +4,25 @@
 
 ---
 
+## [0.3.0] — 2026-07-09
+
+### Panorama Effects (new effects + community contributions)
+
+- "Panorama Particles" is now **Panorama Effects** — a pluggable visual-effects layer with a selectable effect, no longer just particles
+- Three new effects: **Boing Ball** (the classic raytraced checkered ball, bouncing across panels), **Boing Globe** (a spinning raytraced Earth drifting and wrapping seamlessly around panels), and **Matrix Rain** (cascading code rain, density adjustable by rotating)
+- Any effect can now also be used as the **Background** on the Track Dial, Volume Dial, and Group Volume Dial — not just Particles as before
+- A dial running an effect merges with an adjacent dial only if it's running the **same** effect; otherwise it renders solo — mixing different effects side by side is now possible
+- Fixed a rendering desync where adjacent panels could briefly show different animation frames of the same shared effect
+- Effects are sandboxed against crashing the plugin — a misbehaving effect now skips a frame instead of taking down every action
+- The plugin is now open to **community-contributed effects** — see [CONTRIBUTING_EFFECTS.md](CONTRIBUTING_EFFECTS.md) for the effect interface and how to submit one
+
+### Fixes
+
+- The "not configured yet" hint shown on Track/Volume/Group Volume/Favorites dials before a device or group is selected was nearly invisible (very low contrast) — now shows a clearly visible gear icon
+- Panorama Particles density tuned up slightly, and fixed a saved density/speed value from before range limits existed silently overriding the current defaults
+
+---
+
 ## [0.2.7] — 2026-07-05
 
 ### Group Volume Dial (new)

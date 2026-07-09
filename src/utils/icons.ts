@@ -16,6 +16,7 @@ import {
     mdiVolumePlus,
     mdiVolumeMinus,
     mdiTuneVertical,
+    mdiCog,
 } from '@mdi/js';
 
 function svgUri(path: string, color: string): string {
@@ -65,4 +66,19 @@ export function generateVolumeLevelIcon(volume: number, muted: boolean, color = 
     if (volume < 10) return svgUri(mdiVolumeLow, color);
     if (volume < 60) return svgUri(mdiVolumeMedium, color);
     return svgUri(mdiVolumeHigh, color);
+}
+
+// --- Dial "not configured yet" placeholder ---
+// Shared across dial actions' full-canvas feedback so a missing PI setting (device/group)
+// reads clearly on the low-res dial screen instead of blending into the background.
+export function buildUnconfiguredDialSvg(label: string): string {
+    const cx = 100, cy = 38, rOuter = 18;
+    const scale = (rOuter * 2) / 24;
+    return [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+        '<rect width="200" height="100" fill="#0a0a0a"/>',
+        `<g transform="translate(${cx - rOuter},${cy - rOuter}) scale(${scale})"><path fill="#7A7A7A" d="${mdiCog}"/></g>`,
+        `<text x="${cx}" y="80" fill="#8A8A8A" font-family="Arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="1.5">${label}</text>`,
+        '</svg>',
+    ].join('');
 }

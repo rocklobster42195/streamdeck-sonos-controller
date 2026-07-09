@@ -16,6 +16,7 @@ import { sonosManager, discoveryPromise, sonosFavoritesCache } from "../sonos/so
 import { SonosDevice } from "@svrooij/sonos";
 import { TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
+import { mdiCog } from "@mdi/js";
 
 type SonosFavDialSettings = {
     deviceIp?: string;
@@ -418,7 +419,10 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         const covers = this.getAvailableCovers(8);
 
         const body = covers.length === 0
-            ? `<text x="100" y="55" fill="#444" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${this.escapeXml(streamDeck.i18n.translate('No device set'))}</text>`
+            ? [
+                `<g transform="translate(82,14) scale(1.5)"><path fill="#7A7A7A" d="${mdiCog}"/></g>`,
+                `<text x="100" y="66" fill="#8A8A8A" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${this.escapeXml(streamDeck.i18n.translate('No device set'))}</text>`,
+            ].join('')
             : this.buildMosaic(covers);
 
         const hint = covers.length > 0

@@ -59,16 +59,21 @@ function renderPanoramaSvg(instance: EffectInstance<any>, numDisplays: number): 
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${DISPLAY_H}" viewBox="0 0 ${width} ${DISPLAY_H}"><rect width="${width}" height="${DISPLAY_H}" fill="#000"/>${fragments}</svg>`;
 }
 
-async function exportGif(effectId: string, numDisplays: number): Promise<Buffer> {
+async function exportGif(effectId: string, numDisplays: number, settingsOverride?: Record<string, unknown>): Promise<Buffer> {
     const def = effectRegistry.get(effectId);
     if (!def) throw new Error(`Unknown effect: ${effectId}`);
     const instance = def.createInstance();
     const width = numDisplays * DISPLAY_W;
-    instance.initPanorama({ width, height: DISPLAY_H, settings: def.defaultSettings });
+    instance.initPanorama({ width, height: DISPLAY_H, settings: { ...def.defaultSettings, ...settingsOverride } });
 
     const totalFrames = Math.round(10000 / TICK_INTERVAL); // 10 seconds
     const fadeFrames = Math.round(400 / TICK_INTERVAL); // 400ms fade in/out — smooths the loop point
-    const encoder = new GIFEncoder(width, DISPLAY_H, "neuquant", true, totalFrames);
+    // useOptimizer=false: the canvas is mostly black background with only a small moving subject,
+    // so frame-to-frame pixel delta stays under gif-encoder-2's 90% "reuse previous colormap"
+    // threshold almost immediately — with it enabled the colormap gets locked in from the
+    // near-black fade-in frames and every actual color (sage ball, blue ocean, ...) quantizes to
+    // the nearest gray in that palette for the rest of the GIF.
+    const encoder = new GIFEncoder(width, DISPLAY_H, "neuquant", false, totalFrames);
     encoder.setDelay(TICK_INTERVAL);
     encoder.setRepeat(0);
     encoder.setQuality(10);
@@ -199,7 +204,9 @@ const server = http.createServer((req, res) => {
     }
 
     if (parsed.pathname === "/api/export-gif") {
-        exportGif(effectId, numDisplays).then((gif) => {
+        const settingsParam = q.get("settings");
+        const settingsOverride = settingsParam ? JSON.parse(settingsParam) : undefined;
+        exportGif(effectId, numDisplays, settingsOverride).then((gif) => {
             const outDir = path.resolve("assets");
             fs.mkdirSync(outDir, { recursive: true });
             const outFile = path.join(outDir, `preview-${effectId}.gif`);

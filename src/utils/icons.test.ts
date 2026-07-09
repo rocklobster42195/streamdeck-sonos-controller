@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mdiVolumeHigh, mdiVolumeMedium, mdiVolumeLow, mdiVolumeOff } from '@mdi/js';
-import { generateVolumeLevelIcon } from './icons';
+import { mdiVolumeHigh, mdiVolumeMedium, mdiVolumeLow, mdiVolumeOff, mdiCog } from '@mdi/js';
+import { generateVolumeLevelIcon, buildUnconfiguredDialSvg } from './icons';
 
 function decodedPath(dataUri: string): string {
   const base64 = dataUri.replace('data:image/svg+xml;base64,', '');
@@ -25,5 +25,19 @@ describe('generateVolumeLevelIcon', () => {
   it('shows the high icon from 60 upward', () => {
     expect(decodedPath(generateVolumeLevelIcon(60, false))).toContain(mdiVolumeHigh);
     expect(decodedPath(generateVolumeLevelIcon(100, false))).toContain(mdiVolumeHigh);
+  });
+});
+
+describe('buildUnconfiguredDialSvg', () => {
+  it('renders the gear icon and the given label', () => {
+    const svg = buildUnconfiguredDialSvg('GROUP');
+    expect(svg).toContain(mdiCog);
+    expect(svg).toContain('>GROUP<');
+  });
+
+  it('uses a legible (non-near-black) color for the icon and label', () => {
+    const svg = buildUnconfiguredDialSvg('SONOS');
+    expect(svg).not.toContain('#2a2a2a');
+    expect(svg).not.toContain('#333');
   });
 });

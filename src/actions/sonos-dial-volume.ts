@@ -19,6 +19,7 @@ import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, ge
 import { effectRegistry } from "../effects/registry.generated";
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { piT } from "../utils/pi-i18n";
+import { buildUnconfiguredDialSvg } from "../utils/icons";
 
 // 'none' is not a registered effect — everything else is looked up in effectRegistry.
 function isEffectMode(mode?: string): boolean {
@@ -421,13 +422,7 @@ export class SonosDialVolume extends SingletonAction<SonosDialVolumeSettings> {
         const visualizerMode = settings?.visualizerMode ?? 'none';
 
         if (!settings?.deviceIp) {
-            const svg = [
-                '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
-                '<rect width="200" height="100" fill="#0a0a0a"/>',
-                '<text x="100" y="48" fill="#2a2a2a" font-family="Arial,sans-serif" font-size="34" text-anchor="middle">♪</text>',
-                '<text x="100" y="68" fill="#333" font-family="Arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="2">SONOS</text>',
-                '</svg>',
-            ].join('');
+            const svg = buildUnconfiguredDialSvg('SONOS');
             await sdAction.setFeedback({
                 'full-canvas': `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
             }).catch(() => {});

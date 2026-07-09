@@ -18,9 +18,9 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 |---|---|
 | **Play / Pause** — cover art + scrolling title | **Track Dial** — cover art · title · progress · EQ Effect |
 | **Playback Control** — next · previous · shuffle · repeat | **Volume Dial** — pie chart · mute · preset |
-| **Volume Key** — up · down · mute · preset | **Favorites Dial** — browse & play your favorites list |
+| **Volume Key** — up · down · mute · preset | **Group Volume Dial** — control a whole Sonos group's volume together |
 | **Play Favorite** — one tap to play a saved favorite | **Panorama Effects** — ambient art spanning multiple panels |
-| | **Group Volume Dial** — control a whole Sonos group's volume together |
+| | **Favorites Dial** — browse & play your favorites list |
 
 ---
 
@@ -44,7 +44,7 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 
 ### Track Dial *(Stream Deck+ only)*
 
-The centerpiece of the plugin. The LCD panel shows the album or station cover art, a scrolling track title, artist name, and a progress bar — tinted to match the cover art palette.
+The LCD panel shows the album or station cover art, a scrolling track title, artist name, and a progress bar — tinted to match the cover art palette.
 
 <img src="assets/track_dial_eq.gif" alt="Track Dial showing cover art and EQ Effect"/>
 
@@ -127,14 +127,32 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 
 ### Panorama Effects Dial *(Stream Deck+ only)*
 
-Ambient visual effect animation that spans multiple adjacent LCD panels as one continuous scene. Place two or more side by side to connect them into a seamless panorama. Ships with a particle network effect today — see [CONTRIBUTING_EFFECTS.md](CONTRIBUTING_EFFECTS.md) if you want to add your own.
+Ambient visual effect animation that spans multiple adjacent LCD panels as one continuous scene. Place two or more side by side to connect them into a seamless panorama. Pick from several built-in effects, or see [CONTRIBUTING_EFFECTS.md](CONTRIBUTING_EFFECTS.md) if you want to add your own.
 
-![Panorama Effects across 4 LCD panels](assets/panorama_particle_demo.gif)
+**Particles**
+A drifting network of glowing particles that connect with lines as they pass close to each other.
+
+![Particles effect across 4 LCD panels](assets/preview-particles.gif)
+
+**Boing Ball**
+The classic raytraced checkered ball, bouncing back and forth across the panels.
+
+![Boing Ball effect across 4 LCD panels](assets/preview-boing-ball.gif)
+
+**Boing Globe**
+A spinning raytraced Earth that drifts across the panels, wrapping seamlessly around the edge.
+
+![Boing Globe effect across 4 LCD panels](assets/preview-boing-globe.gif)
+
+**Matrix Rain**
+Cascading columns of code rain down the panels, Matrix-style.
+
+![Matrix Rain effect across 4 LCD panels](assets/preview-matrix-rain.gif)
 
 | Interaction | Effect |
 |-------------|--------|
-| Rotate | Adjust particle count or speed (depending on active mode) |
-| Press | Toggle between count mode and speed mode |
+| Rotate | Tweak the active effect (particle count/speed, ball/globe drift speed, rain density, ...) |
+| Press | Trigger the effect's built-in action (toggle mode, poke a bounce, restart the rain, ...) |
 
 ---
 
@@ -157,8 +175,7 @@ Increase, decrease, mute, or set a preset volume with a single key press.
 
 Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim automatically** when a radio station is playing, since seek controls are unavailable for live streams.
 
-<img src="assets/screenshots/key-playback-control.png" width="100" alt="Playback Control Key — Next"/>
-<img src="assets/screenshots/key-playback-control-radio.png" width="100" alt="Playback Control Key dimmed during radio"/>
+<img src="assets/screenshots/key-playback-control.png" width="100" alt="Playback Control Key — Next"/> <img src="assets/screenshots/key-playback-control-radio.png" width="100" alt="Playback Control Key dimmed during radio"/>
 
 | Setting | Description |
 |---------|-------------|
