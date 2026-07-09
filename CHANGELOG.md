@@ -2,6 +2,10 @@
 
 <!-- NEXT -->
 
+---
+
+## [0.3.1] — 2026-07-09
+
 ### Panorama Effects
 
 - Fixed switching effects in the Property Inspector having no effect once a dial's panorama group was already running — the newly selected effect now actually starts
