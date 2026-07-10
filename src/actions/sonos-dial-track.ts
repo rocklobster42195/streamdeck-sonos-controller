@@ -3,13 +3,12 @@ import streamDeck, {
     action,
     DialRotateEvent,
     WillAppearEvent,
-    SingletonAction,
     DialDownEvent,
     SendToPluginEvent,
     DidReceiveSettingsEvent,
-    WillDisappearEvent,
     TouchTapEvent
 } from "@elgato/streamdeck";
+import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCapableDialAction";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
@@ -18,31 +17,22 @@ import { CoverArtAnimator } from "../utils/CoverArtAnimator";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { getDominantColor } from "../utils/colorExtract";
-import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive, setContextEffectId, setContextEffectSettings, registerPanoramaRenderCallback, unregisterPanoramaRenderCallback } from "../effects/PanoramaOrchestrator";
+import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
-import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { piT } from "../utils/pi-i18n";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
 
-// 'none' and 'eq' are not registered effects — everything else is looked up in effectRegistry.
-function isEffectMode(mode?: string): boolean {
-    return !!mode && mode !== 'none' && mode !== 'eq';
-}
-
-type SonosSettings = {
+type SonosSettings = PanoramaCapableSettings & {
     deviceIp?: string;
     showTrackTitle?: boolean;
     fontColor?: string;
     fontSize?: number;
     marqueeSpeed?: number;
     marqueePause?: number;
-    // 'none' | 'eq' | any registered effect id (e.g. 'particles', 'boing-ball').
-    visualizerMode?: string;
-    // Effect-specific tunable fields (e.g. `savedDensity`/`savedSpeed`/`primaryColor`), written by
-    // the generic PI field renderer (ui/effect-fields.js) — key names come from whichever effect's
-    // settingsSchema is active, this action never needs to know them individually.
-    [key: string]: JsonValue;
+    // visualizerMode ('none' | 'eq' | any registered effect id) and effect-specific tunable
+    // fields (e.g. savedDensity/savedSpeed/primaryColor, written by the generic PI field
+    // renderer ui/effect-fields.js) come from PanoramaCapableSettings.
 };
 
 interface DialState {
@@ -56,21 +46,29 @@ interface DialState {
 }
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-track" })
-export class SonosDialTrack extends SingletonAction<SonosSettings> {
+export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private states: Map<string, DialState> = new Map();
     private animators: Map<string, CoverArtAnimator> = new Map();
-    private settingsMap: Map<string, SonosSettings> = new Map();
     private marqueeTimers: Map<string, NodeJS.Timeout> = new Map();
-    private animTimers: Map<string, NodeJS.Timeout> = new Map();
-    private contextColumns: Map<string, number> = new Map();
+
+    // Track Dial also excludes 'eq' (its own non-effect equalizer mode) besides 'none'.
+    protected override isEffectMode(mode?: string): boolean {
+        return !!mode && mode !== 'none' && mode !== 'eq';
+    }
+
+    // Keeps the shared anim timer alive while actively playing too (drives the progress bar /
+    // cover animation), not just while an effect is running.
+    protected override shouldKeepAnimating(context: string): boolean {
+        return this.states.get(context)?.transportState === 'PLAYING';
+    }
 
     private onTransportStateChanged(context: string, transportState: string): void {
         const state = this.states.get(context);
         if (!state) return;
         state.transportState = transportState;
         const settings = this.settingsMap.get(context);
-        const panoKey0 = isEffectMode(settings?.visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+        const panoKey0 = this.isEffectMode(settings?.visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
         const inPanorama = isPanoramaEffectActive(panoKey0);
         if (transportState === 'PLAYING' || inPanorama) {
             this.startAnimTimer(context);
@@ -121,33 +119,6 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         const text = trackInfo.Title ?? '';
         await this.updateTitleMarquee(context, text, settings?.fontSize ?? 14, marqWidth, settings);
         void this.renderDial(context);
-    }
-
-    // Drives re-renders for progress bar and animations. While in an active effect group
-    // (grouped or solo singleton), the shared tick's render callback drives rendering instead —
-    // this timer just keeps ticking for the progress bar / cover animation, and skips its own
-    // render call to avoid two independent, potentially-out-of-phase render sources for the same
-    // effect (that's what caused it to look briefly "mirrored"/desynced every few bounces).
-    private startAnimTimer(context: string): void {
-        if (this.animTimers.has(context)) return;
-        const timer = setInterval(() => {
-            const s = this.states.get(context);
-            if (!s) { this.stopAnimTimer(context); return; }
-            const settings = this.settingsMap.get(context);
-            const pk1 = isEffectMode(settings?.visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
-            const inPanorama = isPanoramaEffectActive(pk1);
-            if (!inPanorama && s.transportState !== 'PLAYING') {
-                this.stopAnimTimer(context);
-                return;
-            }
-            if (!inPanorama) void this.renderDial(context);
-        }, 50);
-        this.animTimers.set(context, timer);
-    }
-
-    private stopAnimTimer(context: string): void {
-        const timer = this.animTimers.get(context);
-        if (timer) { clearInterval(timer); this.animTimers.delete(context); }
     }
 
     private marqWidth(_settings?: SonosSettings): number {
@@ -207,19 +178,13 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         this.marqueeTimers.set(context, t);
     }
 
-    async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
+    protected override async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
         const context = ev.action.id;
         let settings = ev.payload.settings;
 
         this.cleanupInstance(context);
 
-        if (isEffectMode(settings.visualizerMode)) {
-            const backfill = backfillEffectDefaults(settings, settings.visualizerMode);
-            if (backfill.changed) {
-                settings = backfill.settings as SonosSettings;
-                void ev.action.setSettings(settings);
-            }
-        }
+        settings = this.applyBackfill(ev, settings);
 
         const { deviceIp } = settings;
         this.settingsMap.set(context, settings);
@@ -245,18 +210,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
             trackPositionTime: Date.now(),
         });
 
-        if (isEffectMode(settings.visualizerMode)) {
-            // Register in the shared panorama system — an adjacent dial wanting the SAME effect
-            // merges into one shared instance; otherwise this renders its own effect solo (a
-            // "group" of one is exactly how solo rendering works, see PanoramaOrchestrator).
-            const col = this.contextColumns.get(context) ?? 0;
-            registerInPanorama(context, col);
-            setContextEffectId(context, settings.visualizerMode!);
-            setContextEffectSettings(context, settings);
-            registerPanoramaRenderCallback(context, () => this.renderDial(context));
-        } else {
-            this.leavePanorama(context);
-        }
+        this.syncPanoramaParticipation(context, settings);
 
         await this.renderDial(context);
 
@@ -276,7 +230,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
 
             const state = this.states.get(context)!;
             state.transportState = transportState;
-            if (transportState === 'PLAYING' || isEffectMode(settings.visualizerMode)) this.startAnimTimer(context);
+            if (transportState === 'PLAYING') this.startAnimTimer(context);
             if (track) state.trackInfo = track;
 
             await this.fetchAndStorePosition(context, controller);
@@ -312,35 +266,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         }
     }
 
-    override async onWillAppear(ev: WillAppearEvent<SonosSettings>): Promise<void> {
-        const col = 'coordinates' in ev.payload
-            ? (ev.payload.coordinates as { column: number }).column : 0;
-        this.contextColumns.set(ev.action.id, col);
-        await this.onInstanceUpdate(ev);
-    }
-
-    override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
-        await this.onInstanceUpdate(ev);
-    }
-
-    override async onWillDisappear(ev: WillDisappearEvent<SonosSettings>): Promise<void> {
-        this.cleanupInstance(ev.action.id);
-        this.leavePanorama(ev.action.id);
-        this.contextColumns.delete(ev.action.id);
-    }
-
-    // Leaves the shared panorama system — only call when actually exiting effect mode or when
-    // the tile itself is being removed. Must NOT be called unconditionally on every settings
-    // update: doing so wipes the shared group key before syncGroups gets a chance to detect a
-    // live effect switch (e.g. Boing Ball -> Boing Globe), which then just re-initializes the
-    // stale effect instance instead of switching to the newly selected one.
-    private leavePanorama(context: string): void {
-        unregisterFromPanorama(context);
-        unregisterPanoramaRenderCallback(context);
-        this.stopAnimTimer(context);
-    }
-
-    private cleanupInstance(context: string): void {
+    protected cleanupInstance(context: string): void {
         const controller = this.controllers.get(context);
         if (controller) {
             controller.unregisterTransportStateCallback(context);
@@ -470,7 +396,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
         }).join('');
     }
 
-    private async renderDial(context: string): Promise<void> {
+    protected async renderDial(context: string): Promise<void> {
         const sdAction = streamDeck.actions.getActionById(context);
         const state = this.states.get(context);
         const animator = this.animators.get(context);
@@ -551,7 +477,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
                 }
             }
 
-            const rawPanoKey = isEffectMode(visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+            const rawPanoKey = this.isEffectMode(visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
             const panoramaKey = isPanoramaEffectActive(rawPanoKey) ? rawPanoKey : undefined;
 
             if (panoramaKey) {
