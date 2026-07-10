@@ -224,6 +224,11 @@ class MatrixRainEffectInstance implements EffectInstance<MatrixRainEffectSetting
 
     onSettingsChange(settings: MatrixRainEffectSettings): void {
         if (settings.color) this.baseRgb = parseColor(settings.color);
+        // Also applied live (not just on first initPanorama) — lets a PI density slider edit take
+        // effect immediately on an already-running instance, same as onRotate does.
+        if (settings.savedDensity !== undefined) {
+            this.density = Math.max(DENSITY_MIN, Math.min(DENSITY_MAX, settings.savedDensity));
+        }
     }
 
     // Controls the target fraction of columns raining at once, per spec.
@@ -251,6 +256,7 @@ const matrixRainEffect: EffectDefinition<MatrixRainEffectSettings> = {
     defaultSettings: { color: '#22C55E' },
     settingsSchema: [
         { key: 'color', type: 'color', label: 'Color', default: '#22C55E' },
+        { key: 'savedDensity', type: 'range', label: 'Rain density', min: DENSITY_MIN, max: DENSITY_MAX, step: DENSITY_STEP, default: DENSITY_DEFAULT },
     ],
     createInstance: () => new MatrixRainEffectInstance(),
 };

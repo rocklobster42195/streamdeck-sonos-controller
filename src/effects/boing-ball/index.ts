@@ -163,6 +163,13 @@ class BoingBallEffectInstance implements EffectInstance<BoingBallEffectSettings>
     onSettingsChange(settings: BoingBallEffectSettings): void {
         if (settings.primaryColor) this.primaryRgb = hexToRgb01(settings.primaryColor);
         if (settings.secondaryColor) this.secondaryRgb = hexToRgb01(settings.secondaryColor);
+        // Also applied live (not just on first initPanorama) — lets a PI speed slider edit take
+        // effect immediately on an already-running instance, same as onRotate does. Preserves
+        // current travel direction, only magnitude changes.
+        if (settings.savedSpeed !== undefined) {
+            const sign = this.vx >= 0 ? 1 : -1;
+            this.vx = sign * Math.max(SPEED_MIN, Math.min(SPEED_MAX, settings.savedSpeed));
+        }
     }
 
     onRotate(ticks: number): void {
@@ -193,6 +200,11 @@ const boingBallEffect: EffectDefinition<BoingBallEffectSettings> = {
     settingsSchema: [
         { key: 'primaryColor', type: 'color', label: 'Primary color', default: '#87AE73' },
         { key: 'secondaryColor', type: 'color', label: 'Secondary color', default: '#FFFFFF' },
+        // Deliberately simplified to a clean 1-5 integer scale for the PI (the true tuning range
+        // is ~0.7-5.3 px/tick, fractional — see SPEED_MIN/MAX above, still used for clamping
+        // whatever the PI sends and for the fine-grained physical dial-rotate control on the
+        // Panorama Effects action). A slider showing "0.7017543859649122" was illegible.
+        { key: 'savedSpeed', type: 'range', label: 'Ball speed', min: 1, max: 5, step: 1, default: 2 },
     ],
     createInstance: () => new BoingBallEffectInstance(),
 };

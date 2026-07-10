@@ -6,6 +6,7 @@
     <title>SONOS Track Dial Settings</title>
     <script src="i18n.js" defer></script>
     <script src="sdpi-components.js" defer></script>
+    <script src="effect-fields.js" defer></script>
     <style>
         :root { color-scheme: dark; }
     </style>
@@ -18,7 +19,19 @@
     </sdpi-item>
 
     <sdpi-item label="Background" data-i18n="background">
-        <sdpi-select setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
+        <sdpi-select id="vizSelect" setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
     </sdpi-item>
+    <div id="effectFieldsContainer"></div>
+
+    <script>
+        // sdpi-components fires the non-bubbling "valuechange" event directly on the element
+        // whenever its .value is set — both from user interaction AND from the initial settings
+        // sync on PI load — so this single listener covers first render and every later switch.
+        var vizSelect = document.getElementById('vizSelect');
+        var effectFieldsContainer = document.getElementById('effectFieldsContainer');
+        vizSelect.addEventListener('valuechange', function () {
+            window.renderEffectFields(effectFieldsContainer, vizSelect.value);
+        });
+    </script>
   </body>
 </html>

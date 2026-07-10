@@ -18,8 +18,9 @@ import { CoverArtAnimator } from "../utils/CoverArtAnimator";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { getDominantColor } from "../utils/colorExtract";
-import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive, setContextEffectId, registerPanoramaRenderCallback, unregisterPanoramaRenderCallback } from "../effects/PanoramaOrchestrator";
+import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive, setContextEffectId, setContextEffectSettings, registerPanoramaRenderCallback, unregisterPanoramaRenderCallback } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
+import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { piT } from "../utils/pi-i18n";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
@@ -38,6 +39,10 @@ type SonosSettings = {
     marqueePause?: number;
     // 'none' | 'eq' | any registered effect id (e.g. 'particles', 'boing-ball').
     visualizerMode?: string;
+    // Effect-specific tunable fields (e.g. `savedDensity`/`savedSpeed`/`primaryColor`), written by
+    // the generic PI field renderer (ui/effect-fields.js) — key names come from whichever effect's
+    // settingsSchema is active, this action never needs to know them individually.
+    [key: string]: JsonValue;
 };
 
 interface DialState {
@@ -204,10 +209,19 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
 
     async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
         const context = ev.action.id;
-        const settings = ev.payload.settings;
-        const { deviceIp } = settings;
+        let settings = ev.payload.settings;
 
         this.cleanupInstance(context);
+
+        if (isEffectMode(settings.visualizerMode)) {
+            const backfill = backfillEffectDefaults(settings, settings.visualizerMode);
+            if (backfill.changed) {
+                settings = backfill.settings as SonosSettings;
+                void ev.action.setSettings(settings);
+            }
+        }
+
+        const { deviceIp } = settings;
         this.settingsMap.set(context, settings);
 
         const animator = new CoverArtAnimator();
@@ -238,10 +252,10 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
             const col = this.contextColumns.get(context) ?? 0;
             registerInPanorama(context, col);
             setContextEffectId(context, settings.visualizerMode!);
+            setContextEffectSettings(context, settings);
             registerPanoramaRenderCallback(context, () => this.renderDial(context));
         } else {
-            unregisterFromPanorama(context);
-            unregisterPanoramaRenderCallback(context);
+            this.leavePanorama(context);
         }
 
         await this.renderDial(context);
@@ -311,7 +325,19 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
 
     override async onWillDisappear(ev: WillDisappearEvent<SonosSettings>): Promise<void> {
         this.cleanupInstance(ev.action.id);
+        this.leavePanorama(ev.action.id);
         this.contextColumns.delete(ev.action.id);
+    }
+
+    // Leaves the shared panorama system — only call when actually exiting effect mode or when
+    // the tile itself is being removed. Must NOT be called unconditionally on every settings
+    // update: doing so wipes the shared group key before syncGroups gets a chance to detect a
+    // live effect switch (e.g. Boing Ball -> Boing Globe), which then just re-initializes the
+    // stale effect instance instead of switching to the newly selected one.
+    private leavePanorama(context: string): void {
+        unregisterFromPanorama(context);
+        unregisterPanoramaRenderCallback(context);
+        this.stopAnimTimer(context);
     }
 
     private cleanupInstance(context: string): void {
@@ -322,10 +348,6 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
             sonosDeviceManager.releaseController(controller.deviceIp);
             this.controllers.delete(context);
         }
-
-        this.stopAnimTimer(context);
-        unregisterFromPanorama(context);
-        unregisterPanoramaRenderCallback(context);
 
         const animator = this.animators.get(context);
         if (animator) { animator.destroy(context); this.animators.delete(context); }
@@ -458,7 +480,7 @@ export class SonosDialTrack extends SingletonAction<SonosSettings> {
 
         // No device configured: show a minimal ready screen.
         if (!settings?.deviceIp) {
-            const readySvg = buildUnconfiguredDialSvg('SONOS');
+            const readySvg = buildUnconfiguredDialSvg('TRACK');
             const img = `data:image/svg+xml;base64,${Buffer.from(readySvg).toString('base64')}`;
             await sdAction.setFeedback({ 'full-canvas': img, 'title': '', 'indicator': { value: 0, enabled: false } }).catch(() => {});
             return;

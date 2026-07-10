@@ -74,6 +74,16 @@ class ParticlesEffectInstance implements EffectInstance<ParticlesEffectSettings>
 
     onSettingsChange(settings: ParticlesEffectSettings): void {
         if (settings.color) particleEngine.transitionPanoramaColor(this.key, settings.color);
+        // Also applied live (not just on first initPanorama) — lets a PI density/speed slider
+        // edit take effect immediately on an already-running instance, same as onRotate does.
+        if (settings.savedDensity !== undefined) {
+            this.density = Math.max(MIN_PER_DISPLAY, Math.min(MAX_PER_DISPLAY, settings.savedDensity));
+            particleEngine.setParticleCount(this.key, this.density * this.numDisplays);
+        }
+        if (settings.savedSpeed !== undefined) {
+            this.speed = Math.max(SPEED_MIN, Math.min(SPEED_MAX, settings.savedSpeed));
+            particleEngine.setPanoramaSpeed(this.key, this.speed);
+        }
     }
 
     onRotate(ticks: number): void {
@@ -111,7 +121,10 @@ const particlesEffect: EffectDefinition<ParticlesEffectSettings> = {
     id: 'particles',
     displayName: 'Particles',
     defaultSettings: { color: '#404040' },
-    settingsSchema: [],
+    settingsSchema: [
+        { key: 'savedDensity', type: 'range', label: 'Particle density', min: MIN_PER_DISPLAY, max: MAX_PER_DISPLAY, default: BASE_PER_DISPLAY },
+        { key: 'savedSpeed', type: 'range', label: 'Particle speed', min: SPEED_MIN, max: SPEED_MAX, step: SPEED_STEP, default: SPEED_DEFAULT },
+    ],
     createInstance: () => new ParticlesEffectInstance(),
 };
 

@@ -14,8 +14,9 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { getDominantColor } from "../utils/colorExtract";
-import { panoramaOrchestrator, panoramaColumns, panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, safeEffectCall, DISPLAY_W, DISPLAY_H } from "../effects/PanoramaOrchestrator";
+import { panoramaOrchestrator, panoramaColumns, panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, safeEffectCall, setContextEffectSettings, DISPLAY_W, DISPLAY_H } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
+import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
 import type { EffectInstance } from "../effects/types";
 import type { ParticlesEffectSettings } from "../effects/particles";
 import { piT } from "../utils/pi-i18n";
@@ -37,6 +38,10 @@ type ParticlesSettings = {
     // only two effects; revisit with namespacing once a field-name collision actually happens.
     primaryColor?: string;
     secondaryColor?: string;
+    // Catch-all for any other effect's settingsSchema fields (e.g. Boing Globe's landColor/
+    // oceanColor, Matrix Rain's color/savedDensity), written by the generic PI field renderer
+    // (ui/effect-fields.js) — this action never needs to know a new effect's field names.
+    [key: string]: JsonValue;
 };
 
 const DEFAULT_EFFECT_ID = 'particles';
@@ -54,6 +59,34 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         // plugin.ts), independent of whether a Panorama Effects tile is currently placed —
         // so Track/Volume/Group Volume dials can form a panorama group among themselves too.
         panoramaOrchestrator.setGroupSyncHandler((grouping) => this.syncGroups(grouping));
+        // Pushes a PI settings edit (e.g. a speed/density/color slider) into an ALREADY-RUNNING
+        // effect instance via onSettingsChange, without tearing it down — see PanoramaOrchestrator's
+        // SettingsChangeHandler doc comment.
+        panoramaOrchestrator.setSettingsChangeHandler((contexts) => this.pushSettingsChanges(contexts));
+    }
+
+    private pushSettingsChanges(contexts: Iterable<string>): void {
+        const changedByKey = new Map<string, Set<string>>();
+        for (const ctx of contexts) {
+            const key = this.contextGroupKey.get(ctx);
+            if (!key) continue;
+            if (!changedByKey.has(key)) changedByKey.set(key, new Set());
+            changedByKey.get(key)!.add(ctx);
+        }
+        for (const [key, changedCtxs] of changedByKey) {
+            const effect = this.groupEffects.get(key);
+            if (!effect) continue;
+            const allMembers = this.groupAllMembers.get(key) ?? [];
+            // Changed contexts go FIRST so their new value wins gatherEffectSettings' "first
+            // member with a defined value wins" merge — every member now always has a value for
+            // every effect field (backfillEffectDefaults), so without this, whichever OTHER
+            // group member happens to be first in `allMembers` would always win instead of the
+            // dial the user is actually editing, silently swallowing every live PI edit in any
+            // group with more than one member.
+            const orderedCtxs = [...changedCtxs, ...allMembers.filter((c) => !changedCtxs.has(c))];
+            safeEffectCall(() => effect.onSettingsChange?.(this.gatherEffectSettings(key, orderedCtxs)), undefined, 'onSettingsChange');
+        }
+        if (changedByKey.size > 0) panoramaOrchestrator.notifyGroupRender([...changedByKey.keys()].flatMap((k) => this.groupAllMembers.get(k) ?? []));
     }
 
     private groupContexts = new Map<string, Set<string>>();
@@ -193,23 +226,31 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
     // into initPanorama/onSettingsChange regardless of which effect is active — each effect only
     // reads the keys it cares about (e.g. Particles reads color/savedDensity/savedSpeed, Boing
     // Ball reads primaryColor/secondaryColor/savedSpeed) and ignores the rest.
+    //
+    // Reads from the orchestrator's shared `contextEffectSettings` map (populated by ALL 4 dial
+    // actions, not just this one) rather than `this.settingsMap` (this action's own tiles only) —
+    // this is what lets a solo/grouped effect running only on Track/Volume/GroupVolume dial
+    // contexts (no Panorama Effects tile in the mix) actually pick up THEIR PI-configured
+    // savedDensity/savedSpeed/color fields, instead of always falling back to an effect's built-in
+    // defaults. Merges generically (first member that has a given key wins) — never needs to know
+    // any effect's specific field names, so a newly contributed effect's schema fields flow
+    // through automatically.
     private gatherEffectSettings(key: string, ctxs: string[]): Record<string, unknown> {
-        let savedDensity: number | undefined;
-        let savedSpeed: number | undefined;
-        let savedColor: string | undefined;
-        let primaryColor: string | undefined;
-        let secondaryColor: string | undefined;
+        const merged: Record<string, unknown> = {};
         for (const ctx of ctxs) {
-            const s = this.settingsMap.get(ctx);
+            const s = panoramaOrchestrator.contextEffectSettings.get(ctx) ?? this.settingsMap.get(ctx);
             if (!s) continue;
-            if (s.savedDensity !== undefined && savedDensity === undefined) savedDensity = s.savedDensity;
-            if (s.savedSpeed !== undefined && savedSpeed === undefined) savedSpeed = s.savedSpeed;
-            if (s.staticColor && !savedColor) savedColor = s.staticColor;
-            if (s.primaryColor && !primaryColor) primaryColor = s.primaryColor;
-            if (s.secondaryColor && !secondaryColor) secondaryColor = s.secondaryColor;
+            for (const [k, v] of Object.entries(s)) {
+                if (v !== undefined && v !== '' && merged[k] === undefined) merged[k] = v;
+            }
         }
-        const color = this.groupStaticColor.get(key) ?? savedColor ?? DEFAULT_COLOR;
-        return { color, savedDensity, savedSpeed, primaryColor, secondaryColor };
+        // `staticColor` is Particles' own device-less color picker (historically named
+        // differently from the generic `color` field every effect actually reads) — keeps the
+        // same "group's live dominant color wins, else first configured color" precedence as
+        // before this generalization.
+        const configuredColor = (merged.staticColor as string | undefined) ?? (merged.color as string | undefined);
+        merged.color = this.groupStaticColor.get(key) ?? configuredColor ?? DEFAULT_COLOR;
+        return merged;
     }
 
     // computeAllGroups() only ever merges contexts that share the same contextEffectId, so every
@@ -425,11 +466,18 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         const context = ev.action.id;
         const col = 'coordinates' in ev.payload
             ? (ev.payload.coordinates as { column: number }).column : 0;
-        const settings = ev.payload.settings;
+        let settings = ev.payload.settings;
+
+        const backfill = backfillEffectDefaults(settings, settings.effectId ?? DEFAULT_EFFECT_ID);
+        if (backfill.changed) {
+            settings = backfill.settings as ParticlesSettings;
+            void ev.action.setSettings(settings);
+        }
 
         this.settingsMap.set(context, settings);
         panoramaColumns.set(context, col);
         panoramaOrchestrator.contextEffectId.set(context, settings.effectId ?? DEFAULT_EFFECT_ID);
+        setContextEffectSettings(context, settings);
         panoramaOrchestrator.registerRenderCallback(context, () => this.queueRender(context));
 
         panoramaOrchestrator.requestSync();
@@ -438,8 +486,16 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
     override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<ParticlesSettings>): Promise<void> {
         const context = ev.action.id;
         const oldSettings = this.settingsMap.get(context);
-        const settings = ev.payload.settings;
+        let settings = ev.payload.settings;
+
+        const backfill = backfillEffectDefaults(settings, settings.effectId ?? DEFAULT_EFFECT_ID);
+        if (backfill.changed) {
+            settings = backfill.settings as ParticlesSettings;
+            void ev.action.setSettings(settings);
+        }
+
         this.settingsMap.set(context, settings);
+        setContextEffectSettings(context, settings);
 
         // Changing effectId can change which contexts belong together (a dial whose effect no
         // longer matches its neighbor's must split off into its own group, and vice versa) — so
@@ -494,6 +550,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         this.leaveGroup(context);
         panoramaColumns.delete(context);
         panoramaOrchestrator.contextEffectId.delete(context);
+        panoramaOrchestrator.contextEffectSettings.delete(context);
         panoramaOrchestrator.unregisterRenderCallback(context);
         this.settingsMap.delete(context);
         this.renderGen.delete(context);

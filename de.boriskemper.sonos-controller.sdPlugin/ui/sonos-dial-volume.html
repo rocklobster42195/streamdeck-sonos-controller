@@ -6,6 +6,7 @@
     <title>SONOS Dial Volume Settings</title>
     <script src="i18n.js" defer></script>
     <script src="sdpi-components.js" defer></script>
+    <script src="effect-fields.js" defer></script>
     <style>
         :root { color-scheme: dark; }
         #pv-row { display: flex; align-items: center; gap: 8px; width: 100%; }
@@ -37,14 +38,15 @@
         </div>
     </sdpi-item>
     <sdpi-item label="Show text" data-i18n="show_text">
-        <sdpi-checkbox setting="showText"></sdpi-checkbox>
+        <sdpi-checkbox id="showTextCheckbox" setting="showText"></sdpi-checkbox>
     </sdpi-item>
     <sdpi-item label="Alignment" data-i18n="alignment">
         <sdpi-select setting="align" datasource="get-align-options"></sdpi-select>
     </sdpi-item>
     <sdpi-item label="Background" data-i18n="background">
-        <sdpi-select setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
+        <sdpi-select id="vizSelect" setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
     </sdpi-item>
+    <div id="effectFieldsContainer"></div>
 
     <script>
         var pvRange     = document.getElementById('pvRange');
@@ -62,6 +64,24 @@
         }
 
         wireSlider(pvRange, pvNumber);
+
+        // `value` is set as a JS property, not an HTML attribute — sdpi-components' setting-
+        // binding mixin declares `value` with `attribute: false`, so a plain HTML attribute has
+        // no effect. Pre-seeds the "unset" (brand new tile, no saved showText yet) case to match
+        // this dial's own render default (`settings?.showText ?? true` in sonos-dial-volume.ts) —
+        // without this the PI checkbox showed unchecked while the dial itself already rendered
+        // the % text, since a checkbox's own unset default is unchecked/false. A previously saved
+        // value (true or false) still overrides this once the real settings sync arrives.
+        document.getElementById('showTextCheckbox').value = true;
+
+        // sdpi-components fires the non-bubbling "valuechange" event directly on the element
+        // whenever its .value is set — both from user interaction AND from the initial settings
+        // sync on PI load — so this single listener covers first render and every later switch.
+        var vizSelect = document.getElementById('vizSelect');
+        var effectFieldsContainer = document.getElementById('effectFieldsContainer');
+        vizSelect.addEventListener('valuechange', function () {
+            window.renderEffectFields(effectFieldsContainer, vizSelect.value);
+        });
     </script>
   </body>
 </html>

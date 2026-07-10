@@ -6,6 +6,7 @@
     <title>Panorama Effects Settings</title>
     <script src="i18n.js" defer></script>
     <script src="sdpi-components.js" defer></script>
+    <script src="effect-fields.js" defer></script>
     <style>
       :root { color-scheme: dark; }
       .hidden { display: none !important; }
@@ -31,32 +32,17 @@
       <sdpi-checkbox setting="showTrackInfo"></sdpi-checkbox>
     </sdpi-item>
 
-    <!-- Boing Ball-specific settings -->
-    <sdpi-item id="primaryColorItem" label="Primary color" data-i18n="primary_color" class="hidden">
-      <sdpi-color id="primaryColorInput" setting="primaryColor" value="#87AE73"></sdpi-color>
-    </sdpi-item>
-
-    <sdpi-item id="secondaryColorItem" label="Secondary color" data-i18n="secondary_color" class="hidden">
-      <sdpi-color id="secondaryColorInput" setting="secondaryColor" value="#FFFFFF"></sdpi-color>
-    </sdpi-item>
-
-    <sdpi-item id="resetColorsItem" class="hidden">
-      <sdpi-button id="resetColorsBtn" data-i18n-html="reset_colors">Reset colors</sdpi-button>
-    </sdpi-item>
+    <!-- Generic controls for whichever effect is selected (color/range/checkbox/select fields
+         from that effect's settingsSchema) — see ui/effect-fields.js. Replaces this file's former
+         hand-wired Boing-Ball-only color fields; also the first time Boing Globe/Matrix Rain's
+         own fields (previously not configurable here at all) get PI controls. -->
+    <div id="effectFieldsContainer"></div>
 
     <script>
       var colorItem = document.getElementById('colorItem');
-      var primaryColorItem = document.getElementById('primaryColorItem');
-      var secondaryColorItem = document.getElementById('secondaryColorItem');
-      var resetColorsItem = document.getElementById('resetColorsItem');
       var effectSelect = document.getElementById('effectSelect');
       var deviceSelect = document.getElementById('deviceSelect');
-      var primaryColorInput = document.getElementById('primaryColorInput');
-      var secondaryColorInput = document.getElementById('secondaryColorInput');
-      var resetColorsBtn = document.getElementById('resetColorsBtn');
-
-      var BOING_BALL_DEFAULT_PRIMARY = '#87AE73';
-      var BOING_BALL_DEFAULT_SECONDARY = '#FFFFFF';
+      var effectFieldsContainer = document.getElementById('effectFieldsContainer');
 
       var currentEffectId = 'particles';
       var currentDeviceIp = '';
@@ -65,11 +51,6 @@
         var isParticles = currentEffectId === 'particles' || !currentEffectId;
         // Particle color only makes sense when there's no device driving the ambient color.
         colorItem.classList.toggle('hidden', !isParticles || !!currentDeviceIp);
-
-        var isBoingBall = currentEffectId === 'boing-ball';
-        primaryColorItem.classList.toggle('hidden', !isBoingBall);
-        secondaryColorItem.classList.toggle('hidden', !isBoingBall);
-        resetColorsItem.classList.toggle('hidden', !isBoingBall);
       }
 
       // sdpi-components elements fire a non-bubbling "valuechange" event directly on themselves
@@ -79,29 +60,11 @@
       effectSelect.addEventListener('valuechange', () => {
         currentEffectId = effectSelect.value || 'particles';
         updateVisibility();
+        window.renderEffectFields(effectFieldsContainer, currentEffectId);
       });
       deviceSelect.addEventListener('valuechange', () => {
         currentDeviceIp = deviceSelect.value || '';
         updateVisibility();
-      });
-
-      // sdpi-color's template binds the native <input type="color"> via .defaultValue, not
-      // .value — the browser only honors defaultValue before the input is "dirty" (i.e. on
-      // first render), so setting the wrapper's .value alone persists the new setting fine but
-      // never updates the visible swatch. Reach into its shadow DOM and set the native input's
-      // live .value directly so the PI reflects the reset immediately.
-      function setColorValue(sdpiColorEl, hex) {
-        sdpiColorEl.value = hex;
-        sdpiColorEl.dispatchEvent(new InputEvent('input', { bubbles: true }));
-        var nativeInput = sdpiColorEl.shadowRoot && sdpiColorEl.shadowRoot.querySelector('input[type="color"]');
-        if (nativeInput) nativeInput.value = hex;
-      }
-
-      // "click" is a native UI event (composed: true), so it crosses the sdpi-button's shadow
-      // boundary fine — unlike "change"/"valuechange", no special wiring needed here.
-      resetColorsBtn.addEventListener('click', () => {
-        setColorValue(primaryColorInput, BOING_BALL_DEFAULT_PRIMARY);
-        setColorValue(secondaryColorInput, BOING_BALL_DEFAULT_SECONDARY);
       });
     </script>
   </body>

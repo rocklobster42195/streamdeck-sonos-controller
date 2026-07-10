@@ -18,6 +18,11 @@ export const DISPLAY_W = 200;
 export const DISPLAY_H = 100;
 
 export type GroupSyncHandler = (newGrouping: Map<string, string[]>) => Promise<void> | void;
+// Called with the set of contexts whose effect settings changed (e.g. a PI slider edit), debounced
+// the same way as group sync — lets the group owner (SonosDialParticles) push the new values into
+// an ALREADY-RUNNING effect instance via onSettingsChange, without tearing it down/recreating it
+// (which would reset live-tuned state like Boing Ball's current bounce position).
+export type SettingsChangeHandler = (contexts: Iterable<string>) => void;
 
 // Third-party effects are reviewed at PR time (see CONTRIBUTING_EFFECTS.md), not sandboxed at
 // load time — a bug that throws from tickPanorama/renderSlice/onRotate/onPress would otherwise
@@ -42,6 +47,14 @@ class PanoramaOrchestratorImpl {
     // no effect at all) starts its own group instead, which is what makes a single unmatched
     // dial render its chosen effect solo rather than joining its neighbor.
     readonly contextEffectId = new Map<string, string>();
+    // Each context's own raw settings blob (whichever of the 4 dial actions owns it), keyed the
+    // same way. Populated generically — every action just hands over its own settings object,
+    // not just the fields it happens to know about — so `gatherEffectSettings` (owned by
+    // SonosDialParticles) can read effect-tunable fields like `savedDensity`/`savedSpeed`/
+    // `primaryColor` from ANY group member, not only from Panorama Effects' own tiles. This is
+    // what lets Volume/Track/GroupVolume dial's own PI-configured effect settings actually reach
+    // the running effect instance when no Panorama Effects tile is present in the group.
+    readonly contextEffectSettings = new Map<string, Record<string, unknown>>();
     // The currently-running EffectInstance per group key. Owned/populated by whichever action
     // registers the group-sync handler (SonosDialParticles) — it creates, ticks, and destroys
     // these — but stored here so OTHER actions in the same panorama (Track/Volume/Group Volume
@@ -58,10 +71,18 @@ class PanoramaOrchestratorImpl {
 
     private handler: GroupSyncHandler | null = null;
     private syncTimer: NodeJS.Timeout | null = null;
+    private settingsHandler: SettingsChangeHandler | null = null;
+    private settingsTimer: NodeJS.Timeout | null = null;
+    private pendingSettingsContexts = new Set<string>();
 
     /** Exactly one handler is expected — the action that owns effect/group lifecycle. */
     setGroupSyncHandler(handler: GroupSyncHandler): void {
         this.handler = handler;
+    }
+
+    /** Exactly one handler is expected — same owner as the group-sync handler. */
+    setSettingsChangeHandler(handler: SettingsChangeHandler): void {
+        this.settingsHandler = handler;
     }
 
     registerInPanorama(context: string, column: number): void {
@@ -73,6 +94,7 @@ class PanoramaOrchestratorImpl {
         this.panoramaContextGroupKey.delete(context);
         this.panoramaColumns.delete(context);
         this.contextEffectId.delete(context);
+        this.contextEffectSettings.delete(context);
         this.renderCallbacks.delete(context);
         this.requestSync();
     }
@@ -81,6 +103,27 @@ class PanoramaOrchestratorImpl {
         if (this.contextEffectId.get(context) === effectId) return;
         this.contextEffectId.set(context, effectId);
         this.requestSync();
+    }
+
+    // requestSettingsPush (not requestSync — settings values don't affect grouping, only what
+    // gets fed into the running effect) lets the group owner re-push the freshly merged settings
+    // into an already-running effect via onSettingsChange, so e.g. a PI speed/density slider edit
+    // takes effect immediately instead of only on the next full group teardown/recreate.
+    setContextEffectSettings(context: string, settings: Record<string, unknown>): void {
+        this.contextEffectSettings.set(context, settings);
+        this.requestSettingsPush(context);
+    }
+
+    /** Debounce rapid settings edits so one push handles all of them at once. */
+    private requestSettingsPush(context: string): void {
+        this.pendingSettingsContexts.add(context);
+        if (this.settingsTimer) clearTimeout(this.settingsTimer);
+        this.settingsTimer = setTimeout(() => {
+            this.settingsTimer = null;
+            const contexts = [...this.pendingSettingsContexts];
+            this.pendingSettingsContexts.clear();
+            this.settingsHandler?.(contexts);
+        }, 60);
     }
 
     registerRenderCallback(context: string, cb: () => void): void {
@@ -168,6 +211,14 @@ export function unregisterFromPanorama(context: string): void {
 
 export function setContextEffectId(context: string, effectId: string): void {
     panoramaOrchestrator.setContextEffectId(context, effectId);
+}
+
+export function setContextEffectSettings(context: string, settings: Record<string, unknown>): void {
+    panoramaOrchestrator.setContextEffectSettings(context, settings);
+}
+
+export function setSettingsChangeHandler(handler: SettingsChangeHandler): void {
+    panoramaOrchestrator.setSettingsChangeHandler(handler);
 }
 
 export function registerPanoramaRenderCallback(context: string, cb: () => void): void {

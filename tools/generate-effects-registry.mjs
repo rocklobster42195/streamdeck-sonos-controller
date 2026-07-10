@@ -52,8 +52,13 @@ function resolveExpr(sourceFile, expr) {
 }
 
 /** Evaluate a literal AST node into a plain JS value. Returns `undefined` for anything that
- *  isn't a compile-time-constant literal (e.g. a function reference like `createInstance`). */
-function evalLiteral(node) {
+ *  isn't a compile-time-constant literal (e.g. a function reference like `createInstance`).
+ *  `sourceFile` is required to resolve identifiers (e.g. a settingsSchema field referencing a
+ *  named tuning constant like `SPEED_MIN` instead of duplicating its literal value) and simple
+ *  arithmetic on them (e.g. `SPEED_DEFAULT * 0.4`) back to their same-file `const` declarations —
+ *  this keeps the schema's min/max/default as the SAME single source of truth the runtime physics
+ *  already uses, rather than two numbers that can silently drift apart. */
+function evalLiteral(node, sourceFile) {
     if (!node) return undefined;
     node = unwrap(node);
     if (ts.isObjectLiteralExpression(node)) {
@@ -61,20 +66,36 @@ function evalLiteral(node) {
         for (const prop of node.properties) {
             if (!ts.isPropertyAssignment(prop)) continue;
             const key = prop.name.getText().replace(/^['"]|['"]$/g, '');
-            obj[key] = evalLiteral(prop.initializer);
+            obj[key] = evalLiteral(prop.initializer, sourceFile);
         }
         return obj;
     }
     if (ts.isArrayLiteralExpression(node)) {
-        return node.elements.map(evalLiteral);
+        return node.elements.map((el) => evalLiteral(el, sourceFile));
     }
     if (ts.isStringLiteralLike(node)) return node.text;
     if (ts.isNumericLiteral(node)) return Number(node.text);
     if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
     if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
     if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.MinusToken) {
-        const inner = evalLiteral(node.operand);
+        const inner = evalLiteral(node.operand, sourceFile);
         return typeof inner === 'number' ? -inner : undefined;
+    }
+    if (ts.isIdentifier(node) && sourceFile) {
+        const resolved = resolveExpr(sourceFile, node);
+        return resolved ? evalLiteral(resolved, sourceFile) : undefined;
+    }
+    if (ts.isBinaryExpression(node) && sourceFile) {
+        const left = evalLiteral(node.left, sourceFile);
+        const right = evalLiteral(node.right, sourceFile);
+        if (typeof left !== 'number' || typeof right !== 'number') return undefined;
+        switch (node.operatorToken.kind) {
+            case ts.SyntaxKind.AsteriskToken: return left * right;
+            case ts.SyntaxKind.SlashToken: return left / right;
+            case ts.SyntaxKind.PlusToken: return left + right;
+            case ts.SyntaxKind.MinusToken: return left - right;
+            default: return undefined;
+        }
     }
     return undefined; // not a literal we understand — e.g. `createInstance` function reference
 }
@@ -99,7 +120,7 @@ function readEffectMeta(effectDir, folderName) {
     if (!objLiteral) {
         throw new Error(`effects/${folderName}/index.ts: no "export default { ... }" (or exported const) found`);
     }
-    const meta = evalLiteral(objLiteral);
+    const meta = evalLiteral(objLiteral, sourceFile);
     for (const field of ['id', 'displayName', 'settingsSchema']) {
         if (meta[field] === undefined) {
             throw new Error(`effects/${folderName}/index.ts: default export is missing literal field "${field}"`);

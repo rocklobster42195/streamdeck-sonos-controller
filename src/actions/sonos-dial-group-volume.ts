@@ -14,8 +14,9 @@ import { sonosGroupManager } from "../sonos/SonosGroupManager";
 import { SonosGroupController } from "../sonos/SonosGroupController";
 import { VolumeInfo } from "../sonos/SonosTypes";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, setContextEffectId, registerPanoramaRenderCallback, unregisterPanoramaRenderCallback } from "../effects/PanoramaOrchestrator";
+import { panoramaContextGroupKey, registerInPanorama, unregisterFromPanorama, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, setContextEffectId, setContextEffectSettings, registerPanoramaRenderCallback, unregisterPanoramaRenderCallback } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
+import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { piT } from "../utils/pi-i18n";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
@@ -35,6 +36,10 @@ type SonosDialGroupVolumeSettings = {
     showText?: boolean;
     // 'none' | any registered effect id (e.g. 'particles', 'boing-ball').
     visualizerMode?: string;
+    // Effect-specific tunable fields (e.g. `savedDensity`/`savedSpeed`/`primaryColor`), written by
+    // the generic PI field renderer (ui/effect-fields.js) — key names come from whichever effect's
+    // settingsSchema is active, this action never needs to know them individually.
+    [key: string]: JsonValue;
 };
 
 interface DialState {
@@ -183,10 +188,18 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
         if (timer) { clearInterval(timer); this.animTimers.delete(context); }
     }
 
-    private cleanupInstance(context: string): void {
+    // Leaves the shared panorama system — only call when actually exiting effect mode or when
+    // the tile itself is being removed. Must NOT be called unconditionally on every settings
+    // update: doing so wipes the shared group key before syncGroups gets a chance to detect a
+    // live effect switch (e.g. Boing Ball -> Boing Globe), which then just re-initializes the
+    // stale effect instance instead of switching to the newly selected one.
+    private leavePanorama(context: string): void {
         unregisterFromPanorama(context);
         unregisterPanoramaRenderCallback(context);
         this.stopAnimTimer(context);
+    }
+
+    private cleanupInstance(context: string): void {
         const oldController = this.controllers.get(context);
         if (oldController) {
             oldController.unregisterVolumeCallback(context);
@@ -205,13 +218,32 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
 
     async onInstanceUpdate(ev: WillAppearEvent<SonosDialGroupVolumeSettings> | DidReceiveSettingsEvent<SonosDialGroupVolumeSettings>): Promise<void> {
         const context = ev.action.id;
-        const settings = ev.payload.settings;
+        let settings = ev.payload.settings;
 
         this.cleanupInstance(context);
+
+        // `showText` defaults to true in renderDial below (`settings?.showText ?? true`), but the
+        // PI checkbox's own "unset" default is unchecked — persist the real default here too so
+        // the two stay in sync (a brand new tile otherwise shows the % text with an unchecked box).
+        let saveNeeded = false;
+        if (settings.showText === undefined) {
+            settings = { ...settings, showText: true };
+            saveNeeded = true;
+        }
+        if (isEffectMode(settings.visualizerMode)) {
+            const backfill = backfillEffectDefaults(settings, settings.visualizerMode);
+            if (backfill.changed) {
+                settings = backfill.settings as SonosDialGroupVolumeSettings;
+                saveNeeded = true;
+            }
+        }
+        if (saveNeeded) void ev.action.setSettings(settings);
+
         this.settingsMap.set(context, settings);
         this.states.set(context, {});
 
         if (!settings.groupIp) {
+            this.leavePanorama(context);
             void this.renderDial(context);
             return;
         }
@@ -222,8 +254,11 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
             // "group" of one is exactly how solo rendering works, see PanoramaOrchestrator).
             registerInPanorama(context, this.contextColumns.get(context) ?? 0);
             setContextEffectId(context, settings.visualizerMode!);
+            setContextEffectSettings(context, settings);
             registerPanoramaRenderCallback(context, () => this.renderDial(context));
             this.startAnimTimer(context);
+        } else {
+            this.leavePanorama(context);
         }
 
         try {
@@ -257,6 +292,7 @@ export class SonosDialGroupVolume extends SingletonAction<SonosDialGroupVolumeSe
 
     override async onWillDisappear(ev: WillDisappearEvent<SonosDialGroupVolumeSettings>): Promise<void> {
         this.cleanupInstance(ev.action.id);
+        this.leavePanorama(ev.action.id);
         this.contextColumns.delete(ev.action.id);
     }
 

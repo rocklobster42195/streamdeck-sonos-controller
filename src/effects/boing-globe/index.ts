@@ -3,9 +3,10 @@ import type { EffectDefinition, EffectInstance, PanoramaInitContext } from "../t
 import { encodePngDataUri } from "../shared/png";
 import { BM_W, BM_H, LAND_BITMAP_B64 } from "./landBitmap";
 
-// A raytraced Earth globe with the same bounce physics as Boing Ball, but wrapping seamlessly
-// across the panorama edge (no wall-bounce/direction-reversal) and spinning at a constant rate
-// (real Earth rotation direction, independent of horizontal drift). Land/ocean data is a
+// A raytraced Earth globe with the same bounce physics as Boing Ball, but drifting off one edge
+// of the panorama (no wall-bounce/direction-reversal) and reappearing fully offscreen on the
+// other side — never visible on both edges at once — while spinning at a constant rate (real
+// Earth rotation direction, independent of horizontal drift). Land/ocean data is a
 // precomputed bitmap (see landBitmap.ts / tools/generate-globe-bitmap.mjs) — no geo libraries in
 // the shipped bundle, just zlib.inflateSync + a bit-unpack.
 
@@ -109,8 +110,10 @@ class BoingGlobeEffectInstance implements EffectInstance<BoingGlobeEffectSetting
             this.vx = ctx.settings.savedSpeed ?? SPEED_DEFAULT;
             this.x = ctx.width / 2;
         } else {
-            // Membership changed — keep position valid mod the new (possibly smaller) width.
-            this.x = ((this.x % this.width) + this.width) % this.width;
+            // Membership changed — keep position valid mod the new (possibly smaller) width,
+            // over the extended range (including the fully-offscreen margins either side).
+            const span = this.width + 2 * this.radius;
+            this.x = (((this.x + this.radius) % span + span) % span) - this.radius;
         }
     }
 
@@ -119,8 +122,15 @@ class BoingGlobeEffectInstance implements EffectInstance<BoingGlobeEffectSetting
 
     tickPanorama(): void {
         this.bouncePhase = (this.bouncePhase + 1) % (FRAMES_HALF * 2);
-        // Wraps seamlessly instead of bouncing off walls — always drifts one direction.
-        this.x = ((this.x + this.vx) % this.width + this.width) % this.width;
+        this.x += this.vx;
+        // Reset only once fully past the far edge, and reappear fully past the near edge — the
+        // globe is never visible on both sides at once (unlike a plain modulo wrap, which shows
+        // it exiting one edge and entering the other in the same frame).
+        if (this.vx >= 0 && this.x - this.radius > this.width) {
+            this.x = -this.radius;
+        } else if (this.vx < 0 && this.x + this.radius < 0) {
+            this.x = this.width + this.radius;
+        }
         this.spin += SPIN_STEP;
     }
 
@@ -185,22 +195,24 @@ class BoingGlobeEffectInstance implements EffectInstance<BoingGlobeEffectSetting
         const shadowRx = r * (0.70 + 0.15 * shadowT);
         const shadowRy = r * 0.09;
 
-        let out = '';
-        // Wrap-around: the globe can be simultaneously visible near the right edge of one
-        // display and the left edge of another (or both edges of the same solo display) during
-        // the transition — check all three virtual positions and draw whichever are in range.
-        for (const virtualX of [this.x, this.x - this.width, this.x + this.width]) {
-            const localX = virtualX - offsetX;
-            if (localX + r < 0 || localX - r > width) continue;
-            out += `<ellipse cx="${localX}" cy="${floorLineY + shadowRy}" rx="${shadowRx}" ry="${shadowRy}" fill="#000" opacity="${shadowOpacity}"/>`;
-            out += this.renderGlobeAt(localX, y);
-        }
+        const localX = this.x - offsetX;
+        if (localX + r < 0 || localX - r > width) return '';
+
+        let out = `<ellipse cx="${localX}" cy="${floorLineY + shadowRy}" rx="${shadowRx}" ry="${shadowRy}" fill="#000" opacity="${shadowOpacity}"/>`;
+        out += this.renderGlobeAt(localX, y);
         return out;
     }
 
     onSettingsChange(settings: BoingGlobeEffectSettings): void {
         if (settings.landColor) this.landRgb = hexToRgb01(settings.landColor);
         if (settings.oceanColor) this.oceanRgb = hexToRgb01(settings.oceanColor);
+        // Also applied live (not just on first initPanorama) — lets a PI speed slider edit take
+        // effect immediately on an already-running instance, same as onRotate does. Preserves
+        // current drift direction, only magnitude changes.
+        if (settings.savedSpeed !== undefined) {
+            const sign = this.vx >= 0 ? 1 : -1;
+            this.vx = sign * Math.max(SPEED_MIN, Math.min(SPEED_MAX, settings.savedSpeed));
+        }
     }
 
     onRotate(ticks: number): void {
@@ -231,6 +243,9 @@ const boingGlobeEffect: EffectDefinition<BoingGlobeEffectSettings> = {
     settingsSchema: [
         { key: 'landColor', type: 'color', label: 'Land color', default: '#87AE73' },
         { key: 'oceanColor', type: 'color', label: 'Ocean color', default: '#1C3E6C' },
+        // Deliberately simplified to a clean 1-5 integer scale for the PI — see the identical
+        // comment in boing-ball/index.ts (same underlying tuning range/reasoning).
+        { key: 'savedSpeed', type: 'range', label: 'Drift speed', min: 1, max: 5, step: 1, default: 2 },
     ],
     createInstance: () => new BoingGlobeEffectInstance(),
 };
