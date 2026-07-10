@@ -4,6 +4,25 @@
 
 ---
 
+## [0.3.2] — 2026-07-10
+
+### Panorama Effects
+
+- Fixed picking a new effect on a solo dial (no adjacent same-effect neighbor) sometimes showing the wrong or previous effect instead of the one just selected
+- Effect settings — density, speed, colors — are now configurable in the Property Inspector on **all four** dials (Volume, Track, Group Volume, Panorama Effects), not just Panorama Effects as before
+- Effect setting changes (density/speed/colors) now apply immediately to an already-running effect instead of only on the next full restart
+- Added a "Reset to defaults" button for effect settings
+- Boing Ball / Boing Globe speed simplified to a clean 1–5 scale in the Property Inspector
+- Fixed a settings-corruption bug that could make a Volume Dial revert to a "not configured" screen after changing effect settings
+
+### Fixes
+
+- Volume Dial / Group Volume Dial: the "Show text" checkbox now matches what's actually shown on a brand new tile
+- The "not configured yet" hint now shows the dial's own name (e.g. "VOLUME", "TRACK") instead of a generic "SONOS" label
+- Group Volume Dial: an unreachable group member no longer freezes volume changes for up to 30 seconds — now fails fast instead
+
+---
+
 ## [0.3.1] — 2026-07-09
 
 ### Panorama Effects
