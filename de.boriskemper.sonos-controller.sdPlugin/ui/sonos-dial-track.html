@@ -7,14 +7,16 @@
     <script src="i18n.js" defer></script>
     <script src="sdpi-components.js" defer></script>
     <script src="effect-fields.js" defer></script>
+    <script src="battery-capability.js" defer></script>
     <style>
         :root { color-scheme: dark; }
+        .hidden { display: none !important; }
     </style>
   </head>
 
   <body>
     <sdpi-item label="SONOS device" data-i18n="sonos_device">
-        <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
+        <sdpi-select id="deviceSelect" setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
         </sdpi-select>
     </sdpi-item>
 
@@ -23,14 +25,29 @@
     </sdpi-item>
     <div id="effectFieldsContainer"></div>
 
+    <sdpi-item id="batteryItem" class="hidden" label="Battery" data-i18n="battery_mode">
+        <sdpi-select setting="batteryDisplayMode" datasource="get-battery-mode-options"></sdpi-select>
+    </sdpi-item>
+    <sdpi-checkbox id="hasBatteryCheckbox" setting="hasBattery" class="hidden"></sdpi-checkbox>
+
     <script>
-        // sdpi-components fires the non-bubbling "valuechange" event directly on the element
-        // whenever its .value is set — both from user interaction AND from the initial settings
-        // sync on PI load — so this single listener covers first render and every later switch.
-        var vizSelect = document.getElementById('vizSelect');
-        var effectFieldsContainer = document.getElementById('effectFieldsContainer');
-        vizSelect.addEventListener('valuechange', function () {
-            window.renderEffectFields(effectFieldsContainer, vizSelect.value);
+        // Wrapped in DOMContentLoaded (not relying on this being a `defer` script) because the
+        // Stream Deck PI webview does not reliably defer inline <script> tags the way modern
+        // standalone browsers do — an inline `<script defer>` here still ran synchronously during
+        // parsing, BEFORE battery-capability.js (a real deferred *external* script) had executed,
+        // throwing "window.wireBatteryCapability is not a function". DOMContentLoaded always
+        // fires after the whole document — including every deferred external script — is done.
+        document.addEventListener('DOMContentLoaded', function () {
+            // sdpi-components fires the non-bubbling "valuechange" event directly on the element
+            // whenever its .value is set — both from user interaction AND from the initial settings
+            // sync on PI load — so this single listener covers first render and every later switch.
+            var vizSelect = document.getElementById('vizSelect');
+            var effectFieldsContainer = document.getElementById('effectFieldsContainer');
+            vizSelect.addEventListener('valuechange', function () {
+                window.renderEffectFields(effectFieldsContainer, vizSelect.value);
+            });
+
+            window.wireBatteryCapability(document.getElementById('hasBatteryCheckbox'), document.getElementById('batteryItem'));
         });
     </script>
   </body>

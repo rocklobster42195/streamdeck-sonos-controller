@@ -58,6 +58,7 @@
             primary_color:      'Primärfarbe',
             secondary_color:    'Sekundärfarbe',
             reset_colors:       'Farben zurücksetzen',
+            battery_mode:       'Akku-Anzeige',
         },
         es: {
             sonos_device:       'Dispositivo SONOS',
@@ -110,6 +111,7 @@
             primary_color:      'Color primario',
             secondary_color:    'Color secundario',
             reset_colors:       'Restablecer colores',
+            battery_mode:       'Indicador de batería',
         },
     };
 

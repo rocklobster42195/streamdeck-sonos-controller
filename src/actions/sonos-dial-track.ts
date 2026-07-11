@@ -20,8 +20,9 @@ import { getDominantColor } from "../utils/colorExtract";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
 import { TrackInfo } from "../sonos/SonosTypes";
+import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { piT } from "../utils/pi-i18n";
-import { buildUnconfiguredDialSvg } from "../utils/icons";
+import { buildUnconfiguredDialSvg, renderBatteryBadge } from "../utils/icons";
 
 type SonosSettings = PanoramaCapableSettings & {
     deviceIp?: string;
@@ -30,6 +31,15 @@ type SonosSettings = PanoramaCapableSettings & {
     fontSize?: number;
     marqueeSpeed?: number;
     marqueePause?: number;
+    // 'off' | 'warning' (icon only while battery is low) | 'full' (always shows level/charging).
+    // Only ever rendered when the device actually reports battery data (Roam/Move) — see
+    // SonosBattery.ts. Defaults to 'warning' via applyBackfill's extraDefaults.
+    batteryDisplayMode?: 'off' | 'warning' | 'full';
+    // Internal, PI-only field: whether the current deviceIp reports battery data — refreshed on
+    // every settings sync (see onInstanceUpdate) and written back via setSettings() so the PI can
+    // react to it through the settings-sync channel (a hidden <sdpi-checkbox setting="hasBattery">
+    // toggles the battery-mode dropdown's visibility — see battery-capability.js).
+    hasBattery?: boolean;
     // visualizerMode ('none' | 'eq' | any registered effect id) and effect-specific tunable
     // fields (e.g. savedDensity/savedSpeed/primaryColor, written by the generic PI field
     // renderer ui/effect-fields.js) come from PanoramaCapableSettings.
@@ -43,6 +53,7 @@ interface DialState {
     trackDuration: number;
     trackPosition: number;
     trackPositionTime: number;
+    batteryStatus?: SonosBatteryStatus;
 }
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-track" })
@@ -121,6 +132,13 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
         void this.renderDial(context);
     }
 
+    private onBatteryChanged(context: string, battery: SonosBatteryStatus | undefined): void {
+        const state = this.states.get(context);
+        if (!state) return;
+        state.batteryStatus = battery;
+        void this.renderDial(context);
+    }
+
     private marqWidth(_settings?: SonosSettings): number {
         return 97;
     }
@@ -184,7 +202,7 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
 
         this.cleanupInstance(context);
 
-        settings = this.applyBackfill(ev, settings);
+        settings = this.applyBackfill(ev, settings, { batteryDisplayMode: 'warning' });
 
         const { deviceIp } = settings;
         this.settingsMap.set(context, settings);
@@ -220,8 +238,18 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
 
+            const hasBattery = await deviceHasBattery(deviceIp);
+            if (settings.hasBattery !== hasBattery) {
+                settings = { ...settings, hasBattery };
+                this.settingsMap.set(context, settings);
+                await ev.action.setSettings(settings);
+            }
+
             controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
             controller.registerTrackInfoCallback(context, (ti) => { void this.onTrackInfoChanged(context, ti); });
+            if (settings.batteryDisplayMode !== 'off') {
+                controller.registerBatteryCallback(context, (b) => this.onBatteryChanged(context, b));
+            }
 
             const [transportState, track] = await Promise.all([
                 controller.getTransportState(),
@@ -271,6 +299,7 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
         if (controller) {
             controller.unregisterTransportStateCallback(context);
             controller.unregisterTrackInfoCallback(context);
+            controller.unregisterBatteryCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
             this.controllers.delete(context);
         }
@@ -290,13 +319,26 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
     // Dial press → next track so the user can browse playlists.
     override async onDialDown(ev: DialDownEvent<SonosSettings>): Promise<void> {
         const controller = this.controllers.get(ev.action.id);
-        if (controller) await controller.next();
+        if (!controller) return;
+        try {
+            await controller.next();
+        } catch (e) {
+            // e.g. UPnPError 701 "Transition not available" — a source that doesn't support
+            // skipping (radio, empty queue). Must not propagate: an uncaught rejection here
+            // crashes the entire plugin process (all devices/actions), not just this dial.
+            streamDeck.logger.warn('next() failed', e);
+        }
     }
 
     // Touch tap → toggle play / pause.
     override async onTouchTap(ev: TouchTapEvent<SonosSettings>): Promise<void> {
         const controller = this.controllers.get(ev.action.id);
-        if (controller) await controller.togglePlayPause();
+        if (!controller) return;
+        try {
+            await controller.togglePlayPause();
+        } catch (e) {
+            streamDeck.logger.warn('togglePlayPause() failed', e);
+        }
     }
 
     // Dial rotation → seek ±5 % per tick in the current track.
@@ -317,7 +359,7 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
         void this.renderDial(context);
 
         try {
-            await controller.sonosDevice.AVTransportService.Seek({
+            await controller.transportDevice.AVTransportService.Seek({
                 InstanceID: 0,
                 Unit: 'REL_TIME',
                 Target: this.formatRelTime(newPos),
@@ -347,6 +389,16 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
                     ],
                 });
             }
+            if (ev.payload.event === 'get-battery-mode-options') {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'get-battery-mode-options',
+                    items: [
+                        { label: piT('Off'), value: 'off' },
+                        { label: piT('Warning (low battery only)'), value: 'warning' },
+                        { label: piT('Always'), value: 'full' },
+                    ],
+                });
+            }
         }
     }
 
@@ -367,7 +419,7 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
 
     private async fetchAndStorePosition(context: string, controller: SonosDeviceController): Promise<void> {
         try {
-            const pos = await controller.sonosDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
+            const pos = await controller.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
             const state = this.states.get(context);
             if (!state) return;
             state.trackPosition = this.parseRelTime(pos.RelTime);
@@ -433,39 +485,42 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
             ? Math.max(0, timeRemaining / FADE_SECS)
             : 1;
 
+        const batteryBadge = renderBatteryBadge(settings?.batteryDisplayMode, state.batteryStatus, 182, 10, 18);
+
         let svg: string;
 
         if (visualizerMode === 'none') {
-            const sharpCover = animator.render(context, 113, 4, 87, 92);
+            const sharpCover = animator.render(context, 113, 0, 87, 100);
 
             let titleFrag = '';
             if (settings?.showTrackTitle !== false) {
                 if (marqueeAnimator.isRunning(context)) {
-                    titleFrag = marqueeAnimator.render(context, 8, 68, 97, 20);
+                    titleFrag = marqueeAnimator.render(context, 8, 72, 97, 20);
                 } else {
                     const t = this.escapeXml(state.trackInfo?.Title ?? 'Sonos');
-                    titleFrag = `<text x="8" y="68" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
+                    titleFrag = `<text x="8" y="72" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
                 }
             }
 
             svg = [
                 '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                 '<defs>',
-                '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
-                '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
+                '  <clipPath id="textClip"><rect x="8" y="0" width="97" height="100"/></clipPath>',
+                '  <clipPath id="coverClip"><rect x="113" y="0" width="87" height="100" rx="6"/></clipPath>',
                 '</defs>',
                 '<rect width="200" height="100" fill="black"/>',
                 `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                 titleFrag,
-                `  <text x="8" y="82" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
+                `  <text x="8" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
                 '</g>',
-                `<rect x="8" y="91" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                progressPct > 0 ? `<rect x="8" y="91" width="${Math.round(97 * progress)}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
+                `<rect x="8" y="95" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
+                progressPct > 0 ? `<rect x="8" y="95" width="${Math.round(97 * progress)}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
                 `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                batteryBadge,
                 '</svg>',
             ].join('');
         } else {
-            const sharpCover = animator.render(context, 113, 4, 87, 92);
+            const sharpCover = animator.render(context, 113, 0, 87, 100);
 
             let titleFrag = '';
             if (settings?.showTrackTitle !== false) {
@@ -488,10 +543,10 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
                 let panoTitleFrag = '';
                 if (settings?.showTrackTitle !== false) {
                     if (marqueeAnimator.isRunning(context)) {
-                        panoTitleFrag = marqueeAnimator.render(context, 8, 68, 97, 20);
+                        panoTitleFrag = marqueeAnimator.render(context, 8, 72, 97, 20);
                     } else {
                         const t = this.escapeXml(state.trackInfo?.Title ?? 'Sonos');
-                        panoTitleFrag = `<text x="8" y="68" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
+                        panoTitleFrag = `<text x="8" y="72" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
                     }
                 }
 
@@ -501,27 +556,28 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
                     ? Math.min(99, this.estimateTextWidth(titleText, fontSize) + 8) : 0;
                 const artistPillW = artist
                     ? Math.min(99, this.estimateTextWidth(artist, 11) + 8) : 0;
-                const titlePillY = Math.round(68 - fontSize * 0.8);
+                const titlePillY = Math.round(72 - fontSize * 0.8);
                 const titlePillH = Math.round(fontSize * 1.1);
 
                 svg = [
                     '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                     '<defs>',
                     '  <clipPath id="c"><rect width="200" height="100"/></clipPath>',
-                    '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
-                    '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
+                    '  <clipPath id="textClip"><rect x="8" y="0" width="97" height="100"/></clipPath>',
+                    '  <clipPath id="coverClip"><rect x="113" y="0" width="87" height="100" rx="6"/></clipPath>',
                     '</defs>',
                     '<rect width="200" height="100" fill="#000"/>',
                     `<g clip-path="url(#c)">${particleFrag}</g>`,
                     titlePillW > 0 ? `<rect x="5" y="${titlePillY}" width="${titlePillW}" height="${titlePillH}" fill="black" opacity="0.55" rx="3"/>` : '',
-                    artistPillW > 0 ? `<rect x="5" y="73" width="${artistPillW}" height="13" fill="black" opacity="0.55" rx="3"/>` : '',
+                    artistPillW > 0 ? `<rect x="5" y="77" width="${artistPillW}" height="13" fill="black" opacity="0.55" rx="3"/>` : '',
                     `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                     panoTitleFrag,
-                    `  <text x="8" y="82" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
+                    `  <text x="8" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
                     '</g>',
-                    `<rect x="8" y="91" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                    progressPct > 0 ? `<rect x="8" y="91" width="${Math.round(97 * progress)}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
+                    `<rect x="8" y="95" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
+                    progressPct > 0 ? `<rect x="8" y="95" width="${Math.round(97 * progress)}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
                     `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                    batteryBadge,
                     '</svg>',
                 ].join('');
             } else {
@@ -533,7 +589,7 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
                     '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                     '<defs>',
                     '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
-                    '  <clipPath id="coverClip"><rect x="113" y="4" width="87" height="92" rx="6"/></clipPath>',
+                    '  <clipPath id="coverClip"><rect x="113" y="0" width="87" height="100" rx="6"/></clipPath>',
                     '</defs>',
                     '<rect width="200" height="100" fill="black"/>',
                     `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
@@ -544,6 +600,7 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
                     progressPct > 0 ? `<rect x="8" y="48" width="${progressPct}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
                     visualizer,
                     `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                    batteryBadge,
                     '</svg>',
                 ].join('');
             }

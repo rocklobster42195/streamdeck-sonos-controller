@@ -53,6 +53,9 @@
         "Group Volume": "Group Volume",
         "Control the volume of an entire SONOS group with a dial.": "Control the volume of an entire SONOS group with a dial.",
         "Mute group": "Mute group",
-        "Adjust group volume": "Adjust group volume"
+        "Adjust group volume": "Adjust group volume",
+        "Off": "Off",
+        "Warning (low battery only)": "Warning (low battery only)",
+        "Always": "Always"
     }
 }

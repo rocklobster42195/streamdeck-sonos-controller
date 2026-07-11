@@ -14,7 +14,9 @@ import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
-import { generateTransportIcon } from "../utils/icons";
+import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
+import { generateTransportIcon, renderBatteryBadge, wrapImageWithBadge } from "../utils/icons";
+import { piT } from "../utils/pi-i18n";
 
 /**
  * Settings for {@link SonosTogglePlay}.
@@ -26,6 +28,15 @@ type SonosSettings = {
     showTrackTitle?: boolean;
     fontColor?: string;
     fontSize?: number;
+    // 'off' | 'warning' (icon only while battery is low) | 'full' (always shows level/charging).
+    // Only ever rendered when the device actually reports battery data (Roam/Move) — see
+    // SonosBattery.ts. Defaults to 'warning' when unset (see handleTransportStateChange).
+    batteryDisplayMode?: 'off' | 'warning' | 'full';
+    // Internal, PI-only field: whether the current deviceIp reports battery data — refreshed on
+    // every settings sync (see onInstanceUpdate) and written back via setSettings() so the PI can
+    // react to it through the settings-sync channel (a hidden <sdpi-checkbox setting="hasBattery">
+    // toggles the battery-mode dropdown's visibility — see battery-capability.js).
+    hasBattery?: boolean;
 };
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-toggle-play" })
@@ -33,6 +44,8 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private currentSettings: Map<string, SonosSettings> = new Map();
     private currentCover: Map<string, string | undefined> = new Map();
+    private batteryStatuses: Map<string, SonosBatteryStatus | undefined> = new Map();
+    private lastTransportState: Map<string, string> = new Map();
 
     private onTrackInfoChanged(context: string, trackInfo: TrackInfo): void {
         const newCover = trackInfo.albumArtDataUri || undefined;
@@ -52,6 +65,11 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         }
     }
 
+    private onBatteryChanged(context: string, battery: SonosBatteryStatus | undefined): void {
+        this.batteryStatuses.set(context, battery);
+        void this.handleTransportStateChange(context, this.lastTransportState.get(context) ?? 'STOPPED');
+    }
+
     private async handleTransportStateChange(context: string, transportState: string, newCover?: string): Promise<void> {
         const action = streamDeck.actions.getActionById(context);
         if (!action) return;
@@ -59,6 +77,14 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         const settings = this.currentSettings.get(context);
         const controller = this.controllers.get(context);
         if (!controller || !settings) return;
+
+        this.lastTransportState.set(context, transportState);
+        const batteryMode = settings.batteryDisplayMode ?? 'warning';
+        const battery = this.batteryStatuses.get(context);
+        // 24x24 viewBox (static icons) vs. 72x72 (cover art / scrolling title) need differently
+        // scaled badge geometry, but the same underlying mode/battery decision.
+        const badge24 = renderBatteryBadge(batteryMode, battery, 16, 1, 6);
+        const badge72 = renderBatteryBadge(batteryMode, battery, 56, 3, 12);
 
         if (transportState === "PLAYING") {
             let cover = newCover || this.currentCover.get(context) || undefined;
@@ -84,20 +110,22 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                     fontColor: settings.fontColor || "#cccccc",
                     fontSize: settings.fontSize ? settings.fontSize : 13,
                     pauseDuration: 120,
-                    interval: 80
+                    interval: 80,
+                    batteryBadge: badge72
                 };
 
                 if (titleAnimator.isRunning(context)) {
                     titleAnimator.update(context, { text: title, backgroundImage: animOptions.backgroundImage });
+                    titleAnimator.setBatteryBadge(context, badge72);
                 } else {
                     titleAnimator.start(action, animOptions);
                 }
             } else {
                 titleAnimator.stop(context);
                 if (settings.showCoverArt && cover) {
-                    await action.setImage(cover);
+                    await action.setImage(wrapImageWithBadge(cover, badge72));
                 } else {
-                    await action.setImage(generateTransportIcon('play'));
+                    await action.setImage(generateTransportIcon('play', undefined, badge24));
                 }
             }
         } else {
@@ -105,10 +133,10 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
 
             switch (transportState) {
                 case "TRANSITIONING":
-                    await action.setImage(generateTransportIcon('loading'));
+                    await action.setImage(generateTransportIcon('loading', undefined, badge24));
                     break;
                 default: // PAUSED, STOPPED
-                    await action.setImage(generateTransportIcon('play'));
+                    await action.setImage(generateTransportIcon('play', undefined, badge24));
                     break;
             }
         }
@@ -117,12 +145,13 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
     async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
         const context = ev.action.id;
         const action = ev.action;
-        const settings = ev.payload.settings;
+        let settings = ev.payload.settings;
 
         if (this.controllers.has(context)) {
             const oldController = this.controllers.get(context)!;
             oldController.unregisterTransportStateCallback(context);
             oldController.unregisterTrackInfoCallback(context);
+            oldController.unregisterBatteryCallback(context);
             // Must release here — getController() below unconditionally increments refCount,
             // so skipping this leaked one refCount per re-init (every onWillAppear/settings
             // change), permanently orphaning the controller and its polling/event timers once
@@ -143,6 +172,13 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             const controller = await sonosDeviceManager.getController(settings.deviceIp);
             this.controllers.set(context, controller);
 
+            const hasBattery = await deviceHasBattery(settings.deviceIp);
+            if (settings.hasBattery !== hasBattery) {
+                settings = { ...settings, hasBattery };
+                this.currentSettings.set(context, settings);
+                await action.setSettings(settings);
+            }
+
             // Transport state changes (play/pause/stop)
             controller.registerTransportStateCallback(context, (state) => {
                 this.handleTransportStateChange(context, state);
@@ -152,6 +188,10 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             controller.registerTrackInfoCallback(context, (trackInfo) => {
                 this.onTrackInfoChanged(context, trackInfo);
             });
+
+            if ((settings.batteryDisplayMode ?? 'warning') !== 'off') {
+                controller.registerBatteryCallback(context, (b) => this.onBatteryChanged(context, b));
+            }
 
             if (settings.showDeviceName) {
                 const zoneAttributes = await controller.getZoneAttributes();
@@ -196,6 +236,7 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         if (controller) {
             controller.unregisterTransportStateCallback(context);
             controller.unregisterTrackInfoCallback(context);
+            controller.unregisterBatteryCallback(context);
             if (ev.payload.settings.deviceIp) {
                 sonosDeviceManager.releaseController(ev.payload.settings.deviceIp);
             }
@@ -203,12 +244,20 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         this.controllers.delete(context);
         this.currentSettings.delete(context);
         this.currentCover.delete(context);
+        this.batteryStatuses.delete(context);
+        this.lastTransportState.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<SonosSettings>): Promise<void> {
         const controller = this.controllers.get(ev.action.id);
-        if (controller) {
+        if (!controller) return;
+        try {
             await controller.togglePlayPause();
+        } catch (e) {
+            // An uncaught rejection here crashes the whole plugin process (every device/action),
+            // not just this key — must not propagate.
+            streamDeck.logger.warn('togglePlayPause() failed', e);
+            ev.action.showAlert();
         }
     }
 
@@ -224,6 +273,17 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                     streamDeck.ui.sendToPropertyInspector({
                         event: 'get-devices',
                         items: items
+                    });
+                    break;
+                }
+                case 'get-battery-mode-options': {
+                    streamDeck.ui.sendToPropertyInspector({
+                        event: 'get-battery-mode-options',
+                        items: [
+                            { label: piT('Off'), value: 'off' },
+                            { label: piT('Warning (low battery only)'), value: 'warning' },
+                            { label: piT('Always'), value: 'full' },
+                        ],
                     });
                     break;
                 }

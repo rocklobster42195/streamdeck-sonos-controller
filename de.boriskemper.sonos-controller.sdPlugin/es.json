@@ -53,6 +53,9 @@
         "Control the volume of an entire SONOS group with a dial.": "Controla el volumen de todo un grupo SONOS con un dial.",
         "Mute group": "Silenciar grupo",
         "Adjust group volume": "Ajustar volumen de grupo",
-        "Recall group preset (hold: save preset)": "Recuperar preset de grupo (mantener: guardar preset)"
+        "Recall group preset (hold: save preset)": "Recuperar preset de grupo (mantener: guardar preset)",
+        "Off": "Desactivado",
+        "Warning (low battery only)": "Aviso (solo batería baja)",
+        "Always": "Siempre"
     }
 }

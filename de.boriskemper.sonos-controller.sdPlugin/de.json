@@ -53,6 +53,9 @@
         "Control the volume of an entire SONOS group with a dial.": "Steuert die Lautstärke einer ganzen SONOS-Gruppe per Regler.",
         "Mute group": "Gruppe stummschalten",
         "Adjust group volume": "Gruppenlautstärke anpassen",
-        "Recall group preset (hold: save preset)": "Gruppen-Preset abrufen (halten: Preset speichern)"
+        "Recall group preset (hold: save preset)": "Gruppen-Preset abrufen (halten: Preset speichern)",
+        "Off": "Aus",
+        "Warning (low battery only)": "Warnung (nur bei niedrigem Akku)",
+        "Always": "Immer"
     }
 }

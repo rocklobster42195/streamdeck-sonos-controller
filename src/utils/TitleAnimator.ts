@@ -11,6 +11,9 @@ export interface AnimationOptions {
     speed?: number;
     pauseDuration?: number;
     interval?: number;
+    // Pre-rendered SVG fragment (e.g. from utils/icons.ts renderBatteryBadge) composited on top,
+    // independent of text/backgroundImage changes — see setBatteryBadge().
+    batteryBadge?: string;
 }
 
 enum AnimPhase {
@@ -98,6 +101,14 @@ export class TitleAnimator {
 
     public isRunning(context: string): boolean {
         return this.animationStates.has(context);
+    }
+
+    // Updates the battery badge independently of text/backgroundImage — does not reset scroll
+    // phase. Picked up on the next tick of the already-running render interval (every 50-80ms),
+    // fast enough given battery status itself only changes on a much slower poll cadence.
+    public setBatteryBadge(context: string, badge: string): void {
+        const state = this.animationStates.get(context);
+        if (state) state.options.batteryBadge = badge;
     }
 
     public async update(context: string, newOptions: { text: string; backgroundImage?: string }): Promise<void> {
@@ -259,6 +270,7 @@ export class TitleAnimator {
                     font-size="${fontSize}" 
                     font-weight="bold"
                 >${options.text}</text>
+                ${options.batteryBadge || ''}
             </svg>
         `;
         return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;

@@ -1,12 +1,17 @@
 import streamDeck from "@elgato/streamdeck";
 import { SonosDevice, SonosEvents, ServiceEvents, MetaDataHelper } from "@svrooij/sonos";
-import { sonosFavoritesCache } from "./sonos-discovery";
+import { sonosFavoritesCache, sonosManager } from "./sonos-discovery";
 
 import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "./utils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
 import { SonosZoneGroupStates, TrackInfo, VolumeInfo } from "./SonosTypes";
 import { withTimeout } from "../utils/fetchWithTimeout";
+import { fetchBatteryStatus, SonosBatteryStatus } from "./SonosBattery";
+// Lazy/deferred use only (inside methods, never at module scope) — SonosDeviceManager itself
+// imports SonosDeviceController, so this is a circular import; safe here because sonosDeviceManager
+// is only actually accessed later, well after both modules finish evaluating.
+import { sonosDeviceManager } from "./SonosDeviceManager";
 
 // An unreachable device's SOAP call can otherwise hang for the OS-level TCP connect timeout
 // (20-30s+ on Windows) before rejecting — long enough to block an entire group volume adjustment
@@ -17,6 +22,11 @@ import { withTimeout } from "../utils/fetchWithTimeout";
 // of the underlying library/fetch call's own timeout behavior.
 const SET_VOLUME_TIMEOUT_MS = 5000;
 
+// Battery percentage/charging state changes slowly — no need for the 8s poll cadence used for
+// transport/volume. Only runs at all while at least one caller (e.g. Track Dial in a non-'off'
+// battery display mode) is registered; see registerBatteryCallback/unregisterBatteryCallback.
+const BATTERY_POLL_MS = 15000;
+
 export class SonosDeviceController {
   public readonly deviceIp: string;
   public sonosDevice: SonosDevice; 
@@ -25,9 +35,13 @@ export class SonosDeviceController {
   private transportStateCallbacks: Map<string, (transportState: string) => void> = new Map();
   private playModeCallbacks: Map<string, (playMode: string) => void> = new Map();
   private trackInfoCallbacks: Map<string, (trackInfo: TrackInfo) => void> = new Map();
-  
+  private batteryCallbacks: Map<string, (battery: SonosBatteryStatus | undefined) => void> = new Map();
+
   private refreshInterval?: NodeJS.Timeout;
   private pollInterval?: NodeJS.Timeout;
+  private batteryPollInterval?: NodeJS.Timeout;
+  private lastBatteryStatus: SonosBatteryStatus | undefined;
+  private hasBatteryStatus = false;
   private lastPolledTransportState = '';
   private isInitialized = false;
 
@@ -46,6 +60,14 @@ export class SonosDeviceController {
   private coverFetchAttempts = 0;
   private static readonly MAX_COVER_FETCH_ATTEMPTS = 5;
 
+  // When grouped under a different coordinator, we forward THAT coordinator's own controller's
+  // transport-state/track-info callbacks as our own instead of relying on this device's own
+  // group-relayed UPnP events — confirmed on hardware those lag by ~10s behind the coordinator's
+  // own (instant) events. See syncCoordinatorSubscription().
+  private coordinatorController?: SonosDeviceController;
+  private subscribedCoordinatorHost?: string;
+  private get coordinatorCallbackId(): string { return `member-${this.deviceIp}`; }
+
   private static isRadioAlbumArtUri(albumArtUri: string | undefined): boolean {
     if (!albumArtUri) return false;
     // Sonos Radio (Deezer-powered) serves cover art from sonosradio.imgix.net — no u= parameter.
@@ -55,10 +77,122 @@ export class SonosDeviceController {
     return MetaDataHelper.IsRadioStream(decodeURIComponent(match[1]));
   }
 
+  // Sonos' own TuneIn-logo resize proxy (e.g. https://sali.sonos.superhi.fi/image?w=60&image=
+  // <original-logo-url>&partnerId=tunein, surfaced via GetMediaInfo's CurrentURIMetaData for
+  // stations with no useful GetPositionInfo metadata) defaults to a tiny width — 60px, meant for
+  // a small list-row icon — which looks visibly pixelated stretched across the much larger Track
+  // Dial cover area. Bump the requested width up via the same proxy rather than fetching the
+  // (potentially much larger/wrong-format) original directly.
+  private static upsizeSonosImageProxyUrl(url: string): string {
+    try {
+      const u = new URL(url);
+      if (!u.hostname.endsWith('sonos.superhi.fi') || !u.searchParams.has('w')) return url;
+      u.searchParams.set('w', '300');
+      return u.toString();
+    } catch {
+      return url;
+    }
+  }
+
+  // Detects a "Title" that's actually just the trailing filename/query segment of a raw stream
+  // URL — Sonos' own fallback when a station provides no real metadata in GetPositionInfo (e.g.
+  // "stream.mp3?aggregator=tunein&cid=..."). Confirmed on hardware for a WDR2/TuneIn stream; used
+  // to prefer GetMediaInfo's CurrentURIMetaData (the real station name) instead — see
+  // getCurrentTrack().
+  private static looksLikeRawStreamFilename(title: string | undefined): boolean {
+    if (!title) return false;
+    return /\.(mp3|aac|m4a|ogg|flac|wav|m3u8?|pls)(\?|$)/i.test(title);
+  }
+
   constructor(deviceIp: string) {
     this.deviceIp = deviceIp;
     this.sonosDevice = new SonosDevice(deviceIp);
     streamDeck.logger.debug(`SonosDeviceController for ${this.deviceIp} created.`);
+  }
+
+  // The device to query for transport state / current track / position / cover art. A grouped,
+  // non-coordinator member's OWN AVTransportService reports stale/wrong data (confirmed on real
+  // hardware: a grouped Roam's GetTransportInfo said PLAYING while the group's actual coordinator
+  // correctly said STOPPED) — only the group COORDINATOR's AVTransportService is authoritative.
+  // `this.sonosDevice` is a bare `new SonosDevice(ip)`, which never gets a populated `.Coordinator`
+  // of its own (that's only wired up by SonosManager's zone-topology GENA subscription onto the
+  // devices it discovers) — so resolve via the manager-owned counterpart in `sonosManager.Devices`
+  // instead, exactly like SonosGroupController.resolveCoordinator() already does. Looked up fresh
+  // on every access rather than cached: `.Coordinator` is kept live by that same subscription (no
+  // polling needed for it specifically), and groups can reform at any time. Falls back to
+  // `this.sonosDevice` if discovery hasn't completed yet or the device isn't found — same as an
+  // ungrouped/standalone device.
+  //
+  // Deliberately does NOT change volume/mute (RenderingControlService) or playback commands
+  // (Play/Pause/Next/Previous) — those already work correctly sent directly to the member (Sonos
+  // forwards them internally), and per-member volume is intentionally individual even within a
+  // group (see SonosGroupController, which exists specifically to aggregate that).
+  public get transportDevice(): SonosDevice {
+    try {
+      const managed = sonosManager.Devices.find(d => d.Host === this.deviceIp);
+      return managed?.Coordinator ?? this.sonosDevice;
+    } catch {
+      return this.sonosDevice;
+    }
+  }
+
+  // True only when transportDevice actually resolved to a genuinely different physical device
+  // (the group coordinator) — false for a standalone device or one that IS the coordinator, even
+  // though transportDevice returns a different SonosDevice *object* in that case too (the
+  // manager-owned instance, not this.sonosDevice) since object identity isn't a reliable signal
+  // here, only the host is.
+  private get isGroupedMember(): boolean {
+    return this.transportDevice.Host !== this.deviceIp;
+  }
+
+  // Keeps our forwarded coordinator subscription pointed at whichever device is currently the
+  // group coordinator (re-checked every poll tick since groups can reform at any time — cheap,
+  // no network call, just local sonosManager.Devices/.Coordinator reads via transportDevice).
+  // Acquires a full SonosDeviceController for the coordinator via the same refcounted pool every
+  // other action uses, and forwards ITS already-correct-and-fast transport-state/track-info
+  // callbacks as our own — instead of this device's own group-relayed events/polling, which are
+  // both far slower (confirmed on hardware: ~10s vs. instant on the coordinator itself).
+  private async syncCoordinatorSubscription(): Promise<void> {
+    const coordinatorHost = this.isGroupedMember ? this.transportDevice.Host : undefined;
+
+    if (this.subscribedCoordinatorHost === coordinatorHost) return; // nothing changed
+
+    if (this.coordinatorController) {
+      this.coordinatorController.unregisterTransportStateCallback(this.coordinatorCallbackId);
+      this.coordinatorController.unregisterTrackInfoCallback(this.coordinatorCallbackId);
+      sonosDeviceManager.releaseController(this.coordinatorController.deviceIp);
+      this.coordinatorController = undefined;
+    }
+    this.subscribedCoordinatorHost = coordinatorHost;
+
+    if (!coordinatorHost) return; // no longer grouped (or discovery not ready) — plain self-polling is correct again
+
+    try {
+      const controller = await sonosDeviceManager.getController(coordinatorHost);
+      // A concurrent re-check may have already moved on to a different (or no) coordinator while
+      // this getController() call was in flight — don't clobber that newer state.
+      if (this.subscribedCoordinatorHost !== coordinatorHost) {
+        sonosDeviceManager.releaseController(coordinatorHost);
+        return;
+      }
+      this.coordinatorController = controller;
+      streamDeck.logger.info(`[${this.deviceIp}] Subscribed to coordinator ${coordinatorHost} for transport/track updates.`);
+      controller.registerTransportStateCallback(this.coordinatorCallbackId, (ts) => {
+        streamDeck.logger.debug(`[${this.deviceIp}] Forwarded transport state from coordinator ${coordinatorHost}: ${ts}`);
+        if (ts !== this.lastPolledTransportState) {
+          this.lastPolledTransportState = ts;
+          this.transportStateCallbacks.forEach(cb => cb(ts));
+        }
+      });
+      controller.registerTrackInfoCallback(this.coordinatorCallbackId, (ti) => {
+        streamDeck.logger.info(`[${this.deviceIp}] Forwarded track info from coordinator ${coordinatorHost}: Title="${ti?.Title}", hasArt=${!!ti?.albumArtDataUri}`);
+        this.currentTrack = ti;
+        this.trackInfoCallbacks.forEach(cb => cb(ti));
+      });
+    } catch (e) {
+      streamDeck.logger.warn(`[${this.deviceIp}] Failed to subscribe to coordinator ${coordinatorHost}`, e);
+      this.subscribedCoordinatorHost = undefined;
+    }
   }
 
   // --- Init & Destroy ---
@@ -66,6 +200,7 @@ export class SonosDeviceController {
     if (this.isInitialized) return;
     await this.updateInitialState();
     await this.initializeSubscriptions();
+    await this.syncCoordinatorSubscription();
     // Always poll — catches missed UPnP events (e.g. lost PLAYING after TRANSITIONING).
     this.startPolling();
     this.startRefreshEventSubscriptions();
@@ -74,11 +209,19 @@ export class SonosDeviceController {
   public destroy(): void {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
     if (this.pollInterval) clearInterval(this.pollInterval);
+    if (this.batteryPollInterval) clearInterval(this.batteryPollInterval);
     this.cancelSubscriptions();
+    if (this.coordinatorController) {
+      this.coordinatorController.unregisterTransportStateCallback(this.coordinatorCallbackId);
+      this.coordinatorController.unregisterTrackInfoCallback(this.coordinatorCallbackId);
+      sonosDeviceManager.releaseController(this.coordinatorController.deviceIp);
+      this.coordinatorController = undefined;
+    }
     this.volumeInfoCallbacks.clear();
     this.transportStateCallbacks.clear();
     this.playModeCallbacks.clear();
     this.trackInfoCallbacks.clear();
+    this.batteryCallbacks.clear();
   }
 
   private startPolling(): void {
@@ -86,8 +229,10 @@ export class SonosDeviceController {
     let trackPollTick = 0;
     this.pollInterval = setInterval(async () => {
       try {
+        await this.syncCoordinatorSubscription();
+
         const [tsInfo, volInfo, muteInfo] = await Promise.all([
-          this.sonosDevice.AVTransportService.GetTransportInfo({ InstanceID: 0 }),
+          this.transportDevice.AVTransportService.GetTransportInfo({ InstanceID: 0 }),
           this.sonosDevice.RenderingControlService.GetVolume({ InstanceID: 0, Channel: 'Master' }),
           this.sonosDevice.RenderingControlService.GetMute({ InstanceID: 0, Channel: 'Master' }),
         ]);
@@ -131,7 +276,7 @@ export class SonosDeviceController {
             if (track.AlbumArtUri && track.AlbumArtUri !== this.currentAlbumArtUri) {
               this.currentAlbumArtUri = track.AlbumArtUri;
               try {
-                const cover = await loadImageFromUri(track.AlbumArtUri, this.sonosDevice);
+                const cover = await loadImageFromUri(track.AlbumArtUri, this.transportDevice);
                 if (cover) { newTrackInfo.albumArtDataUri = cover; this.lastKnownCover = cover; }
               } catch { this.currentAlbumArtUri = ''; }
             }
@@ -165,7 +310,7 @@ export class SonosDeviceController {
             MetaDataHelper.IsRadioStream(track.TrackUri) ||
             (track.AlbumArtUri ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri) : false);
         if (track.AlbumArtUri) {
-            const cover = await loadImageFromUri(track.AlbumArtUri, this.sonosDevice);
+            const cover = await loadImageFromUri(track.AlbumArtUri, this.transportDevice);
             if (cover) { this.currentTrack.albumArtDataUri = cover; this.lastKnownCover = cover; }
         }
     }
@@ -183,9 +328,18 @@ export class SonosDeviceController {
   }
 
   // --- Basic Controls ---
-  async togglePlayPause(): Promise<void> { this.sonosDevice.TogglePlayback(); }
-  async next(): Promise<void> { await this.sonosDevice.Next(); }
-  async previous(): Promise<void> { await this.sonosDevice.Previous(); }
+  // Must await (not fire-and-forget) — a rejected, un-awaited promise here becomes an unhandled
+  // rejection that crashes the whole plugin process (every device/action, not just this one),
+  // exactly as `next()`/`previous()` did before their call sites gained try/catch (e.g. a "Next"
+  // on a source that doesn't support skipping throws UPnPError 701 "Transition not available").
+  //
+  // Target transportDevice (the group coordinator when grouped), not this.sonosDevice — confirmed
+  // on hardware that a non-coordinator member's own transport does NOT reliably forward Next
+  // (Sonos does not always relay these internally, contrary to earlier assumption); Seek already
+  // used transportDevice and worked correctly for a grouped member, which is what exposed this.
+  async togglePlayPause(): Promise<void> { await this.transportDevice.TogglePlayback(); }
+  async next(): Promise<void> { await this.transportDevice.Next(); }
+  async previous(): Promise<void> { await this.transportDevice.Previous(); }
   
   async setVolume(volume: number): Promise<void> {
     await withTimeout(
@@ -206,7 +360,7 @@ export class SonosDeviceController {
   }
 
   async toggleShuffle(): Promise<void> {
-    const { PlayMode: currentMode } = await this.sonosDevice.AVTransportService.GetTransportSettings({ InstanceID: 0 });
+    const { PlayMode: currentMode } = await this.transportDevice.AVTransportService.GetTransportSettings({ InstanceID: 0 });
     const mode = String(currentMode);
     let desiredNext: string;
 
@@ -247,7 +401,7 @@ export class SonosDeviceController {
     let lastError: any = null;
     for (const candidate of candidates) {
       try {
-        await this.sonosDevice.AVTransportService.SetPlayMode({ InstanceID: 0, NewPlayMode: candidate as any });
+        await this.transportDevice.AVTransportService.SetPlayMode({ InstanceID: 0, NewPlayMode: candidate as any });
         streamDeck.logger.info(`[toggleShuffle] SetPlayMode succeeded: ${candidate}`);
         try {
             const actual = await this.getPlayMode();
@@ -267,7 +421,7 @@ export class SonosDeviceController {
   }
 
   async toggleRepeat(): Promise<void> {
-    const { PlayMode: currentMode } = await this.sonosDevice.AVTransportService.GetTransportSettings({ InstanceID: 0 });
+    const { PlayMode: currentMode } = await this.transportDevice.AVTransportService.GetTransportSettings({ InstanceID: 0 });
     const mode = String(currentMode);
 
     // Determine the desired next mode in a predictable rotation
@@ -317,7 +471,7 @@ export class SonosDeviceController {
     let lastError: any = null;
     for (const candidate of candidates) {
       try {
-        await this.sonosDevice.AVTransportService.SetPlayMode({ InstanceID: 0, NewPlayMode: candidate as any });
+        await this.transportDevice.AVTransportService.SetPlayMode({ InstanceID: 0, NewPlayMode: candidate as any });
         streamDeck.logger.info(`[toggleRepeat] SetPlayMode succeeded: ${candidate}`);
         try {
           const actual = await this.getPlayMode();
@@ -351,11 +505,11 @@ export class SonosDeviceController {
 
   // --- Getters ---
   async getTransportState(): Promise<string> {
-    const transportInfo = await this.sonosDevice.AVTransportService.GetTransportInfo({ InstanceID: 0 });
+    const transportInfo = await this.transportDevice.AVTransportService.GetTransportInfo({ InstanceID: 0 });
     return transportInfo.CurrentTransportState;
   }
   async getPlayMode(): Promise<string> {
-    const settings = await this.sonosDevice.AVTransportService.GetTransportSettings({ InstanceID: 0 });
+    const settings = await this.transportDevice.AVTransportService.GetTransportSettings({ InstanceID: 0 });
     return settings.PlayMode;
   }
   async isMuted(): Promise<boolean> {
@@ -376,7 +530,35 @@ export class SonosDeviceController {
     if (this.currentTrack) callback(this.currentTrack);
   }
   unregisterTrackInfoCallback(id: string): void { this.trackInfoCallbacks.delete(id); }
-  
+
+  // Battery polling is opt-in and started/stopped on demand (most Sonos speakers are mains-powered
+  // and have no battery to report) — only runs while at least one caller is registered.
+  registerBatteryCallback(id: string, callback: (battery: SonosBatteryStatus | undefined) => void): void {
+    this.batteryCallbacks.set(id, callback);
+    if (!this.batteryPollInterval) {
+      this.batteryPollInterval = setInterval(() => { void this.pollBatteryStatus(); }, BATTERY_POLL_MS);
+      void this.pollBatteryStatus();
+    } else if (this.hasBatteryStatus) {
+      callback(this.lastBatteryStatus);
+    }
+  }
+  unregisterBatteryCallback(id: string): void {
+    this.batteryCallbacks.delete(id);
+    if (this.batteryCallbacks.size === 0 && this.batteryPollInterval) {
+      clearInterval(this.batteryPollInterval);
+      this.batteryPollInterval = undefined;
+      this.hasBatteryStatus = false;
+    }
+  }
+  private async pollBatteryStatus(): Promise<void> {
+    const status = await fetchBatteryStatus(this.sonosDevice, this.deviceIp);
+    const prevKey = this.hasBatteryStatus ? JSON.stringify(this.lastBatteryStatus) : undefined;
+    this.hasBatteryStatus = true;
+    if (prevKey === JSON.stringify(status)) return;
+    this.lastBatteryStatus = status;
+    this.batteryCallbacks.forEach(cb => cb(status));
+  }
+
   // --- Subscriptions ---
   async cancelSubscriptions(): Promise<void> { await this.sonosDevice.CancelEvents(); }
   
@@ -395,6 +577,13 @@ export class SonosDeviceController {
             const keys = data && typeof data === 'object' ? Object.keys(data).join(',') : String(data);
             streamDeck.logger.debug(`[AVTransportService Event] keys=${keys}`);
           } catch { /* ignore logging errors */ }
+          // A grouped non-coordinator member's own transport-state events are unreliable
+          // (confirmed on hardware: kept reporting PLAYING for a while after the group was
+          // actually paused) — ignore them here and let the 8s poll (which reads from the
+          // coordinator, see transportDevice) be the sole source of truth instead. Without this,
+          // a stale member-sourced event arriving between poll ticks kept flipping the dial back
+          // to "playing" (e.g. the EQ visualizer), fighting the poll's correct value.
+          if (this.isGroupedMember) return;
           if (typeof data.TransportState === 'string') this.transportStateCallbacks.forEach(cb => cb(data.TransportState));
           if (typeof data.CurrentPlayMode === 'string') this.playModeCallbacks.forEach(cb => cb(data.CurrentPlayMode));
           // Some devices may emit 'PlayMode' instead of 'CurrentPlayMode'
@@ -418,14 +607,22 @@ export class SonosDeviceController {
       });
 
       this.sonosDevice.Events.on('currentTrack', async (track: Track) => {
+        // Unlike raw transport-state (confirmed broken for a grouped non-coordinator member — see
+        // the AVTransportService listener above), svrooij's synthesized 'currentTrack' event
+        // apparently DOES track the coordinator's queue correctly even for a member — suppressing
+        // it here too (as an earlier version of this fix did) left track/cover changes to only be
+        // caught by the slow ~24s track-info poll, making normal queue playback feel very laggy.
+        // Keep this one event-driven for all devices.
         streamDeck.logger.debug(`Current track changed: "${track.Title}", AlbumArtUri="${track.AlbumArtUri || "none"}"`);
-        
+
         const newTrackInfo: TrackInfo = track;
 
         if (track.AlbumArtUri && track.AlbumArtUri !== this.currentAlbumArtUri) {
             this.currentAlbumArtUri = track.AlbumArtUri;
             try {
-                const cover = await loadImageFromUri(track.AlbumArtUri, this.sonosDevice);
+                // Resolve via transportDevice, not this.sonosDevice: a relative AlbumArtUri from
+                // the coordinator's queue must be fetched from the coordinator's own host.
+                const cover = await loadImageFromUri(track.AlbumArtUri, this.transportDevice);
                 if (cover) {
                     newTrackInfo.albumArtDataUri = cover;
                     this.lastKnownCover = cover;
@@ -728,15 +925,30 @@ export class SonosDeviceController {
 
 
   async getCurrentTrackCover(): Promise<string | undefined> {
-      const positionInfo = await this.sonosDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
+      const positionInfo = await this.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
       const trackMetadata = positionInfo.TrackMetaData;
 
       streamDeck.logger.debug(`[getCurrentTrackCover] TrackURI="${positionInfo.TrackURI}", metadataType=${typeof trackMetadata}`);
 
       // Queue playback: metadata is parsed and contains AlbumArtUri.
       if (typeof trackMetadata !== 'string' && trackMetadata.AlbumArtUri) {
-          return await loadImageFromUri(trackMetadata.AlbumArtUri, this.sonosDevice);
+          return await loadImageFromUri(trackMetadata.AlbumArtUri, this.transportDevice);
       }
+
+      // Some radio stations (confirmed on hardware: WDR2 via TuneIn) report no AlbumArtUri and a
+      // useless URL-derived Title in GetPositionInfo, while GetMediaInfo's CurrentURIMetaData has
+      // the real station logo (an absolute external URL, e.g. https://.../logo.jpg) and name —
+      // this is what surfaces the cover in other Sonos clients (e.g. Home Assistant) even when our
+      // own GetPositionInfo-based path finds nothing.
+      try {
+          const mediaInfo = await this.transportDevice.AVTransportService.GetMediaInfo({ InstanceID: 0 });
+          const mediaMeta = mediaInfo.CurrentURIMetaData;
+          if (typeof mediaMeta !== 'string' && mediaMeta.AlbumArtUri) {
+              const artUrl = SonosDeviceController.upsizeSonosImageProxyUrl(mediaMeta.AlbumArtUri);
+              const cover = await loadImageFromUri(artUrl, this.transportDevice);
+              if (cover) return cover;
+          }
+      } catch { /* fall through to the /getaa guess below */ }
 
       // Radio / streaming: derive the art from the stream URI via the Sonos /getaa endpoint.
       // This works regardless of whether TrackMetaData is a plain string (some radio) or a
@@ -745,7 +957,7 @@ export class SonosDeviceController {
       if (positionInfo.TrackURI) {
           const artUri = `/getaa?s=1&u=${encodeURIComponent(positionInfo.TrackURI)}`;
           streamDeck.logger.debug(`[getCurrentTrackCover] Trying radio art: ${artUri.substring(0, 80)}`);
-          const cover = await loadImageFromUri(artUri, this.sonosDevice);
+          const cover = await loadImageFromUri(artUri, this.transportDevice);
           if (cover) return cover;
       }
 
@@ -756,10 +968,30 @@ export class SonosDeviceController {
       return this.lastKnownCover;
   }
   async getCurrentTrack(): Promise<Track | undefined> {
-    const positionInfo = await this.sonosDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
+    const positionInfo = await this.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
     const trackMetadata = positionInfo.TrackMetaData;
-    if (typeof trackMetadata !== 'string') return trackMetadata;
-    return undefined;
+    let track: Track | undefined = typeof trackMetadata !== 'string' ? trackMetadata : undefined;
+
+    // Some radio stations report a URL-derived junk Title (and/or no AlbumArtUri) in
+    // GetPositionInfo — GetMediaInfo's CurrentURIMetaData has the real station name/logo instead
+    // (confirmed on hardware: WDR2 via TuneIn gave Title "stream.mp3?aggregator=..." here, but
+    // "WDR 2 Rhein und Ruhr" via GetMediaInfo). Only overlay the fields that are actually missing/
+    // bad — don't clobber good metadata queue playback already has.
+    if (!track || SonosDeviceController.looksLikeRawStreamFilename(track.Title) || !track.AlbumArtUri) {
+        try {
+            const mediaInfo = await this.transportDevice.AVTransportService.GetMediaInfo({ InstanceID: 0 });
+            const mediaMeta = mediaInfo.CurrentURIMetaData;
+            if (typeof mediaMeta !== 'string') {
+                const needsTitle = !track?.Title || SonosDeviceController.looksLikeRawStreamFilename(track.Title);
+                track = {
+                    ...(track ?? {} as Track),
+                    Title: needsTitle && mediaMeta.Title ? mediaMeta.Title : track?.Title,
+                    AlbumArtUri: track?.AlbumArtUri || (mediaMeta.AlbumArtUri ? SonosDeviceController.upsizeSonosImageProxyUrl(mediaMeta.AlbumArtUri) : undefined),
+                } as Track;
+            }
+        } catch { /* keep whatever GetPositionInfo already gave us */ }
+    }
+    return track;
   }
   
   async getZoneAttributes(debug?: boolean): Promise<GetZoneAttributesResponse> {
