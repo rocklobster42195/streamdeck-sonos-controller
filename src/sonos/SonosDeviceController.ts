@@ -4,6 +4,7 @@ import { sonosFavoritesCache, sonosManager } from "./sonos-discovery";
 
 import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "./utils";
+import { normalizeBrowseResult } from "./queueUtils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
 import { SonosZoneGroupStates, TrackInfo, VolumeInfo } from "./SonosTypes";
 import { withTimeout } from "../utils/fetchWithTimeout";
@@ -1008,5 +1009,19 @@ export class SonosDeviceController {
     const favorites = this.sonosDevice.GetFavoriteRadioStations();
     if (debug) streamDeck.logger.debug(favorites);
     return favorites;
+  }
+
+  // Queue lives on the group coordinator, same as every other AVTransport call — use
+  // transportDevice, not sonosDevice, so this also works for grouped members.
+  async getQueue(): Promise<Track[]> {
+    const resp = await this.transportDevice.GetQueue();
+    return normalizeBrowseResult(resp);
+  }
+
+  // 0-based current position within the queue, or -1 if not applicable (e.g. radio, no track).
+  async getCurrentQueuePosition(): Promise<number> {
+    const positionInfo = await this.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
+    const track = positionInfo.Track;
+    return typeof track === 'number' && track > 0 ? track - 1 : -1;
   }
 }

@@ -1,0 +1,86 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SONOS Queue Dial Settings</title>
+    <script src="i18n.js" defer></script>
+    <script src="sdpi-components.js" defer></script>
+    <script src="effect-fields.js" defer></script>
+    <style>
+        :root { color-scheme: dark; }
+        .hint { font-size: 11px; color: #888; line-height: 1.4; }
+        #qt-row { display: flex; align-items: center; gap: 8px; width: 100%; }
+        #qtRange { flex: 1; min-width: 0; }
+        #qtNumber {
+            width: 46px;
+            background: var(--sdpi-background, #1e1e1e);
+            color: var(--sdpi-color, #ccc);
+            border: 1px solid var(--sdpi-borderColor, #555);
+            border-radius: 3px;
+            padding: 3px 4px;
+            text-align: center;
+            font-size: 12px;
+            font-family: inherit;
+        }
+        #qtNumber:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
+    </style>
+  </head>
+
+  <body>
+    <sdpi-item label="SONOS device" data-i18n="sonos_device">
+        <sdpi-select id="deviceSelect" setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
+        </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Cover position" data-i18n="cover_position">
+        <sdpi-select setting="coverPosition" datasource="get-cover-position-options"></sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Background" data-i18n="background">
+        <sdpi-select id="vizSelect" setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
+    </sdpi-item>
+    <div id="effectFieldsContainer"></div>
+
+    <sdpi-item label="Return timeout" data-i18n="browse_timeout">
+        <div id="qt-row">
+            <sdpi-range id="qtRange" setting="queueTimeoutSeconds" min="0" max="15" step="1" value="5"></sdpi-range>
+            <input type="number" id="qtNumber" min="0" max="15" step="1" title="Return timeout">
+        </div>
+    </sdpi-item>
+
+    <sdpi-item>
+        <sdpi-item-value class="hint" data-i18n-html="queue_hint">
+            Rotate to browse the current queue. Press to jump there. Touch or wait to return to now playing.<br>
+            0 = never auto-return, only Touch brings you back.
+        </sdpi-item-value>
+    </sdpi-item>
+
+    <script>
+        var qtRange = document.getElementById('qtRange');
+        var qtNumber = document.getElementById('qtNumber');
+
+        qtRange.addEventListener('valuechange', function (e) {
+            qtNumber.value = e.target.value;
+        });
+
+        qtNumber.addEventListener('change', function () {
+            var n = Math.max(0, Math.min(15, parseInt(qtNumber.value) || 0));
+            qtNumber.value = n;
+            qtRange.value = n;
+            qtRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
+        });
+
+        // Wrapped in DOMContentLoaded — see sonos-dial-track.html for why this can't be an
+        // inline `<script defer>` relying on effect-fields.js (a real deferred external script)
+        // having already run.
+        document.addEventListener('DOMContentLoaded', function () {
+            var vizSelect = document.getElementById('vizSelect');
+            var effectFieldsContainer = document.getElementById('effectFieldsContainer');
+            vizSelect.addEventListener('valuechange', function () {
+                window.renderEffectFields(effectFieldsContainer, vizSelect.value);
+            });
+        });
+    </script>
+  </body>
+</html>

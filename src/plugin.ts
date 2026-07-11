@@ -11,6 +11,7 @@ import { SonosDialFavorites } from "./actions/sonos-dial-favorites";
 import { SonosDialParticles } from "./actions/sonos-dial-particles";
 import { SonosDialGroupVolume } from "./actions/sonos-dial-group-volume";
 import { SonosDialDiagnostics } from "./actions/sonos-dial-diagnostics";
+import { SonosDialQueue } from "./actions/sonos-dial-queue";
 
 streamDeck.logger.setLevel("info");
 
@@ -25,6 +26,7 @@ streamDeck.actions.registerAction(new SonosDialFavorites());
 streamDeck.actions.registerAction(new SonosDialParticles());
 streamDeck.actions.registerAction(new SonosDialGroupVolume());
 streamDeck.actions.registerAction(new SonosDialDiagnostics());
+streamDeck.actions.registerAction(new SonosDialQueue());
 
 // Finally, connect to the Stream Deck immediately.
 streamDeck.connect();

@@ -3,6 +3,7 @@ import {
     mdiPlayCircle, mdiStarCircle, mdiPlaylistPlay,
     mdiVolumeHigh, mdiVolumeOff, mdiKnob, mdiHeartCircle,
     mdiCreation, mdiMusicCircle, mdiAccessPointNetwork,
+    mdiPlaylistMusic,
 } from '@mdi/js';
 import fs from 'fs';
 import path from 'path';
@@ -35,5 +36,6 @@ await write(mdiHeartCircle,  `${IMGS}/actions/sonos-dial-favorites`,   'icon');
 await write(mdiCreation,     `${IMGS}/actions/sonos-dial-particles`,   'icon');
 await write(mdiMusicCircle,  `${IMGS}/actions/sonos-dial-track`,       'icon');
 await write(mdiAccessPointNetwork, `${IMGS}/actions/sonos-dial-diagnostics`, 'icon');
+await write(mdiPlaylistMusic, `${IMGS}/actions/sonos-dial-queue`,       'icon');
 
 console.log('Done.');

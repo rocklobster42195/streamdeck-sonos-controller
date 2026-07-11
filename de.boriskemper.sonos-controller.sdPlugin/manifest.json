@@ -184,6 +184,29 @@
 			]
 		},
 		{
+			"Name": "Queue Dial",
+			"UUID": "de.boriskemper.sonos-controller.sonos-dial-queue",
+			"Icon": "imgs/actions/sonos-dial-queue/icon",
+			"Tooltip": "Browse and jump within the current playlist/queue; shows a now-playing card for radio.",
+			"PropertyInspectorPath": "ui/sonos-dial-queue.html",
+			"Controllers": [
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "$A0",
+				"TriggerDescription": {
+					"Push": "Jump to selected track",
+					"Rotate": "Browse queue",
+					"Touch": "Cancel browse"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/sonos-dial-queue/icon"
+				}
+			]
+		},
+		{
 			"Name": "Diagnostics Dial",
 			"UUID": "de.boriskemper.sonos-controller.sonos-dial-diagnostics",
 			"Icon": "imgs/actions/sonos-dial-diagnostics/icon",

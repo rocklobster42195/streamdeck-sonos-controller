@@ -59,6 +59,8 @@
             secondary_color:    'Sekundärfarbe',
             reset_colors:       'Farben zurücksetzen',
             battery_mode:       'Akku-Anzeige',
+            cover_position:     'Cover-Position',
+            queue_hint:         'Drehen zum Blättern durch die aktuelle Warteschlange. Drücken zum Springen. Tippen oder warten, um zur aktuellen Wiedergabe zurückzukehren.<br>0 = kein automatisches Zurückspringen, nur Tippen bringt dich zurück.',
         },
         es: {
             sonos_device:       'Dispositivo SONOS',
@@ -112,6 +114,8 @@
             secondary_color:    'Color secundario',
             reset_colors:       'Restablecer colores',
             battery_mode:       'Indicador de batería',
+            cover_position:     'Posición de la portada',
+            queue_hint:         'Gira para explorar la cola actual. Pulsa para saltar ahí. Toca o espera para volver a la reproducción actual.<br>0 = sin retorno automático, solo tocar te lleva de vuelta.',
         },
     };
 
