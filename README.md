@@ -28,7 +28,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 ### Play / Pause Key
 
-Toggles playback on your Sonos speaker. While playing, the key displays the current album or radio station cover art. A scrolling marquee shows track title and artist.
+Toggles playback on your Sonos speaker. While playing, the key displays the current album or radio station cover art. A scrolling marquee shows track title and artist. Works correctly for a speaker that's grouped with others, following the group's actual playback rather than the joined speaker's own idle state.
 
 <img src="assets/play-pause_toggle_demo.gif" width="100" alt="Play / Pause Key showing cover art"/>
 
@@ -39,12 +39,13 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 | Show track title | Scroll the track title and artist across the key |
 | Font color | Color for the scrolling title text |
 | Font size | Size of the title text (px) |
+| Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
 
 ---
 
 ### Track Dial *(Stream Deck+ only)*
 
-The LCD panel shows the album or station cover art, a scrolling track title, artist name, and a progress bar — tinted to match the cover art palette.
+The LCD panel shows the album or station cover art, a scrolling track title, artist name, and a progress bar — tinted to match the cover art palette. If the selected speaker is grouped with others, it correctly reflects the whole group's playback (cover, title, play/pause state) rather than the joined speaker's own idle state.
 
 <img src="assets/track_dial_eq.gif" alt="Track Dial showing cover art and EQ Effect"/>
 
@@ -60,6 +61,7 @@ The LCD panel shows the album or station cover art, a scrolling track title, art
 | Background | `None` (track info only), `EQ Effect` (animated bars), or `Particles` |
 | Particle count | Number of particles (Particles mode) |
 | Particle speed | Animation speed (Particles mode) |
+| Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon in the corner for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
 
 ---
 
