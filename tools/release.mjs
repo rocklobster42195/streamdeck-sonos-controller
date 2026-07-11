@@ -99,6 +99,13 @@ try {
 if (!isBeta) {
     console.log('  📦 Packing local .streamDeckPlugin for Marketplace upload...');
     execSync(`npx streamdeck pack ${pluginDir} --force`, { stdio: 'inherit', cwd: repoRoot });
+    // streamdeck pack always names the output after the plugin UUID, not the version — without
+    // renaming, an older pack sitting in the repo root from a previous release would look
+    // identical and risk being uploaded to the Marketplace by mistake.
+    const packedPath = path.join(repoRoot, 'de.boriskemper.sonos-controller.streamDeckPlugin');
+    const versionedPath = path.join(repoRoot, `de.boriskemper.sonos-controller-${tag}.streamDeckPlugin`);
+    fs.renameSync(packedPath, versionedPath);
+    console.log(`  ✅ Renamed → ${path.basename(versionedPath)}`);
 }
 
 console.log(`\n✔  ${tag} released. CI build has been triggered.\n`);

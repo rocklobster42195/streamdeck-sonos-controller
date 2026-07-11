@@ -32,7 +32,14 @@ jobs:
       - name: Pack plugin
         run: npx streamdeck pack de.boriskemper.sonos-controller.sdPlugin --force
 
+      - name: Rename package with version
+        # streamdeck pack always names the output after the plugin UUID, not the version — stable
+        # and beta releases would otherwise both produce an identically-named .streamDeckPlugin,
+        # which collides once downloaded locally (can't tell them apart, one silently overwrites
+        # the other).
+        run: mv de.boriskemper.sonos-controller.streamDeckPlugin "de.boriskemper.sonos-controller-${{ github.event.release.tag_name }}.streamDeckPlugin"
+
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: de.boriskemper.sonos-controller.streamDeckPlugin
+          files: de.boriskemper.sonos-controller-*.streamDeckPlugin
