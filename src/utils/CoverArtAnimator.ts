@@ -94,19 +94,33 @@ export class CoverArtAnimator {
     public render(context: string, x: number, y: number, width: number, height: number): string {
         const state = this.animationStates.get(context);
         if (!state) return '';
-        
+
         const { currentImage, oldImage, isFading, fadeOpacity } = state;
+
+        // Manual "slice" crop instead of relying on preserveAspectRatio: Stream Deck's own SVG
+        // renderer visibly does NOT honor preserveAspectRatio on embedded <image> data URIs — it
+        // stretches to exactly the given width/height instead, distorting non-square target boxes
+        // (confirmed by the user: went unnoticed at the old near-square 87x92 cover box, but a
+        // visible horizontal squish appeared once the box became a taller 87x100 for the full-
+        // bleed cover). Album art is effectively always square, so instead we size the <image> to
+        // a square matching the LARGER of width/height, centered over the target box, and let the
+        // caller's own clipPath (already sized to the visible box) crop the overflow via SVG
+        // clipping — which the renderer does respect — rather than via an aspect-ratio hint it
+        // ignores.
+        const size = Math.max(width, height);
+        const imgX = x - (size - width) / 2;
+        const imgY = y - (size - height) / 2;
 
         let bgHtml = '';
         if (isFading && oldImage && currentImage) {
             // Crossfade from old to new
             bgHtml = `
-                <image href="${oldImage}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" opacity="${1 - fadeOpacity}" />
-                <image href="${currentImage}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" opacity="${fadeOpacity}" />
+                <image href="${oldImage}" x="${imgX}" y="${imgY}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice" opacity="${1 - fadeOpacity}" />
+                <image href="${currentImage}" x="${imgX}" y="${imgY}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice" opacity="${fadeOpacity}" />
             `;
         } else if (currentImage) {
             // Just the current image
-            bgHtml = `<image href="${currentImage}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" />`;
+            bgHtml = `<image href="${currentImage}" x="${imgX}" y="${imgY}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice" />`;
         } else {
             // Black background if no image
             bgHtml = `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="black" />`;
