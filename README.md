@@ -8,6 +8,8 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 > **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
 
+> **Beta features:** anything marked **beta** below has shipped in a [beta release](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases) only — it isn't on the Elgato Marketplace yet and may still change.
+
 <img src="assets/favorite_demo.gif" width="340" alt="Favorites Dial — browse and play Sonos favorites"/>
 
 ---
@@ -21,6 +23,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 | **Volume Key** — up · down · mute · preset | **Group Volume Dial** — control a whole Sonos group's volume together |
 | **Play Favorite** — one tap to play a saved favorite | **Panorama Effects** — ambient art spanning multiple panels |
 | | **Favorites Dial** — browse & play your favorites list |
+| | **Queue Dial** *(beta)* — browse & jump within the current queue |
 
 ---
 
@@ -39,7 +42,7 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 | Show track title | Scroll the track title and artist across the key |
 | Font color | Color for the scrolling title text |
 | Font size | Size of the title text (px) |
-| Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
+| Battery *(beta)* | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
 
 ---
 
@@ -61,7 +64,26 @@ The LCD panel shows the album or station cover art, a scrolling track title, art
 | Background | `None` (track info only), `EQ Effect` (animated bars), or `Particles` |
 | Particle count | Number of particles (Particles mode) |
 | Particle speed | Animation speed (Particles mode) |
-| Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon in the corner for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
+| Battery *(beta)* | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon in the corner for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
+
+---
+
+### Queue Dial *(Stream Deck+ only, beta)*
+
+Browse and jump within the currently playing queue without interrupting playback. Rotate to preview upcoming or previous tracks — the LCD shows the previewed title with its neighbors above and below; press to jump playback there, touch or wait to cancel and return to now playing. For radio, shows a simple now-playing card since there's no queue to browse.
+
+| Interaction | Effect |
+|-------------|--------|
+| Rotate | Preview a track in the queue (playback keeps running until you press) |
+| Press | Jump playback to the previewed track |
+| Touch | Cancel the preview and return to now playing |
+
+| Setting | Description |
+|---------|-------------|
+| Device | Which Sonos speaker to control |
+| Cover position | `Left` or `Right` |
+| Background | `None` or any Panorama effect, shown behind the now-playing view |
+| Return timeout | Seconds of inactivity before returning to now playing (`0` = never — only Touch returns you) |
 
 ---
 
