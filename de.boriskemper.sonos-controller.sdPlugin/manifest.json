@@ -182,6 +182,29 @@
 					"Image": "imgs/actions/sonos-dial-track/icon"
 				}
 			]
+		},
+		{
+			"Name": "Diagnostics Dial",
+			"UUID": "de.boriskemper.sonos-controller.sonos-dial-diagnostics",
+			"Icon": "imgs/actions/sonos-dial-diagnostics/icon",
+			"Tooltip": "Nerdy WiFi connection diagnostics sparkline for a SONOS speaker (unofficial, may break with firmware updates).",
+			"PropertyInspectorPath": "ui/sonos-dial-diagnostics.html",
+			"Controllers": [
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "$A0",
+				"TriggerDescription": {
+					"Push": "Cycle metric",
+					"Rotate": "Scroll metric",
+					"Touch": "Refresh now"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/sonos-dial-diagnostics/icon"
+				}
+			]
 		}
 	],
 	"Category": "SONOS-Controller",

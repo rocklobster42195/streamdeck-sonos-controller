@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SONOS Diagnostics Dial Settings</title>
+    <script src="i18n.js" defer></script>
+    <script src="sdpi-components.js" defer></script>
+    <style>
+        :root { color-scheme: dark; }
+    </style>
+  </head>
+
+  <body>
+    <sdpi-item label="SONOS device" data-i18n="sonos_device">
+        <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item>
+        <sdpi-item-value style="font-size:11px; color:#888; line-height:1.4">
+            Rotate or press the dial to scroll through metrics, tap to refresh now.
+        </sdpi-item-value>
+    </sdpi-item>
+    <sdpi-item>
+        <sdpi-item-value style="font-size:11px; color:#888; line-height:1.5">
+            <b style="color:#5DADE2">Latency</b> — response time of the diagnostic query, a rough
+            stand-in for how responsive the speaker's WiFi link is right now. Consistently high or
+            spiky values: move the speaker closer to the router/access point, reduce interference
+            (other 2.4/5 GHz devices, microwaves), or check for a firmware update.<br><br>
+            <b style="color:#E67E22">PHY Errors</b> — radio-layer errors counted since the last
+            poll. The occasional low count is normal; a clearly rising trend points to interference
+            or a weak signal — same fixes as above.<br><br>
+            <b style="color:#58D68D">Noise Floor</b> — background radio noise in dBm. More
+            negative is quieter/better (roughly -90 to -110 is healthy); values near 0 are
+            unusually loud, or mean the radio simply hasn't measured yet. If it stays near 0 or
+            keeps climbing, look for a nearby interference source, or consider a wired connection
+            for that speaker.
+        </sdpi-item-value>
+    </sdpi-item>
+  </body>
+</html>

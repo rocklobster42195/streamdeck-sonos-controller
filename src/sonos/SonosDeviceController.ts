@@ -6,14 +6,15 @@ import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "./utils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
 import { SonosZoneGroupStates, TrackInfo, VolumeInfo } from "./SonosTypes";
+import { withTimeout } from "../utils/fetchWithTimeout";
 
 // An unreachable device's SOAP call can otherwise hang for the OS-level TCP connect timeout
 // (20-30s+ on Windows) before rejecting — long enough to block an entire group volume adjustment
 // (SonosGroupController.adjustVolume awaits every member's setVolume via Promise.all) and, worse,
 // the calling dial's own send-throttle state, which stays "sending" until that promise settles —
 // so one offline speaker froze rotation input on the whole group dial for up to ~30s. Racing
-// against a short timeout here bounds that to SET_VOLUME_TIMEOUT_MS regardless of the underlying
-// library/fetch call's own timeout behavior.
+// against a short timeout here (via withTimeout) bounds that to SET_VOLUME_TIMEOUT_MS regardless
+// of the underlying library/fetch call's own timeout behavior.
 const SET_VOLUME_TIMEOUT_MS = 5000;
 
 export class SonosDeviceController {
@@ -187,14 +188,11 @@ export class SonosDeviceController {
   async previous(): Promise<void> { await this.sonosDevice.Previous(); }
   
   async setVolume(volume: number): Promise<void> {
-    const call = this.sonosDevice.RenderingControlService.SetVolume({ DesiredVolume: volume, InstanceID: 0, Channel: "Master" });
-    await Promise.race([
-      call,
-      new Promise<never>((_, reject) => setTimeout(
-        () => reject(new Error(`setVolume timed out after ${SET_VOLUME_TIMEOUT_MS}ms (${this.deviceIp})`)),
-        SET_VOLUME_TIMEOUT_MS,
-      )),
-    ]);
+    await withTimeout(
+      this.sonosDevice.RenderingControlService.SetVolume({ DesiredVolume: volume, InstanceID: 0, Channel: "Master" }),
+      SET_VOLUME_TIMEOUT_MS,
+      `setVolume (${this.deviceIp})`,
+    );
   }
 
   async volumeUp(step: number = 2): Promise<void> {

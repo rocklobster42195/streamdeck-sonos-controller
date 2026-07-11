@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import {
     mdiPlayCircle, mdiStarCircle, mdiPlaylistPlay,
     mdiVolumeHigh, mdiVolumeOff, mdiKnob, mdiHeartCircle,
-    mdiCreation, mdiMusicCircle,
+    mdiCreation, mdiMusicCircle, mdiAccessPointNetwork,
 } from '@mdi/js';
 import fs from 'fs';
 import path from 'path';
@@ -34,5 +34,6 @@ await write(mdiKnob,         `${IMGS}/actions/sonos-dial-volume`,      'icon');
 await write(mdiHeartCircle,  `${IMGS}/actions/sonos-dial-favorites`,   'icon');
 await write(mdiCreation,     `${IMGS}/actions/sonos-dial-particles`,   'icon');
 await write(mdiMusicCircle,  `${IMGS}/actions/sonos-dial-track`,       'icon');
+await write(mdiAccessPointNetwork, `${IMGS}/actions/sonos-dial-diagnostics`, 'icon');
 
 console.log('Done.');
