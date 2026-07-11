@@ -106,7 +106,7 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
 
                 const animOptions = {
                     text: title,
-                    backgroundImage: (settings.showCoverArt && cover) ? cover : undefined,
+                    backgroundImage: (settings.showCoverArt !== false && cover) ? cover : undefined,
                     fontColor: settings.fontColor || "#cccccc",
                     fontSize: settings.fontSize ? settings.fontSize : 13,
                     pauseDuration: 120,
@@ -122,7 +122,7 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                 }
             } else {
                 titleAnimator.stop(context);
-                if (settings.showCoverArt && cover) {
+                if (settings.showCoverArt !== false && cover) {
                     await action.setImage(wrapImageWithBadge(cover, badge72));
                 } else {
                     await action.setImage(generateTransportIcon('play', undefined, badge24));
