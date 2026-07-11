@@ -6,7 +6,16 @@
         "lint": "eslint src",
         "lint:fix": "eslint src --fix",
         "test": "vitest run",
-        "effects:preview": "node tools/run-effects-preview.mjs"
+        "effects:preview": "node tools/run-effects-preview.mjs",
+        "version:patch": "node tools/bump-version.mjs patch",
+        "version:minor": "node tools/bump-version.mjs minor",
+        "version:major": "node tools/bump-version.mjs major",
+        "version:beta": "node tools/bump-version.mjs beta",
+        "release": "node tools/release.mjs",
+        "ship:patch": "npm run lint && npm run test && npm run build && npm run version:patch && npm run release",
+        "ship:minor": "npm run lint && npm run test && npm run build && npm run version:minor && npm run release",
+        "ship:major": "npm run lint && npm run test && npm run build && npm run version:major && npm run release",
+        "ship:beta": "npm run lint && npm run test && npm run build && npm run version:beta && npm run release"
     },
     "type": "module",
     "devDependencies": {
