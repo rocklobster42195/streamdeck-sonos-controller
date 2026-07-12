@@ -152,6 +152,7 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
         const oldController = this.controllers.get(context);
         if (oldController) {
             oldController.unregisterVolumeCallback(context);
+            oldController.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(oldController.deviceIp);
             this.controllers.delete(context);
         }
@@ -190,6 +191,7 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
         try {
             const controller = await sonosDeviceManager.getController(settings.deviceIp);
             this.controllers.set(context, controller);
+            this.registerReachabilityHandling(controller, ev, 'VOLUME');
             controller.registerVolumeCallback(context, (vi: VolumeInfo) => this.onVolumeInfoChanged(context, vi));
 
             const [zone, vol] = await Promise.all([controller.getZoneAttributes(), controller.getVolume()]);
@@ -203,6 +205,8 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
             void this.renderDial(context);
         } catch (e) {
             streamDeck.logger.error(`SonosDialVolume: error getting initial state for ${settings.deviceIp}`, e);
+            await this.renderUnreachableDial(context, 'VOLUME');
+            this.scheduleSetupRetry(ev);
         }
     }
 

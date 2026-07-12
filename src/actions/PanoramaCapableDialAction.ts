@@ -16,6 +16,14 @@ import {
     unregisterPanoramaRenderCallback,
 } from "../effects/PanoramaOrchestrator";
 import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
+import { buildUnreachableDialSvg } from "../utils/icons";
+import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
+import streamDeck from "@elgato/streamdeck";
+
+// Structural — both SonosDeviceController and SonosGroupController provide this.
+interface ReachabilitySource {
+    registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void;
+}
 
 // Shared lifecycle for any dial action that can participate in the panorama effects system
 // (Volume/Track/Group Volume dial today; any future dial — e.g. a planned Queue Dial — extends
@@ -35,25 +43,73 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
     protected contextColumns: Map<string, number> = new Map();
     protected settingsMap: Map<string, T> = new Map();
     private animTimers: Map<string, NodeJS.Timeout> = new Map();
+    // Retries a failed setup (unreachable speaker) — see scheduleSetupRetry / SetupRetryScheduler.
+    protected setupRetry = new SetupRetryScheduler();
 
     protected abstract onInstanceUpdate(ev: WillAppearEvent<T> | DidReceiveSettingsEvent<T>): Promise<void>;
     protected abstract cleanupInstance(context: string): void;
     protected abstract renderDial(context: string): Promise<void>;
 
     override async onWillAppear(ev: WillAppearEvent<T>): Promise<void> {
+        this.setupRetry.cancel(ev.action.id);
         const col = 'coordinates' in ev.payload ? (ev.payload.coordinates as { column: number }).column : 0;
         this.contextColumns.set(ev.action.id, col);
         await this.onInstanceUpdate(ev);
     }
 
     override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<T>): Promise<void> {
+        this.setupRetry.cancel(ev.action.id);
         await this.onInstanceUpdate(ev);
     }
 
     override async onWillDisappear(ev: WillDisappearEvent<T>): Promise<void> {
+        this.setupRetry.cancel(ev.action.id);
         this.cleanupInstance(ev.action.id);
         this.leavePanorama(ev.action.id);
         this.contextColumns.delete(ev.action.id);
+    }
+
+    // Call from onInstanceUpdate's catch: re-runs the whole setup later so a speaker that was
+    // powered off during setup (e.g. a battery Roam) recovers automatically once it's back,
+    // instead of sitting on the speaker-off placeholder until a settings change. A newer setup
+    // run or the instance disappearing cancels the pending retry (see the lifecycle hooks above).
+    protected scheduleSetupRetry(ev: WillAppearEvent<T> | DidReceiveSettingsEvent<T>): void {
+        this.setupRetry.schedule(ev.action.id, () => void this.onInstanceUpdate(ev));
+    }
+
+    // Call after a successful controller acquisition: swaps the dial to the speaker-off
+    // placeholder when the device becomes unreachable MID-SESSION (detected by the controller's
+    // poll loop), and re-runs the whole setup once it's back — fresh state, coordinator sync,
+    // covers. Subclasses must unregister via controller.unregisterReachabilityCallback(context)
+    // in their cleanupInstance alongside the other callback types.
+    protected registerReachabilityHandling(
+        controller: ReachabilitySource,
+        ev: WillAppearEvent<T> | DidReceiveSettingsEvent<T>,
+        label: string,
+    ): void {
+        const context = ev.action.id;
+        controller.registerReachabilityCallback(context, (reachable) => {
+            if (reachable) {
+                void this.onInstanceUpdate(ev);
+            } else {
+                void this.renderUnreachableDial(context, label);
+            }
+        });
+    }
+
+    // Full-canvas "configured but unreachable" placeholder (dark speaker-off glyph — see
+    // buildUnreachableDialSvg) for the catch path of a subclass's initial-state setup: a device
+    // that doesn't answer used to leave the dial blank or stuck on the unconfigured cog, which
+    // reads as "not set up yet" instead of "speaker offline".
+    protected async renderUnreachableDial(context: string, label: string): Promise<void> {
+        const sdAction = streamDeck.actions.getActionById(context);
+        if (!sdAction || !sdAction.isDial()) return;
+        const svg = buildUnreachableDialSvg(label);
+        await sdAction.setFeedback({
+            'full-canvas': `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
+            'title': '',
+            'indicator': { value: 0, enabled: false },
+        }).catch(() => {});
     }
 
     // 'none' is never a registered effect — everything else is looked up in effectRegistry.

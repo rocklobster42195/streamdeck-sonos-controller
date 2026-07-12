@@ -159,6 +159,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         const oldController = this.controllers.get(context);
         if (oldController) {
             oldController.unregisterVolumeCallback(context);
+            oldController.unregisterReachabilityCallback(context);
             sonosGroupManager.releaseController(oldController.anchorIp);
             this.controllers.delete(context);
         }
@@ -197,6 +198,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         try {
             const controller = await sonosGroupManager.getController(settings.groupIp);
             this.controllers.set(context, controller);
+            this.registerReachabilityHandling(controller, ev, 'GROUP');
             controller.registerVolumeCallback(context, (vi: VolumeInfo) => this.onVolumeInfoChanged(context, vi));
 
             const vol = await controller.getVolume();
@@ -210,6 +212,8 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
             void this.renderDial(context);
         } catch (e) {
             streamDeck.logger.error(`SonosDialGroupVolume: error getting initial state for ${settings.groupIp}`, e);
+            await this.renderUnreachableDial(context, 'GROUP');
+            this.scheduleSetupRetry(ev);
         }
     }
 

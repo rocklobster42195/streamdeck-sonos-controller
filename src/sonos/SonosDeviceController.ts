@@ -37,6 +37,15 @@ export class SonosDeviceController {
   private playModeCallbacks: Map<string, (playMode: string) => void> = new Map();
   private trackInfoCallbacks: Map<string, (trackInfo: TrackInfo) => void> = new Map();
   private batteryCallbacks: Map<string, (battery: SonosBatteryStatus | undefined) => void> = new Map();
+  private reachabilityCallbacks: Map<string, (reachable: boolean) => void> = new Map();
+
+  // Mid-session reachability, driven by the 8s poll loop (see notePollSuccess/notePollFailure):
+  // two consecutive failed polls flip to unreachable (one alone is just a transient hiccup), the
+  // next successful poll flips back. Actions use the callback to swap to the speaker-off
+  // placeholder while a device is down and to fully re-initialize once it returns.
+  private reachable = true;
+  private consecutivePollFailures = 0;
+  private static readonly UNREACHABLE_AFTER_FAILURES = 2;
 
   private refreshInterval?: NodeJS.Timeout;
   private pollInterval?: NodeJS.Timeout;
@@ -111,6 +120,14 @@ export class SonosDeviceController {
     streamDeck.logger.debug(`SonosDeviceController for ${this.deviceIp} created.`);
   }
 
+  // loadImageFromUri (src/sonos/utils.ts) itself dedupes concurrent fetches and caches resolved
+  // covers by URL, and bounds each fetch with a real (abort-based) timeout — shared across every
+  // caller, not just this one. This wrapper just adapts its "" (no cover) return to `undefined`.
+  private async resolveCoverArt(uri: string): Promise<string | undefined> {
+    const cover = await loadImageFromUri(uri, this.transportDevice).catch(() => '');
+    return cover || undefined;
+  }
+
   // The device to query for transport state / current track / position / cover art. A grouped,
   // non-coordinator member's OWN AVTransportService reports stale/wrong data (confirmed on real
   // hardware: a grouped Roam's GetTransportInfo said PLAYING while the group's actual coordinator
@@ -178,7 +195,11 @@ export class SonosDeviceController {
       }
       this.coordinatorController = controller;
       streamDeck.logger.info(`[${this.deviceIp}] Subscribed to coordinator ${coordinatorHost} for transport/track updates.`);
+      // Both forwards are gated on this device's own reachability: the coordinator keeps living
+      // (and firing) while a grouped member is powered off, and letting its track/cover updates
+      // through would repaint a tile that is deliberately showing the speaker-off placeholder.
       controller.registerTransportStateCallback(this.coordinatorCallbackId, (ts) => {
+        if (!this.reachable) return;
         streamDeck.logger.debug(`[${this.deviceIp}] Forwarded transport state from coordinator ${coordinatorHost}: ${ts}`);
         if (ts !== this.lastPolledTransportState) {
           this.lastPolledTransportState = ts;
@@ -186,6 +207,7 @@ export class SonosDeviceController {
         }
       });
       controller.registerTrackInfoCallback(this.coordinatorCallbackId, (ti) => {
+        if (!this.reachable) return;
         streamDeck.logger.info(`[${this.deviceIp}] Forwarded track info from coordinator ${coordinatorHost}: Title="${ti?.Title}", hasArt=${!!ti?.albumArtDataUri}`);
         this.currentTrack = ti;
         this.trackInfoCallbacks.forEach(cb => cb(ti));
@@ -223,6 +245,7 @@ export class SonosDeviceController {
     this.playModeCallbacks.clear();
     this.trackInfoCallbacks.clear();
     this.batteryCallbacks.clear();
+    this.reachabilityCallbacks.clear();
   }
 
   private startPolling(): void {
@@ -237,6 +260,8 @@ export class SonosDeviceController {
           this.sonosDevice.RenderingControlService.GetVolume({ InstanceID: 0, Channel: 'Master' }),
           this.sonosDevice.RenderingControlService.GetMute({ InstanceID: 0, Channel: 'Master' }),
         ]);
+        // The device itself answered (GetVolume/GetMute target it directly, even when grouped).
+        this.notePollSuccess();
 
         const ts = tsInfo.CurrentTransportState;
         if (ts !== this.lastPolledTransportState) {
@@ -293,6 +318,7 @@ export class SonosDeviceController {
         }
       } catch (e) {
         streamDeck.logger.debug(`[${this.deviceIp}] Polling error:`, e);
+        this.notePollFailure();
       }
     }, 8000);
   }
@@ -531,6 +557,26 @@ export class SonosDeviceController {
     if (this.currentTrack) callback(this.currentTrack);
   }
   unregisterTrackInfoCallback(id: string): void { this.trackInfoCallbacks.delete(id); }
+  registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void { this.reachabilityCallbacks.set(id, callback); }
+  unregisterReachabilityCallback(id: string): void { this.reachabilityCallbacks.delete(id); }
+
+  private notePollSuccess(): void {
+    this.consecutivePollFailures = 0;
+    if (!this.reachable) {
+      this.reachable = true;
+      streamDeck.logger.info(`[${this.deviceIp}] Device reachable again.`);
+      this.reachabilityCallbacks.forEach(cb => cb(true));
+    }
+  }
+
+  private notePollFailure(): void {
+    this.consecutivePollFailures++;
+    if (this.reachable && this.consecutivePollFailures >= SonosDeviceController.UNREACHABLE_AFTER_FAILURES) {
+      this.reachable = false;
+      streamDeck.logger.warn(`[${this.deviceIp}] Device unreachable (${this.consecutivePollFailures} consecutive poll failures).`);
+      this.reachabilityCallbacks.forEach(cb => cb(false));
+    }
+  }
 
   // Battery polling is opt-in and started/stopped on demand (most Sonos speakers are mains-powered
   // and have no battery to report) — only runs while at least one caller is registered.
@@ -607,37 +653,24 @@ export class SonosDeviceController {
           }
       });
 
-      this.sonosDevice.Events.on('currentTrack', async (track: Track) => {
+      this.sonosDevice.Events.on('currentTrack', (track: Track) => {
         // Unlike raw transport-state (confirmed broken for a grouped non-coordinator member — see
         // the AVTransportService listener above), svrooij's synthesized 'currentTrack' event
         // apparently DOES track the coordinator's queue correctly even for a member — suppressing
         // it here too (as an earlier version of this fix did) left track/cover changes to only be
         // caught by the slow ~24s track-info poll, making normal queue playback feel very laggy.
         // Keep this one event-driven for all devices.
-        streamDeck.logger.debug(`Current track changed: "${track.Title}", AlbumArtUri="${track.AlbumArtUri || "none"}"`);
-
+        //
+        // Deliberately NOT async/awaiting the cover fetch here (confirmed on hardware this was a
+        // real problem): Sonos's own art proxy occasionally takes several seconds to resolve
+        // (itself fetching from the streaming service, e.g. Spotify, on a cache miss), and every
+        // dial/key watching this device — including ones with nothing to do with cover art, like
+        // the Play/Pause key's title — sat frozen on the OLD track until that one fetch finished.
+        // Fire immediately with title/artist/isRadio (all synchronous, from `track` itself) plus
+        // a fallback cover, then fire AGAIN once the real cover resolves in the background.
+        const previousTrack = this.currentTrack;
         const newTrackInfo: TrackInfo = track;
-
-        if (track.AlbumArtUri && track.AlbumArtUri !== this.currentAlbumArtUri) {
-            this.currentAlbumArtUri = track.AlbumArtUri;
-            try {
-                // Resolve via transportDevice, not this.sonosDevice: a relative AlbumArtUri from
-                // the coordinator's queue must be fetched from the coordinator's own host.
-                const cover = await loadImageFromUri(track.AlbumArtUri, this.transportDevice);
-                if (cover) {
-                    newTrackInfo.albumArtDataUri = cover;
-                    this.lastKnownCover = cover;
-                }
-            } catch (err) {
-                streamDeck.logger.error("Error loading cover art", err);
-                this.currentAlbumArtUri = ''; // Reset on error
-            }
-        } else if (!track.AlbumArtUri) {
-            this.currentAlbumArtUri = '';
-        }
-
-        // Preserve the last known cover so news segments (which have no art) keep showing the station logo.
-        newTrackInfo.albumArtDataUri = newTrackInfo.albumArtDataUri || this.currentTrack?.albumArtDataUri || this.lastKnownCover;
+        newTrackInfo.albumArtDataUri = previousTrack?.albumArtDataUri || this.lastKnownCover;
         // Preserve isRadio across news segments (which fire with no AlbumArtUri).
         // TrackUri is the primary signal (always carries the radio stream scheme).
         // Fall back to AlbumArtUri-based detection, then preserve previous state for news segments.
@@ -645,9 +678,30 @@ export class SonosDeviceController {
             MetaDataHelper.IsRadioStream(track.TrackUri) ||
             (track.AlbumArtUri
                 ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri)
-                : (this.currentTrack?.isRadio ?? false));
+                : (previousTrack?.isRadio ?? false));
+
         this.currentTrack = newTrackInfo;
-        this.trackInfoCallbacks.forEach(cb => cb(this.currentTrack!));
+        this.trackInfoCallbacks.forEach(cb => cb(newTrackInfo));
+
+        if (!track.AlbumArtUri) {
+            this.currentAlbumArtUri = '';
+            return;
+        }
+
+        // Resolve via transportDevice, not this.sonosDevice: a relative AlbumArtUri from the
+        // coordinator's queue must be fetched from the coordinator's own host. Always goes
+        // through resolveCoverArt (not gated on "URI changed since last time") — Sonos can fire
+        // two overlapping currentTrack events for one track change, and deduping there (rather
+        // than skipping the second call here) means both end up with the correct cover instead of
+        // the second one racing ahead with the previous track's art.
+        void this.resolveCoverArt(track.AlbumArtUri).then(cover => {
+            // Superseded by a newer track change while this fetch was in flight — drop it.
+            if (!cover || this.currentTrack !== newTrackInfo) return;
+            newTrackInfo.albumArtDataUri = cover;
+            this.lastKnownCover = cover;
+            this.currentAlbumArtUri = track.AlbumArtUri!;
+            this.trackInfoCallbacks.forEach(cb => cb(newTrackInfo));
+        }).catch(err => streamDeck.logger.error("Error loading cover art", err));
       });
     } catch (error) { streamDeck.logger.error("Error initializing subscriptions", error); }
   }

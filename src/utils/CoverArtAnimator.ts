@@ -33,6 +33,18 @@ export class CoverArtAnimator {
         }
     }
 
+    // Sets the displayed image directly, bypassing the crossfade entirely — for callers that
+    // already know the correct image and don't want a transition from whatever was showing before
+    // (e.g. Queue Dial cutting back to its resting view after a Push commit).
+    public setImageInstant(context: string, newImage: string | undefined): void {
+        const state = this.animationStates.get(context);
+        if (!state) return;
+        state.currentImage = newImage;
+        state.oldImage = undefined;
+        state.isFading = false;
+        this.stop(context);
+    }
+
     public start(context: string, renderCallback: () => void, initialImage?: string) {
         if (this.isRunning(context)) {
             this.stop(context);
@@ -91,7 +103,7 @@ export class CoverArtAnimator {
         }
     }
 
-    public render(context: string, x: number, y: number, width: number, height: number): string {
+    public render(context: string, x: number, y: number, width: number, height: number, anchor: 'center' | 'left' | 'right' = 'center'): string {
         const state = this.animationStates.get(context);
         if (!state) return '';
 
@@ -103,12 +115,20 @@ export class CoverArtAnimator {
         // (confirmed by the user: went unnoticed at the old near-square 87x92 cover box, but a
         // visible horizontal squish appeared once the box became a taller 87x100 for the full-
         // bleed cover). Album art is effectively always square, so instead we size the <image> to
-        // a square matching the LARGER of width/height, centered over the target box, and let the
+        // a square matching the LARGER of width/height, laid over the target box, and let the
         // caller's own clipPath (already sized to the visible box) crop the overflow via SVG
         // clipping — which the renderer does respect — rather than via an aspect-ratio hint it
         // ignores.
+        //
+        // `anchor` picks WHICH part of the square the box shows: 'center' splits the overflow
+        // evenly (the classic centered crop), while 'left'/'right' pin the square to that edge of
+        // the box so the image starts exactly at the box's own origin — used by Queue Dial's
+        // edge-flush cover slots, where the centered variant visibly shifted the artwork off the
+        // canvas edge.
         const size = Math.max(width, height);
-        const imgX = x - (size - width) / 2;
+        const imgX = anchor === 'left' ? x
+            : anchor === 'right' ? x + width - size
+            : x - (size - width) / 2;
         const imgY = y - (size - height) / 2;
 
         let bgHtml = '';

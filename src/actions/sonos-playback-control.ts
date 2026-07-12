@@ -13,7 +13,8 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { TrackInfo } from "../sonos/SonosTypes";
-import { generatePlaybackIcon } from "../utils/icons";
+import { generatePlaybackIcon, generateUnreachableKeyIcon, INACTIVE_ICON_COLOR, OFF_ICON_COLOR } from "../utils/icons";
+import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 
 type SonosPlaybackSettings = {
@@ -31,7 +32,7 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
     private updateIcon(action: any, command: SonosPlaybackSettings['command'], playMode = '', isRadio = false): void {
         if (!action || !command) return;
 
-        const skipColor = isRadio ? '#252525' : '#CCCCCC';
+        const skipColor = isRadio ? INACTIVE_ICON_COLOR : '#CCCCCC';
         const set = (img: string) => action.setImage(img).catch(() => {});
 
         switch (command) {
@@ -45,12 +46,12 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
                 set(generatePlaybackIcon('shuffle',
                     isRadio ? false : playMode.includes('SHUFFLE'),
                     '#CCCCCC',
-                    isRadio ? '#252525' : '#555555'
+                    isRadio ? INACTIVE_ICON_COLOR : OFF_ICON_COLOR
                 ));
                 break;
             case 'repeat':
                 if (isRadio) {
-                    set(generatePlaybackIcon('repeat', false, '#CCCCCC', '#252525'));
+                    set(generatePlaybackIcon('repeat', false, '#CCCCCC', INACTIVE_ICON_COLOR));
                 } else if (playMode.includes('REPEAT_ONE')) {
                     // REPEAT_ONE or SHUFFLE_REPEAT_ONE
                     set(generatePlaybackIcon('repeat', 'one'));
@@ -65,9 +66,12 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
         }
     }
 
+    private setupRetry = new SetupRetryScheduler();
+
     private async onInstanceUpdate(ev: WillAppearEvent<SonosPlaybackSettings> | DidReceiveSettingsEvent<SonosPlaybackSettings>): Promise<void> {
         const { action, payload } = ev;
         const context = action.id;
+        this.setupRetry.cancel(context);
         const { deviceIp, command } = payload.settings;
 
         const currentHash = `${deviceIp}-${command}`;
@@ -89,11 +93,22 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
             if (oldController) {
                 oldController.unregisterPlayModeCallback(context);
                 oldController.unregisterTrackInfoCallback(context);
+                oldController.unregisterReachabilityCallback(context);
                 sonosDeviceManager.releaseController(oldController.deviceIp);
             }
 
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
+
+            controller.registerReachabilityCallback(context, (reachable) => {
+                if (reachable) {
+                    this.initializedHash.delete(context);
+                    void this.onInstanceUpdate(ev);
+                } else {
+                    void action.setImage(generateUnreachableKeyIcon());
+                    void action.setTitle("");
+                }
+            });
 
             controller.unregisterPlayModeCallback(context);
             controller.registerPlayModeCallback(context, (playMode) => {
@@ -122,7 +137,9 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
 
         } catch (e) {
             streamDeck.logger.error(`[${context}] Setup error:`, e);
-            await action.setTitle("Error");
+            await action.setImage(generateUnreachableKeyIcon());
+            await action.setTitle("");
+            this.setupRetry.schedule(context, () => void this.onInstanceUpdate(ev));
         }
     }
 
@@ -137,10 +154,12 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
 
     override async onWillDisappear(ev: WillDisappearEvent<SonosPlaybackSettings>): Promise<void> {
         const context = ev.action.id;
+        this.setupRetry.cancel(context);
         const controller = this.controllers.get(context);
         if (controller) {
             controller.unregisterPlayModeCallback(context);
             controller.unregisterTrackInfoCallback(context);
+            controller.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
         }
         this.controllers.delete(context);

@@ -17,6 +17,7 @@ import {
     mdiVolumeMinus,
     mdiTuneVertical,
     mdiCog,
+    mdiSpeakerOff,
     mdiBattery,
     mdiBatteryOutline,
     mdiBatteryAlert,
@@ -72,7 +73,7 @@ export function generatePlaybackIcon(
     type: 'next' | 'previous' | 'shuffle' | 'repeat',
     active: boolean | 'all' | 'one' | 'off' = false,
     color = '#CCCCCC',
-    dimColor = '#555555'
+    dimColor = OFF_ICON_COLOR
 ): string {
     switch (type) {
         case 'next':     return svgUri(mdiSkipNext, color);
@@ -151,17 +152,42 @@ export function renderBatteryBadge(
     return `<g transform="translate(${x},${y}) scale(${scale})"><path fill="${color}" d="${path}"/></g>`;
 }
 
-// --- Dial "not configured yet" placeholder ---
-// Shared across dial actions' full-canvas feedback so a missing PI setting (device/group)
-// reads clearly on the low-res dial screen instead of blending into the background.
-export function buildUnconfiguredDialSvg(label: string): string {
+// --- "Not available" states (unconfigured / unreachable / disabled control) ---
+// ONE shared color for everything in the "this control can't do anything right now" category,
+// plugin-wide: the unconfigured cog, the unreachable speaker-off, AND the disabled transport
+// glyphs (e.g. Next/Previous while a radio station is playing, which can't skip). The glyph
+// tells you WHY it's unavailable; the color only says THAT it's unavailable — deliberately
+// darker than the operable-but-off state (#555555) and far darker than any active icon
+// (#CCCCCC), so none of these ever read as an operable button. Tuned on hardware in two rounds:
+// #252525 was too dark to make out at all, #3A3A3A still a touch too dark.
+export const INACTIVE_ICON_COLOR = '#454545';
+
+// "Operable but currently off" (e.g. Shuffle/Repeat disengaged): the middle tier of the icon
+// state scale — brighter than INACTIVE_ICON_COLOR (pressing this DOES something), well below
+// active #CCCCCC. Was #555555; raised to keep visible separation from the not-available tier.
+export const OFF_ICON_COLOR = '#666666';
+
+function buildDialStatusSvg(glyphPath: string, label: string): string {
     const cx = 100, cy = 38, rOuter = 18;
     const scale = (rOuter * 2) / 24;
     return [
         '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
         '<rect width="200" height="100" fill="#0a0a0a"/>',
-        `<g transform="translate(${cx - rOuter},${cy - rOuter}) scale(${scale})"><path fill="#7A7A7A" d="${mdiCog}"/></g>`,
-        `<text x="${cx}" y="80" fill="#8A8A8A" font-family="Arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="1.5">${label}</text>`,
+        `<g transform="translate(${cx - rOuter},${cy - rOuter}) scale(${scale})"><path fill="${INACTIVE_ICON_COLOR}" d="${glyphPath}"/></g>`,
+        `<text x="${cx}" y="80" fill="#555555" font-family="Arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="1.5">${label}</text>`,
         '</svg>',
     ].join('');
+}
+
+export function buildUnconfiguredDialSvg(label: string): string {
+    return buildDialStatusSvg(mdiCog, label);
+}
+
+export function buildUnreachableDialSvg(label: string): string {
+    return buildDialStatusSvg(mdiSpeakerOff, label);
+}
+
+// Key-sized variant for the button actions (Play/Pause, Volume, Playback Control, Favorite).
+export function generateUnreachableKeyIcon(): string {
+    return svgUri(mdiSpeakerOff, INACTIVE_ICON_COLOR);
 }

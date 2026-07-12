@@ -23,8 +23,9 @@ import { TrackInfo } from "../sonos/SonosTypes";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
 import { QueueCoverArtCache } from "./QueueCoverArtCache";
 import { piT } from "../utils/pi-i18n";
-import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
+import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, groupEffects } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
+import { getDominantColor } from "../utils/colorExtract";
 
 type QueueDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
@@ -39,6 +40,12 @@ interface QueueDialState {
     playbackKind: 'queue' | 'radio' | 'unknown';
     queueItems: Track[];
     liveTrackIndex: number; // 0-based; -1 = unknown/not applicable
+    dominantColor: string;
+    lastColorUri?: string;
+    // AVTransport's LastChange event bundles ALL fields on every fire, so this callback fires on
+    // every track change too, not just genuine shuffle/repeat toggles — track the last value to
+    // tell a real change from a no-op one (see onPlayModeChanged).
+    lastPlayMode?: string;
     cursorIndex: number; // -1 = resting (now-playing view); >=0 = browsing (carousel)
     // Cursor row's cover, swapped instantly (no crossfade — scrolling needs to feel immediate).
     // Deliberately NOT routed through CoverArtAnimator, whose ~500ms crossfade made browsing feel
@@ -52,15 +59,23 @@ interface QueueDialState {
     // server, backing up its connection queue badly enough to also stall unrelated fetches (e.g.
     // Favorites Dial's cover art) against the same device for many seconds.
     coverDebounceTimer?: NodeJS.Timeout;
-    fadeOpacity?: number;  // black overlay opacity while leaving browse mode; undefined = no fade
-    fadeTimer?: NodeJS.Timeout;
 }
 
 const COVER_DEBOUNCE_MS = 150;
 
+// Layout builds outward from the cover's edge, mirrored per mode:
+// 'left':  cover 0..87 | gap | text block | 8px outer margin
+// 'right': 8px outer margin | text block | gap | cover 113..200
+// Cover, gap, text (title/artist/position/progress bar), and margins all derive from these four
+// constants — nothing is positioned absolutely, so both modes stay exact mirrors.
+//
+// The gap is deliberately generous (user request: clear separation between cover and text). Note
+// the artwork is drawn as a 100px square anchored to the slot's outer edge, so it reaches 13px
+// past the 87px clip toward the text — the VISIBLE breathing room is gap minus those 13px if the
+// hardware ever fails to clip; don't shrink the gap below ~16 without re-checking on the device.
 const COVER_WIDTH = 87;
 const OUTER_MARGIN = 8;
-const COVER_TEXT_GAP = 14;
+const COVER_TEXT_GAP = 20;
 const TEXT_WIDTH = 200 - COVER_WIDTH - COVER_TEXT_GAP - OUTER_MARGIN;
 
 function cursorMarqueeKey(context: string): string {
@@ -73,6 +88,16 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
     private states: Map<string, QueueDialState> = new Map();
     private animators: Map<string, CoverArtAnimator> = new Map();
     private coverCaches: Map<string, QueueCoverArtCache> = new Map();
+    // Guards renderCarousel against the panorama effect's 50ms animation tick, which calls
+    // renderDial continuously whenever an effect is active — necessary to actually animate the
+    // resting view's background, but wasted work for the carousel (which never shows that
+    // background). Every genuine reason to redraw the carousel (rotate, cover load, fade step,
+    // cursor-row marquee scroll) explicitly marks this dirty before calling renderDial; the
+    // animation tick's calls don't, so they're skipped as no-ops. Confirmed on hardware: without
+    // this, the resulting flood of ~20 identical setFeedback calls per second overwhelmed the
+    // Stream Deck's own rendering pipeline, making browsing feel stuck and then dump a backlog of
+    // frames all at once.
+    private carouselDirty: Map<string, boolean> = new Map();
 
     // Panorama effects (Background PI field) render behind the resting view, same as
     // Volume/Track/GroupVolume Dial — uses the base class's default isEffectMode. The carousel
@@ -91,8 +116,19 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         const animator = this.animators.get(context);
         if (!state || !animator) return;
 
-        // Preserve visible cover when the new event carries no art (e.g. radio news segment).
-        if (!trackInfo.albumArtDataUri && state.trackInfo?.albumArtDataUri) {
+        // The controller's currentTrack event deliberately fires twice per track change: instantly
+        // with a FALLBACK cover (the previous track's art) so title/artist aren't held hostage by
+        // a slow art fetch, then again once the real cover resolves. Taking that fallback at face
+        // value crossfaded to the OLD track's cover and back again — so resolve the cover ourselves
+        // by AlbumArtUri from the carousel cache first. After a Push commit the selected track's
+        // cover is already cached, so both fires resolve to the exact data URI already on screen
+        // and the animator's own same-image check skips the fade entirely; a crossfade now only
+        // ever runs when a genuinely different cover arrives.
+        const cachedCover = trackInfo.AlbumArtUri ? this.coverCaches.get(context)?.get(trackInfo.AlbumArtUri) : undefined;
+        if (cachedCover) {
+            trackInfo = { ...trackInfo, albumArtDataUri: cachedCover };
+        } else if (!trackInfo.albumArtDataUri && state.trackInfo?.albumArtDataUri) {
+            // Preserve visible cover when the new event carries no art (e.g. radio news segment).
             trackInfo = { ...trackInfo, albumArtDataUri: state.trackInfo.albumArtDataUri };
         }
         const wasRadio = state.playbackKind === 'radio';
@@ -117,6 +153,8 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             this.coverCaches.get(context)?.set(trackInfo.AlbumArtUri, trackInfo.albumArtDataUri);
         }
 
+        this.extractDominantColor(context, trackInfo.albumArtDataUri);
+
         const controller = this.controllers.get(context);
         if (controller) {
             // Radio -> queue transition: eager-fetch the queue so the position/length are ready.
@@ -131,10 +169,19 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
     // Shuffle/repeat toggles (from this plugin, the Sonos app, or any other client) can reorder
     // the queue container itself — refetch so a subsequent browse reflects the new order. Skipped
     // entirely while actively browsing, same reasoning as onTrackInfoChanged.
-    private onPlayModeChanged(context: string): void {
+    //
+    // IMPORTANT: this callback fires on every AVTransport LastChange event, not just genuine
+    // playmode toggles — the event bundles every field (including CurrentPlayMode) on ANY
+    // transport change, so a plain track advance fires it too. Without the lastPlayMode check
+    // below, every track change triggered a full ~1000-item getQueue() refetch, which tied up the
+    // speaker's connection long enough to delay the track-change cover/title update itself by
+    // upwards of 10+ seconds (same shared-connection-pool issue as the carousel scroll fix).
+    private onPlayModeChanged(context: string, playMode: string): void {
         const state = this.states.get(context);
         const controller = this.controllers.get(context);
         if (!state || !controller) return;
+        if (state.lastPlayMode === playMode) return;
+        state.lastPlayMode = playMode;
         if (state.cursorIndex !== -1 || state.playbackKind !== 'queue') return;
         void this.refreshQueueContext(context, controller, true);
     }
@@ -153,59 +200,50 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         } catch (e) {
             streamDeck.logger.warn('refreshQueueContext failed', e);
         }
+
+        // Warm the carousel cache for the live track's nearest neighbors while resting, so the
+        // FIRST rotate tick into browse mode finds its cover already cached instead of paying a
+        // debounce + speaker fetch (observed as the first cover arriving 1-2s late, fine from the
+        // second tick on). ±2 covers a quick two-tick entry too; loadImageFromUri's global
+        // dedup/cache makes the repeat calls on every track change essentially free.
+        if (state.cursorIndex === -1 && state.liveTrackIndex >= 0 && state.queueItems.length > 1) {
+            for (const offset of [-1, 1, -2, 2]) {
+                void this.prefetchCover(context, state.queueItems[wrapIndex(state.liveTrackIndex, offset, state.queueItems.length)]);
+            }
+        }
+
         void this.renderDial(context);
     }
 
-    // Pure state reset — no fade. Used at the black midpoint of startFadeThroughBlack.
+    // Pure state reset, shown instantly — no fade, no crossfade. By the time this runs,
+    // state.trackInfo already holds whatever should be visible next (unchanged, for a plain
+    // cancel/timeout; the just-selected track's own data for a Push commit — see onDialDown), so
+    // there is nothing to transition FROM that the user needs to see; cutting straight to it is
+    // both simpler and correct. Uses CoverArtAnimator.setImageInstant (not updateImage) specifically
+    // to skip its ~500ms crossfade, which previously made a Push commit visibly flash the OLD
+    // track's cover before swapping to the selected one a moment later.
     private resetToResting(context: string): void {
         const state = this.states.get(context);
         if (!state) return;
         state.cursorIndex = -1;
         const animator = this.animators.get(context);
-        if (animator) animator.updateImage(context, state.trackInfo?.albumArtDataUri);
+        if (animator) animator.setImageInstant(context, state.trackInfo?.albumArtDataUri);
         marqueeAnimator.update(context, { text: state.trackInfo?.Title ?? '', availableWidth: TEXT_WIDTH });
     }
 
-    // Leaves browse mode via a brief fade-through-black (same technique as Favorites Dial) rather
-    // than an instant cut — used for both the auto-return timeout and the radio safety-net exit.
+    private markCarouselDirty(context: string): void {
+        this.carouselDirty.set(context, true);
+    }
+
+    // Leaves browse mode immediately — used for the Push commit, the Touch cancel, the auto-return
+    // timeout, and the radio safety-net exit alike.
     private cancelBrowse(context: string): void {
         const state = this.states.get(context);
         if (!state || state.cursorIndex === -1) return;
         if (state.browseTimeoutId) { clearTimeout(state.browseTimeoutId); state.browseTimeoutId = undefined; }
-        if (state.fadeTimer) { clearInterval(state.fadeTimer); state.fadeTimer = undefined; }
-
-        const STEPS = 6;
-        const INTERVAL_MS = 30;
-        let phase: 1 | 2 = 1;
-        let step = 0;
-
-        state.fadeOpacity = 0;
+        this.resetToResting(context);
+        this.markCarouselDirty(context);
         void this.renderDial(context);
-
-        state.fadeTimer = setInterval(() => {
-            const s = this.states.get(context);
-            if (!s) return;
-            step++;
-
-            if (phase === 1) {
-                s.fadeOpacity = step / STEPS;
-                if (step >= STEPS) {
-                    phase = 2;
-                    step = 0;
-                    s.fadeOpacity = 1.0;
-                    this.resetToResting(context);
-                }
-            } else {
-                s.fadeOpacity = Math.max(0, 1 - step / STEPS);
-                if (step >= STEPS) {
-                    s.fadeOpacity = undefined;
-                    clearInterval(s.fadeTimer!);
-                    s.fadeTimer = undefined;
-                }
-            }
-
-            void this.renderDial(context);
-        }, INTERVAL_MS);
     }
 
     // queueTimeoutSeconds === 0 disables auto-return entirely — browsing then only ends via
@@ -251,10 +289,10 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
 
         const item = state.queueItems[state.cursorIndex];
         const key = item?.AlbumArtUri ?? item?.TrackUri ?? '';
-        if (!item || !key) { state.cursorCoverUri = undefined; void this.renderDial(context); return; }
+        if (!item || !key) { state.cursorCoverUri = undefined; this.markCarouselDirty(context); void this.renderDial(context); return; }
 
         const cached = cache.get(key);
-        if (cached) { state.cursorCoverUri = cached; void this.renderDial(context); return; }
+        if (cached) { state.cursorCoverUri = cached; this.markCarouselDirty(context); void this.renderDial(context); return; }
         if (!item.AlbumArtUri) return;
 
         const gen = ++state.coverFetchGen;
@@ -264,6 +302,7 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             if (dataUri) {
                 cache.set(key, dataUri);
                 state.cursorCoverUri = dataUri;
+                this.markCarouselDirty(context);
                 void this.renderDial(context);
             }
         } catch { /* keep whatever is currently shown */ }
@@ -305,7 +344,7 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             fontColor: '#FFFFFF',
             availableWidth: TEXT_WIDTH,
         });
-        marqueeAnimator.start(cursorMarqueeKey(context), () => { void this.renderDial(context); }, {
+        marqueeAnimator.start(cursorMarqueeKey(context), () => { this.markCarouselDirty(context); void this.renderDial(context); }, {
             text: '',
             fontSize: 15,
             fontColor: '#FFFFFF',
@@ -319,6 +358,7 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             playbackKind: 'unknown',
             queueItems: [],
             liveTrackIndex: -1,
+            dominantColor: '#CCCCCC',
             cursorIndex: -1,
             browseTimeoutMs: (settings.queueTimeoutSeconds ?? 5) * 1000,
             coverFetchGen: 0,
@@ -334,19 +374,24 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
 
+            this.registerReachabilityHandling(controller, ev, 'QUEUE');
             controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
             // Fires immediately with cached state (incl. isRadio) if a track is already known.
             controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
-            controller.registerPlayModeCallback(context, () => this.onPlayModeChanged(context));
+            controller.registerPlayModeCallback(context, (pm) => this.onPlayModeChanged(context, pm));
 
-            const [transportState, track] = await Promise.all([
+            const [transportState, track, playMode] = await Promise.all([
                 controller.getTransportState(),
                 controller.getCurrentTrack(),
+                controller.getPlayMode(),
             ]);
 
             const state = this.states.get(context)!;
             state.transportState = transportState;
             if (track && !state.trackInfo) state.trackInfo = track;
+            // Seed the baseline so the first real LastChange event doesn't look like a change and
+            // trigger a redundant extra getQueue() on top of the eager one a few lines down.
+            state.lastPlayMode = playMode;
 
             // For radio, getCurrentTrack() returns undefined; derive cover from stream URI.
             const cover = await controller.getCurrentTrackCover();
@@ -355,6 +400,7 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
                 state.trackInfo.albumArtDataUri = cover;
                 animator.updateImage(context, cover);
                 marqueeAnimator.update(context, { text: state.trackInfo.Title ?? '', availableWidth: TEXT_WIDTH });
+                this.extractDominantColor(context, cover);
             }
 
             if (state.playbackKind === 'queue') {
@@ -364,13 +410,14 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             await this.renderDial(context);
         } catch (e) {
             streamDeck.logger.error(`Error getting initial state for ${deviceIp}`, e);
+            await this.renderUnreachableDial(context, 'QUEUE');
+            this.scheduleSetupRetry(ev);
         }
     }
 
     protected cleanupInstance(context: string): void {
         const state = this.states.get(context);
         if (state?.browseTimeoutId) clearTimeout(state.browseTimeoutId);
-        if (state?.fadeTimer) clearInterval(state.fadeTimer);
         if (state?.coverDebounceTimer) clearTimeout(state.coverDebounceTimer);
 
         const controller = this.controllers.get(context);
@@ -378,6 +425,7 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             controller.unregisterTransportStateCallback(context);
             controller.unregisterTrackInfoCallback(context);
             controller.unregisterPlayModeCallback(context);
+            controller.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
             this.controllers.delete(context);
         }
@@ -389,6 +437,7 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         marqueeAnimator.destroy(cursorMarqueeKey(context));
 
         this.coverCaches.delete(context);
+        this.carouselDirty.delete(context);
         this.settingsMap.delete(context);
         this.states.delete(context);
     }
@@ -399,9 +448,9 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         const context = ev.action.id;
         const state = this.states.get(context);
         if (!state) return;
-        if (state.fadeTimer) return; // ignore input while leaving/entering browse mode
         if (state.playbackKind !== 'queue' || state.queueItems.length === 0) return;
 
+        this.markCarouselDirty(context);
         const wasResting = state.cursorIndex === -1;
         const base = wasResting ? (state.liveTrackIndex >= 0 ? state.liveTrackIndex : 0) : state.cursorIndex;
         state.cursorIndex = wrapIndex(base, ev.payload.ticks, state.queueItems.length);
@@ -419,7 +468,12 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         // Cache hits apply instantly (no network, cheap on every tick). Actual fetches are
         // debounced — only the position the user finally settles on gets requested, instead of
         // every intermediate tick while scrolling past. See COVER_DEBOUNCE_MS's comment on state.
+        // The FIRST tick out of resting skips the debounce entirely: there's no scroll burst to
+        // coalesce yet, and the 150ms wait just delayed the very first cover for nothing. It also
+        // drops a cache-missed stale cursorCoverUri left over from the previous browse session,
+        // so the placeholder shows instead of an unrelated old cover.
         const hadCachedCover = this.applyCachedCursorCover(context);
+        if (wasResting && !hadCachedCover) state.cursorCoverUri = undefined;
         if (state.coverDebounceTimer) clearTimeout(state.coverDebounceTimer);
         state.coverDebounceTimer = setTimeout(() => {
             const s = this.states.get(context);
@@ -428,21 +482,38 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             if (!hadCachedCover) void this.loadCursorCover(context);
             void this.prefetchCover(context, s.queueItems[wrapIndex(s.cursorIndex, -1, s.queueItems.length)]);
             void this.prefetchCover(context, s.queueItems[wrapIndex(s.cursorIndex, 1, s.queueItems.length)]);
-        }, COVER_DEBOUNCE_MS);
+        }, wasResting ? 0 : COVER_DEBOUNCE_MS);
 
         void this.renderDial(context);
     }
 
     // Push commits the cursor's selection: jump the actual playback to that queue position, then
-    // fade back to the resting view. A no-op while resting (nothing selected to commit) or mid-fade.
+    // cut back to the resting view. A no-op while resting (nothing selected to commit).
     override async onDialDown(ev: DialDownEvent<QueueDialSettings>): Promise<void> {
         const context = ev.action.id;
         const state = this.states.get(context);
         const controller = this.controllers.get(context);
         if (!state || !controller) return;
-        if (state.cursorIndex === -1 || state.fadeTimer) return;
+        if (state.cursorIndex === -1) return;
 
         const targetIndex = state.cursorIndex;
+        const targetItem = state.queueItems[targetIndex];
+
+        // We already know which track is about to become current — the browsed item's own
+        // metadata, and (almost always, since it's the focused carousel row) its already-loaded
+        // cover. Apply both to the resting view's state before cutting back, so the resting view
+        // shows the SELECTED track directly instead of the track that was playing BEFORE the jump
+        // (which resetToResting would otherwise have nothing else to show), which then visibly
+        // swapped to the correct cover/title again once the real Seek/UPnP round-trip completed
+        // moments later.
+        if (targetItem) {
+            const cache = this.coverCaches.get(context);
+            const cover = state.cursorCoverUri ?? (targetItem.AlbumArtUri ? cache?.get(targetItem.AlbumArtUri) : undefined);
+            state.trackInfo = { ...targetItem, albumArtDataUri: cover ?? state.trackInfo?.albumArtDataUri, isRadio: false };
+            state.liveTrackIndex = targetIndex;
+            this.extractDominantColor(context, cover);
+        }
+
         this.cancelBrowse(context);
 
         try {
@@ -461,7 +532,7 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         const context = ev.action.id;
         const state = this.states.get(context);
         if (!state) return;
-        if (state.cursorIndex === -1 || state.fadeTimer) return;
+        if (state.cursorIndex === -1) return;
         this.cancelBrowse(context);
     }
 
@@ -512,6 +583,10 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         }
 
         if (state.cursorIndex !== -1 && state.queueItems.length > 0) {
+            // Skip redundant redraws (e.g. the panorama effect's 50ms animation tick) — see
+            // carouselDirty's comment. Genuine triggers mark this before calling renderDial.
+            if (!this.carouselDirty.get(context)) return;
+            this.carouselDirty.set(context, false);
             await this.renderCarousel(sdAction, context, state, settings);
             return;
         }
@@ -542,14 +617,18 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             const fraction = position / total;
             indicatorValue = Math.round(fraction * 100);
             indicatorEnabled = true;
+            const barColor = this.ensureVisibleColor(state.dominantColor);
             statusFrag = [
                 `<rect x="${resolvedTextX}" y="86" width="${TEXT_WIDTH}" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                `<rect x="${resolvedTextX}" y="86" width="${Math.round(TEXT_WIDTH * fraction)}" height="5" fill="#7A9CFF" opacity="0.9" rx="2.5"/>`,
+                `<rect x="${resolvedTextX}" y="86" width="${Math.round(TEXT_WIDTH * fraction)}" height="5" fill="${barColor}" opacity="0.9" rx="2.5"/>`,
                 `<text x="${resolvedTextX}" y="80" fill="#999999" font-family="Arial,sans-serif" font-size="10">${position}/${total}</text>`,
             ].join('');
         }
 
-        const sharpCover = animator.render(context, coverX, 0, COVER_WIDTH, 100);
+        // Anchor the artwork square to the slot's outer edge (not centered) so the cover starts
+        // exactly at the canvas edge — the centered variant shifted it ~6px off-canvas, visibly
+        // wrong in the 'left' layout.
+        const sharpCover = animator.render(context, coverX, 0, COVER_WIDTH, 100, coverOnLeft ? 'left' : 'right');
         const coverClipX = coverX;
 
         // Panorama effect (Background PI field) as a full-canvas layer behind the text/cover —
@@ -589,7 +668,6 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             '</g>',
             statusFrag,
             `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
-            this.renderFadeOverlay(state),
             '</svg>',
         ].join('');
 
@@ -638,8 +716,15 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         const nextText = this.escapeXml(truncateForDisplay(nextItem?.Title ?? '', 22));
         const cursorArtist = this.escapeXml(cursorItem?.Artist ?? '');
 
+        // Same square-plus-clip technique as CoverArtAnimator.render (the hardware renderer
+        // ignores preserveAspectRatio, stretching non-square boxes): a 100x100 square anchored to
+        // the slot's outer edge, cropped to COVER_WIDTH by cursorCoverClip — keeps the carousel's
+        // cover geometry identical to the resting view's, so the browse/rest transition doesn't
+        // shift or squish the artwork.
+        const coverSize = 100;
+        const coverImgX = coverOnLeft ? coverX : coverX + COVER_WIDTH - coverSize;
         const coverFrag = state.cursorCoverUri
-            ? `<image href="${state.cursorCoverUri}" x="${coverX}" y="0" width="${COVER_WIDTH}" height="100" preserveAspectRatio="xMidYMid slice"/>`
+            ? `<image href="${state.cursorCoverUri}" x="${coverImgX}" y="0" width="${coverSize}" height="${coverSize}"/>`
             : `<rect x="${coverX}" y="0" width="${COVER_WIDTH}" height="100" fill="#111"/>`;
 
         const svg = [
@@ -649,12 +734,11 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             `  <clipPath id="cursorCoverClip"><rect x="${coverX}" y="0" width="${COVER_WIDTH}" height="100" rx="6"/></clipPath>`,
             '</defs>',
             '<rect width="200" height="100" fill="black"/>',
-            `<text x="${resolvedTextX}" y="14" fill="#AAAAAA" font-family="Arial,sans-serif" font-size="10" opacity="0.5" clip-path="url(#carouselTextClip)">${prevText}</text>`,
+            `<text x="${resolvedTextX}" y="14" fill="#999999" font-family="Arial,sans-serif" font-size="10" opacity="0.5" clip-path="url(#carouselTextClip)">${prevText}</text>`,
             `<g clip-path="url(#carouselTextClip)">${cursorTitleFrag}</g>`,
             `<text x="${resolvedTextX}" y="64" fill="#999999" font-family="Arial,sans-serif" font-size="11" clip-path="url(#carouselTextClip)">${cursorArtist}</text>`,
-            `<text x="${resolvedTextX}" y="94" fill="#AAAAAA" font-family="Arial,sans-serif" font-size="10" opacity="0.5" clip-path="url(#carouselTextClip)">${nextText}</text>`,
+            `<text x="${resolvedTextX}" y="94" fill="#999999" font-family="Arial,sans-serif" font-size="10" opacity="0.5" clip-path="url(#carouselTextClip)">${nextText}</text>`,
             `<g clip-path="url(#cursorCoverClip)">${coverFrag}</g>`,
-            this.renderFadeOverlay(state),
             '</svg>',
         ].join('');
 
@@ -673,10 +757,33 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         return Math.max(0, Math.ceil(text.length * fontSize * 0.55) + 4);
     }
 
-    private renderFadeOverlay(state: QueueDialState): string {
-        return state.fadeOpacity !== undefined
-            ? `<rect width="200" height="100" fill="#000" opacity="${state.fadeOpacity.toFixed(3)}"/>`
-            : '';
+    // Extracts the cover's dominant color (async — cheap re-render once it resolves) and, when a
+    // panorama effect is active, feeds it into that effect's live settings, same as Track Dial.
+    private extractDominantColor(context: string, cover: string | undefined): void {
+        const state = this.states.get(context);
+        if (!state || !cover || cover === state.lastColorUri) return;
+        state.lastColorUri = cover;
+        getDominantColor(cover).then(color => {
+            const s = this.states.get(context);
+            if (!s) return;
+            s.dominantColor = color;
+            const visibleColor = this.ensureVisibleColor(color);
+            const pk = panoramaContextGroupKey.get(context);
+            if (isPanoramaEffectActive(pk)) {
+                groupEffects.get(pk!)?.onSettingsChange?.({ color: visibleColor });
+            }
+            void this.renderDial(context);
+        }).catch(() => {});
+    }
+
+    private ensureVisibleColor(color: string): string {
+        const m = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
+        if (!m) return '#CCCCCC';
+        const [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255];
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (lum >= 0.25) return color;
+        const mix = (v: number) => Math.min(255, Math.round(v * 255 + 255 * 0.55));
+        return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
     }
 
     private escapeXml(unsafe: string): string {

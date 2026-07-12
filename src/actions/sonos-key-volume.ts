@@ -14,7 +14,8 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { generateFaderSvg } from "../sonos/utils";
-import { generateVolumeButtonIcon } from "../utils/icons";
+import { generateVolumeButtonIcon, generateUnreachableKeyIcon } from "../utils/icons";
+import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 
 type SonosKeyVolumeSettings = {
@@ -114,9 +115,12 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
         }
     }
 
+    private setupRetry = new SetupRetryScheduler();
+
     private async onInstanceUpdate(ev: WillAppearEvent<SonosKeyVolumeSettings> | DidReceiveSettingsEvent<SonosKeyVolumeSettings>): Promise<void> {
         const { action, payload } = ev;
         const context = action.id;
+        this.setupRetry.cancel(context);
         const { deviceIp, command, showVolume, showPreset, volume, presetVolume } = payload.settings;
         const settings = payload.settings;
 
@@ -145,12 +149,22 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
             const oldController = this.controllers.get(context);
             if (oldController) {
                 oldController.unregisterVolumeCallback(context);
+                oldController.unregisterReachabilityCallback(context);
                 sonosDeviceManager.releaseController(oldController.deviceIp);
             }
 
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
-            
+
+            controller.registerReachabilityCallback(context, (reachable) => {
+                if (reachable) {
+                    void this.onInstanceUpdate(ev);
+                } else {
+                    void action.setImage(generateUnreachableKeyIcon());
+                    void action.setTitle("");
+                }
+            });
+
             // Register callback for live mute/volume updates
             controller.unregisterVolumeCallback(context);
             controller.registerVolumeCallback(context, (volume) => {
@@ -182,7 +196,11 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
 
         } catch (e) {
             streamDeck.logger.error(`[${context}] Setup error:`, e);
-            await action.setTitle("Error");
+            // Configured but unreachable — dark speaker-off glyph instead of an "Error" title,
+            // visually distinct from both the unconfigured state and any live (brighter) icon.
+            await action.setImage(generateUnreachableKeyIcon());
+            await action.setTitle("");
+            this.setupRetry.schedule(context, () => void this.onInstanceUpdate(ev));
         }
     }
 
@@ -207,9 +225,11 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
 
     override async onWillDisappear(ev: WillDisappearEvent<SonosKeyVolumeSettings>): Promise<void> {
         const context = ev.action.id;
+        this.setupRetry.cancel(context);
         const controller = this.controllers.get(context);
         if (controller) {
             controller.unregisterVolumeCallback(context);
+            controller.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
         }
         this.controllers.delete(context);

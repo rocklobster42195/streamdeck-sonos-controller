@@ -245,6 +245,7 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
                 await ev.action.setSettings(settings);
             }
 
+            this.registerReachabilityHandling(controller, ev, 'TRACK');
             controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
             controller.registerTrackInfoCallback(context, (ti) => { void this.onTrackInfoChanged(context, ti); });
             if (settings.batteryDisplayMode !== 'off') {
@@ -291,6 +292,8 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
 
         } catch (e) {
             streamDeck.logger.error(`Error getting initial state for ${deviceIp}`, e);
+            await this.renderUnreachableDial(context, 'TRACK');
+            this.scheduleSetupRetry(ev);
         }
     }
 
@@ -300,6 +303,7 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
             controller.unregisterTransportStateCallback(context);
             controller.unregisterTrackInfoCallback(context);
             controller.unregisterBatteryCallback(context);
+            controller.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
             this.controllers.delete(context);
         }
@@ -490,7 +494,11 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
         let svg: string;
 
         if (visualizerMode === 'none') {
-            const sharpCover = animator.render(context, 113, 0, 87, 100);
+            // 'left' anchor: the artwork square starts exactly at the cover slot (x=113) and its
+            // overflow leaves the canvas on the right — never toward the text/progress bar. The
+            // centered default started the image at x=106.5, visibly sliding under the progress
+            // bar's end on hardware (same unclipped-image behavior as Queue Dial's cover shift).
+            const sharpCover = animator.render(context, 113, 0, 87, 100, 'left');
 
             let titleFrag = '';
             if (settings?.showTrackTitle !== false) {
@@ -520,7 +528,11 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
                 '</svg>',
             ].join('');
         } else {
-            const sharpCover = animator.render(context, 113, 0, 87, 100);
+            // 'left' anchor: the artwork square starts exactly at the cover slot (x=113) and its
+            // overflow leaves the canvas on the right — never toward the text/progress bar. The
+            // centered default started the image at x=106.5, visibly sliding under the progress
+            // bar's end on hardware (same unclipped-image behavior as Queue Dial's cover shift).
+            const sharpCover = animator.render(context, 113, 0, 87, 100, 'left');
 
             let titleFrag = '';
             if (settings?.showTrackTitle !== false) {
@@ -596,8 +608,8 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
                     titleFrag,
                     `  <text x="8" y="38" fill="#999999" font-family="Arial,sans-serif" font-size="12">${this.escapeXml(artist)}</text>`,
                     '</g>',
-                    `<rect x="8" y="48" width="100" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                    progressPct > 0 ? `<rect x="8" y="48" width="${progressPct}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
+                    `<rect x="8" y="48" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
+                    progressPct > 0 ? `<rect x="8" y="48" width="${Math.round(97 * progress)}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
                     visualizer,
                     `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
                     batteryBadge,

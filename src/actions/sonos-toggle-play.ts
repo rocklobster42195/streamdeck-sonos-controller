@@ -15,7 +15,8 @@ import { SonosDevice } from "@svrooij/sonos";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
-import { generateTransportIcon, renderBatteryBadge, wrapImageWithBadge } from "../utils/icons";
+import { generateTransportIcon, renderBatteryBadge, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
+import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 
 /**
@@ -142,16 +143,20 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         }
     }
 
+    private setupRetry = new SetupRetryScheduler();
+
     async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
         const context = ev.action.id;
         const action = ev.action;
         let settings = ev.payload.settings;
+        this.setupRetry.cancel(context);
 
         if (this.controllers.has(context)) {
             const oldController = this.controllers.get(context)!;
             oldController.unregisterTransportStateCallback(context);
             oldController.unregisterTrackInfoCallback(context);
             oldController.unregisterBatteryCallback(context);
+            oldController.unregisterReachabilityCallback(context);
             // Must release here — getController() below unconditionally increments refCount,
             // so skipping this leaked one refCount per re-init (every onWillAppear/settings
             // change), permanently orphaning the controller and its polling/event timers once
@@ -178,6 +183,18 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                 this.currentSettings.set(context, settings);
                 await action.setSettings(settings);
             }
+
+            // Mid-session reachability: speaker-off placeholder while the device is down (e.g. a
+            // battery Roam powered off), full re-setup once it's back.
+            controller.registerReachabilityCallback(context, (reachable) => {
+                if (reachable) {
+                    void this.onInstanceUpdate(ev);
+                } else {
+                    titleAnimator.stop(context);
+                    void action.setImage(generateUnreachableKeyIcon());
+                    void action.setTitle("");
+                }
+            });
 
             // Transport state changes (play/pause/stop)
             controller.registerTransportStateCallback(context, (state) => {
@@ -213,7 +230,11 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
 
         } catch (e) {
             streamDeck.logger.error(`Error updating instance ${context}`, e);
-            await action.setTitle("Error");
+            await action.setImage(generateUnreachableKeyIcon());
+            await action.setTitle("");
+            // Speaker may just be powered off (e.g. a battery Roam) — retry the whole setup
+            // periodically so cover/title recover on their own once it's back online.
+            this.setupRetry.schedule(context, () => void this.onInstanceUpdate(ev));
         }
     }
 
@@ -230,6 +251,7 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
 
     override async onWillDisappear(ev: WillDisappearEvent<SonosSettings>): Promise<void> {
         const context = ev.action.id;
+        this.setupRetry.cancel(context);
         titleAnimator.stop(context);
 
         const controller = this.controllers.get(context);
@@ -237,6 +259,7 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             controller.unregisterTransportStateCallback(context);
             controller.unregisterTrackInfoCallback(context);
             controller.unregisterBatteryCallback(context);
+            controller.unregisterReachabilityCallback(context);
             if (ev.payload.settings.deviceIp) {
                 sonosDeviceManager.releaseController(ev.payload.settings.deviceIp);
             }

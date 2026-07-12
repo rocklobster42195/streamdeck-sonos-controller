@@ -17,6 +17,8 @@ import { SonosDevice } from "@svrooij/sonos";
 import { TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { mdiCog } from "@mdi/js";
+import { buildUnreachableDialSvg, INACTIVE_ICON_COLOR } from "../utils/icons";
+import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 
 type SonosFavDialSettings = {
     deviceIp?: string;
@@ -143,15 +145,19 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         }, INTERVAL_MS);
     }
 
+    private setupRetry = new SetupRetryScheduler();
+
     private async onInstanceUpdate(ev: WillAppearEvent<SonosFavDialSettings> | DidReceiveSettingsEvent<SonosFavDialSettings>): Promise<void> {
         const context = ev.action.id;
         const settings = ev.payload.settings;
+        this.setupRetry.cancel(context);
 
         const old = this.controllers.get(context);
         if (old) {
             old.unregisterVolumeCallback(context);
             old.unregisterTransportStateCallback(context);
             old.unregisterTrackInfoCallback(context);
+            old.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(old.deviceIp);
             this.controllers.delete(context);
         }
@@ -184,6 +190,20 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             const controller = await sonosDeviceManager.getController(settings.deviceIp);
             this.controllers.set(context, controller);
 
+            controller.registerReachabilityCallback(context, (reachable) => {
+                if (reachable) {
+                    void this.onInstanceUpdate(ev);
+                } else {
+                    const sdAction = streamDeck.actions.getActionById(context);
+                    if (sdAction?.isDial()) {
+                        const svg = buildUnreachableDialSvg('FAVORITES');
+                        void sdAction.setFeedback({
+                            'full-canvas': `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
+                            'title': '',
+                        }).catch(() => {});
+                    }
+                }
+            });
             controller.registerVolumeCallback(context, (vol) => this.onVolumeInfoChanged(context, vol));
             controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
             controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
@@ -219,6 +239,15 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             await this.renderDial(context);
         } catch (e) {
             streamDeck.logger.error(`[FavDial ${context}] Setup error:`, e);
+            const sdAction = streamDeck.actions.getActionById(context);
+            if (sdAction?.isDial()) {
+                const svg = buildUnreachableDialSvg('FAVORITES');
+                await sdAction.setFeedback({
+                    'full-canvas': `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
+                    'title': '',
+                }).catch(() => {});
+            }
+            this.setupRetry.schedule(context, () => void this.onInstanceUpdate(ev));
         }
     }
 
@@ -232,6 +261,7 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
 
     override async onWillDisappear(ev: WillDisappearEvent<SonosFavDialSettings>): Promise<void> {
         const context = ev.action.id;
+        this.setupRetry.cancel(context);
         const state = this.states.get(context);
         if (state?.browseTimeoutId) clearTimeout(state.browseTimeoutId);
         if (state?.fadeTimer) clearInterval(state.fadeTimer);
@@ -241,6 +271,7 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             controller.unregisterVolumeCallback(context);
             controller.unregisterTransportStateCallback(context);
             controller.unregisterTrackInfoCallback(context);
+            controller.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
         }
 
@@ -392,8 +423,8 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             '<rect width="200" height="100" fill="#1c1c1c"/>',
             coverFrag,
             titleFrag,
-            `<text x="100" y="48" fill="#888" font-family="Arial,sans-serif" font-size="11" clip-path="url(#tc)">${this.escapeXml(subtitleText)}</text>`,
-            `<text x="197" y="62" fill="#666" font-family="Arial,sans-serif" font-size="10" text-anchor="end">${this.escapeXml(positionText)}</text>`,
+            `<text x="100" y="48" fill="#999999" font-family="Arial,sans-serif" font-size="11" clip-path="url(#tc)">${this.escapeXml(subtitleText)}</text>`,
+            `<text x="197" y="62" fill="#999999" font-family="Arial,sans-serif" font-size="10" text-anchor="end">${this.escapeXml(positionText)}</text>`,
             isBrowsing ? this.renderDots(state.currentIndex, favs.length) : '',
             isBrowsing ? '<rect x="0.5" y="0.5" width="199" height="99" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.15" rx="2"/>' : '',
             fadeOverlay,
@@ -420,8 +451,8 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
 
         const body = covers.length === 0
             ? [
-                `<g transform="translate(82,14) scale(1.5)"><path fill="#7A7A7A" d="${mdiCog}"/></g>`,
-                `<text x="100" y="66" fill="#8A8A8A" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${this.escapeXml(streamDeck.i18n.translate('No device set'))}</text>`,
+                `<g transform="translate(82,14) scale(1.5)"><path fill="${INACTIVE_ICON_COLOR}" d="${mdiCog}"/></g>`,
+                `<text x="100" y="66" fill="#555555" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${this.escapeXml(streamDeck.i18n.translate('No device set'))}</text>`,
             ].join('')
             : this.buildMosaic(covers);
 

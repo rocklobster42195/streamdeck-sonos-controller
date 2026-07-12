@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mdiVolumeHigh, mdiVolumeMedium, mdiVolumeLow, mdiVolumeOff, mdiCog } from '@mdi/js';
-import { generateVolumeLevelIcon, buildUnconfiguredDialSvg } from './icons';
+import { mdiVolumeHigh, mdiVolumeMedium, mdiVolumeLow, mdiVolumeOff, mdiCog, mdiSpeakerOff } from '@mdi/js';
+import { generateVolumeLevelIcon, buildUnconfiguredDialSvg, buildUnreachableDialSvg, generateUnreachableKeyIcon, INACTIVE_ICON_COLOR } from './icons';
 
 function decodedPath(dataUri: string): string {
   const base64 = dataUri.replace('data:image/svg+xml;base64,', '');
@@ -34,10 +34,31 @@ describe('buildUnconfiguredDialSvg', () => {
     expect(svg).toContain(mdiCog);
     expect(svg).toContain('>GROUP<');
   });
+});
 
-  it('uses a legible (non-near-black) color for the icon and label', () => {
-    const svg = buildUnconfiguredDialSvg('SONOS');
-    expect(svg).not.toContain('#2a2a2a');
-    expect(svg).not.toContain('#333');
+describe('buildUnreachableDialSvg', () => {
+  it('renders the speaker-off icon and the given label', () => {
+    const svg = buildUnreachableDialSvg('QUEUE');
+    expect(svg).toContain(mdiSpeakerOff);
+    expect(svg).toContain('>QUEUE<');
+  });
+
+  it('differs from the unconfigured state by glyph, shares the same inactive color', () => {
+    const unreachable = buildUnreachableDialSvg('X');
+    const unconfigured = buildUnconfiguredDialSvg('X');
+    expect(unreachable).not.toContain(mdiCog);
+    expect(unconfigured).not.toContain(mdiSpeakerOff);
+    // Both belong to the same "not available" category — one shared color, plugin-wide,
+    // matching the disabled Next/Previous glyphs while a radio station plays.
+    expect(unreachable).toContain(INACTIVE_ICON_COLOR);
+    expect(unconfigured).toContain(INACTIVE_ICON_COLOR);
+  });
+});
+
+describe('generateUnreachableKeyIcon', () => {
+  it('renders the speaker-off glyph in the shared inactive color', () => {
+    const svg = decodedPath(generateUnreachableKeyIcon());
+    expect(svg).toContain(mdiSpeakerOff);
+    expect(svg).toContain(INACTIVE_ICON_COLOR);
   });
 });

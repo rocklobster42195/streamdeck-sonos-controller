@@ -48,6 +48,11 @@ export class SonosGroupController {
   private currentMute = false;
 
   private volumeCallbacks: Map<string, (volumeInfo: VolumeInfo) => void> = new Map();
+  // Forwards the ANCHOR member's reachability (see SonosDeviceController's poll-driven detection)
+  // as the group's own: the anchor is the device the user actually configured on the dial, so its
+  // disappearance is what should read as "this tile's speaker is off". Other members dropping out
+  // just degrades gracefully (their setVolume calls fail individually and are logged).
+  private reachabilityCallbacks: Map<string, (reachable: boolean) => void> = new Map();
 
   private topologyTimer?: NodeJS.Timeout;
   private isInitialized = false;
@@ -72,12 +77,14 @@ export class SonosGroupController {
     if (this.topologyTimer) clearInterval(this.topologyTimer);
     for (const [host, controller] of this.memberControllers) {
       controller.unregisterVolumeCallback(this.callbackId);
+      controller.unregisterReachabilityCallback(this.callbackId);
       sonosDeviceManager.releaseController(host);
     }
     this.memberControllers.clear();
     this.memberVolumes.clear();
     this.memberSuppressUntil.clear();
     this.volumeCallbacks.clear();
+    this.reachabilityCallbacks.clear();
   }
 
   // Returns true if the coordinator changed (caller may want to log it).
@@ -106,6 +113,7 @@ export class SonosGroupController {
     for (const host of [...this.memberControllers.keys()]) {
       if (currentHosts.has(host)) continue;
       this.memberControllers.get(host)?.unregisterVolumeCallback(this.callbackId);
+      this.memberControllers.get(host)?.unregisterReachabilityCallback(this.callbackId);
       sonosDeviceManager.releaseController(host);
       this.memberControllers.delete(host);
       this.memberVolumes.delete(host);
@@ -124,6 +132,11 @@ export class SonosGroupController {
           this.memberVolumes.set(host, vi.volume);
           this.notifyVolumeChanged();
         });
+        if (host === this.anchorIp) {
+          controller.registerReachabilityCallback(this.callbackId, (reachable) => {
+            this.reachabilityCallbacks.forEach(cb => cb(reachable));
+          });
+        }
       } catch (e) {
         streamDeck.logger.error(`SonosGroupController [${this.anchorIp}]: failed to connect to member ${host}`, e);
       }
@@ -262,4 +275,6 @@ export class SonosGroupController {
 
   registerVolumeCallback(id: string, callback: (volumeInfo: VolumeInfo) => void): void { this.volumeCallbacks.set(id, callback); }
   unregisterVolumeCallback(id: string): void { this.volumeCallbacks.delete(id); }
+  registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void { this.reachabilityCallbacks.set(id, callback); }
+  unregisterReachabilityCallback(id: string): void { this.reachabilityCallbacks.delete(id); }
 }

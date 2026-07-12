@@ -13,6 +13,8 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise, sonosFavoritesCache } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { titleAnimator } from "../utils/TitleAnimator";
+import { generateUnreachableKeyIcon } from "../utils/icons";
+import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 
 type Favorite = {
     Title: string;
@@ -30,12 +32,16 @@ type SonosFavoriteSettings = {
 export class SonosPlayFavorite extends SingletonAction<SonosFavoriteSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
 
+    private setupRetry = new SetupRetryScheduler();
+
     private async onInstanceUpdate(ev: WillAppearEvent<SonosFavoriteSettings> | DidReceiveSettingsEvent<SonosFavoriteSettings>): Promise<void> {
         const { action, payload } = ev;
         const context = action.id;
+        this.setupRetry.cancel(context);
         const { deviceIp, favorite, showTitle } = payload.settings;
 
         if (this.controllers.has(context)) {
+            this.controllers.get(context)!.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(this.controllers.get(context)!.deviceIp);
             this.controllers.delete(context);
         }
@@ -51,7 +57,17 @@ export class SonosPlayFavorite extends SingletonAction<SonosFavoriteSettings> {
         try {
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
-            
+
+            controller.registerReachabilityCallback(context, (reachable) => {
+                if (reachable) {
+                    void this.onInstanceUpdate(ev);
+                } else {
+                    titleAnimator.stop(context);
+                    void action.setImage(generateUnreachableKeyIcon());
+                    void action.setTitle("");
+                }
+            });
+
             const favObject = JSON.parse(favorite) as Favorite;
             const coverArt = sonosFavoritesCache.getCoverArt(favObject.AlbumArtUri);
 
@@ -72,7 +88,10 @@ export class SonosPlayFavorite extends SingletonAction<SonosFavoriteSettings> {
 
         } catch (e) {
             streamDeck.logger.error(`Error in onInstanceUpdate [${context}]:`, e);
-            await action.setTitle("Error");
+            titleAnimator.stop(context);
+            await action.setImage(generateUnreachableKeyIcon());
+            await action.setTitle("");
+            this.setupRetry.schedule(context, () => void this.onInstanceUpdate(ev));
         }
     }
 
@@ -86,10 +105,12 @@ export class SonosPlayFavorite extends SingletonAction<SonosFavoriteSettings> {
 
     override async onWillDisappear(ev: WillDisappearEvent<SonosFavoriteSettings>): Promise<void> {
         const context = ev.action.id;
+        this.setupRetry.cancel(context);
         titleAnimator.stop(context);
 
         const controller = this.controllers.get(context);
         if (controller) {
+            controller.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
         }
         this.controllers.delete(context);
