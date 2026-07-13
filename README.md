@@ -8,8 +8,6 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 > **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
 
-> **Beta features:** anything marked **beta** below has shipped in a [beta release](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases) only — it isn't on the Elgato Marketplace yet and may still change.
-
 <img src="assets/favorite_demo.gif" width="340" alt="Favorites Dial — browse and play Sonos favorites"/>
 
 ---
@@ -23,7 +21,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 | **Volume Key** — up · down · mute · preset | **Group Volume Dial** — control a whole Sonos group's volume together |
 | **Play Favorite** — one tap to play a saved favorite | **Panorama Effects** — ambient art spanning multiple panels |
 | | **Favorites Dial** — browse & play your favorites list |
-| | **Queue Dial** *(beta)* — browse & jump within the current queue |
+| | **Queue Dial** — browse & jump within the current queue |
 
 ---
 
@@ -42,7 +40,7 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 | Show track title | Scroll the track title and artist across the key |
 | Font color | Color for the scrolling title text |
 | Font size | Size of the title text (px) |
-| Battery *(beta)* | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
+| Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
 
 ---
 
@@ -64,11 +62,11 @@ The LCD panel shows the album or station cover art, a scrolling track title, art
 | Background | `None` (track info only), `EQ Effect` (animated bars), or `Particles` |
 | Particle count | Number of particles (Particles mode) |
 | Particle speed | Animation speed (Particles mode) |
-| Battery *(beta)* | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon in the corner for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
+| Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon in the corner for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
 
 ---
 
-### Queue Dial *(Stream Deck+ only, beta)*
+### Queue Dial *(Stream Deck+ only)*
 
 Browse and jump within the currently playing queue without interrupting playback. Rotate to preview upcoming or previous tracks — the LCD shows the previewed title with its neighbors above and below; press to jump playback there, touch or wait to cancel and return to now playing. For radio, shows a simple now-playing card since there's no queue to browse.
 
@@ -146,7 +144,7 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Browse timeout | Seconds of inactivity before returning to now playing |
-| Fade out *(beta)* | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
+| Fade out | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
 
 ---
 
@@ -213,14 +211,14 @@ Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim a
 
 Play one of your saved Sonos favorites with a single key press. The key displays the favorite's cover art while it is playing.
 
-With **Fade out** *(beta)* enabled, the currently playing music fades down smoothly across the whole group before the favorite starts, and every speaker returns to its own volume afterwards — switch playlists mid-evening without anyone noticing a hard cut.
+With **Fade out** enabled, the currently playing music fades down smoothly across the whole group before the favorite starts, and every speaker returns to its own volume afterwards — switch playlists mid-evening without anyone noticing a hard cut.
 
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Favorite | Select from your Sonos favorites list |
 | Show title | Display the favorite's title on the key |
-| Fade out *(beta)* | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
+| Fade out | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
 
 ---
 
