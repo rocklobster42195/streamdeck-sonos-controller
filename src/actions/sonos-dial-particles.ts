@@ -20,6 +20,7 @@ import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
 import type { EffectInstance } from "../effects/types";
 import type { ParticlesEffectSettings } from "../effects/particles";
 import { piT } from "../utils/pi-i18n";
+import { measureArialWidth } from "../utils/text-width";
 
 type ParticlesSettings = {
     // Which registered effect this dial runs. Optional so existing installs (saved before this
@@ -619,8 +620,8 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         // With text-anchor="end", long titles overflow leftward into adjacent displays naturally.
         const textAnchorX = 196 + (maxCol - myCol) * DISPLAY_W;
 
-        const titleW = trackInfo?.title ? this.estimateTextWidth(trackInfo.title, 20, true) : 0;
-        const artistW = trackInfo?.artist ? this.estimateTextWidth(trackInfo.artist, 15) : 0;
+        const titleW = trackInfo?.title ? measureArialWidth(trackInfo.title, 20) : 0;
+        const artistW = trackInfo?.artist ? measureArialWidth(trackInfo.artist, 15) : 0;
 
         const svg = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
@@ -646,10 +647,6 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             'title': '',
             'indicator': { 'value': indicatorValue },
         }).catch(() => {});
-    }
-
-    private estimateTextWidth(text: string, fontSize: number, bold = false): number {
-        return Math.ceil(text.length * fontSize * (bold ? 0.58 : 0.55)) + 4;
     }
 
     private escapeXml(s: string): string {

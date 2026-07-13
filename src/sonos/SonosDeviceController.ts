@@ -60,11 +60,11 @@ export class SonosDeviceController {
   private currentVolume: number = 0;
   private currentMute: boolean = false;
   // Fade-before-favorite coordination: a newer playFavoriteWithFade call bumps the generation,
-  // which aborts any ramp still in flight. preFadeVolume remembers the volume from BEFORE the
-  // first fade started, so rapidly switching favorites mid-fade never adopts a half-faded volume
-  // as the level to restore to.
+  // which aborts any ramp still in flight. preFadeVolumes remembers each group member's volume
+  // from BEFORE the first fade started, so rapidly switching favorites mid-fade never adopts a
+  // half-faded volume as the level to restore to.
   private fadeGeneration = 0;
-  private preFadeVolume: number | undefined;
+  private preFadeVolumes: Map<string, number> = new Map();
   private currentAlbumArtUri: string = '';
   private currentTrack: TrackInfo | undefined;
   // Only ever set when a cover is successfully loaded; never cleared by track events with no art.
@@ -944,49 +944,123 @@ export class SonosDeviceController {
   // --- Main Logic: Play Favorite ---
 
   /**
-   * Like playFavorite, but fades the current track out first and fades the new favorite back in.
-   * Falls back to a plain playFavorite when nothing is audibly playing (paused, muted, volume 0)
-   * so the switch stays instant in those cases.
+   * Like playFavorite, but fades the current playback out first — across the WHOLE group: every
+   * member of this device's current group ramps down in parallel. Once the new favorite has been
+   * started, each member is set straight back to ITS OWN pre-fade volume (no fade-in — a ramp-up
+   * mostly played out inaudibly during radio stream buffering anyway; per-member volumes are
+   * deliberately individual on Sonos, e.g. a line-out zone running much louder than the rest).
+   * Falls back to a plain playFavorite when nothing is audibly playing (paused, or every member
+   * at volume 0).
    */
   async playFavoriteWithFade(favorite: any, fadeOutMs: number): Promise<void> {
     const generation = ++this.fadeGeneration;
     const cancelled = () => this.fadeGeneration !== generation;
-
-    // If a previous fade is still running, restore to ITS original volume, not the half-faded one.
-    const targetVolume = this.preFadeVolume ?? this.currentVolume;
 
     let isPlaying = false;
     try {
       isPlaying = (await this.getTransportState()) === 'PLAYING';
     } catch { /* device didn't answer — treat as not playing and switch without fade */ }
 
-    if (fadeOutMs <= 0 || targetVolume <= 0 || this.currentMute || !isPlaying) {
+    const members = (fadeOutMs > 0 && isPlaying) ? await this.collectFadeMembers() : [];
+    const audible = members.filter((m) => m.preVolume > 0);
+
+    if (fadeOutMs <= 0 || !isPlaying || audible.length === 0) {
       await this.playFavorite(favorite);
       return;
     }
 
-    this.preFadeVolume = targetVolume;
+    // Remembered per host so a rapid follow-up press mid-fade restores each member to its
+    // ORIGINAL volume, not the half-faded one it happens to be at (collectFadeMembers reads
+    // this map before we replace it).
+    this.preFadeVolumes = new Map(audible.map((m) => [m.host, m.preVolume]));
     try {
-      await this.rampVolume(this.currentVolume, 0, fadeOutMs, cancelled);
+      await Promise.allSettled(audible.map((m) => this.ramp(m.setVolume, m.liveVolume, 0, fadeOutMs, cancelled)));
       if (cancelled()) return; // a newer favorite press took over mid-fade
       await this.playFavorite(favorite);
-      // Fade the new favorite in faster than the fade-out — sound should come back promptly.
-      await this.rampVolume(0, targetVolume, Math.min(fadeOutMs / 2, 2000), cancelled);
     } finally {
       if (!cancelled()) {
-        this.preFadeVolume = undefined;
-        // Idempotent after a completed fade-in; after an error it rescues the speaker from silence.
-        await this.setVolume(targetVolume).catch(() => {});
+        this.preFadeVolumes.clear();
+        // Restore every member to its own pre-fade volume right away — radio streams buffer for
+        // a couple of seconds after Play() returns, so this lands while the group is still
+        // silent and the audio then comes in at the correct level. Doubles as the error rescue.
+        await Promise.allSettled(audible.map((m) => m.setVolume(m.preVolume).catch(() => {})));
       }
     }
   }
 
-  private async rampVolume(from: number, to: number, durationMs: number, isCancelled: () => boolean): Promise<void> {
+  // One entry per group member taking part in a fade. Volume goes through the member's pooled
+  // controller when one exists — that keeps its dials animating via its volume callbacks — and
+  // straight to the manager-owned device otherwise (no watchers to notify, and deliberately NOT
+  // sonosDeviceManager.getController(): spinning up a full controller with poll loops and GENA
+  // subscriptions per fade for a device no action is watching would be far too heavy).
+  private async collectFadeMembers(): Promise<Array<{ host: string; preVolume: number; liveVolume: number; setVolume: (v: number) => Promise<void> }>> {
+    let hosts: string[];
+    try {
+      const managed = sonosManager.Devices.find((d) => d.Host === this.deviceIp);
+      const myCoordinatorHost = managed?.Coordinator?.Host ?? managed?.Host ?? this.deviceIp;
+      hosts = sonosManager.Devices
+        .filter((d) => (d.Coordinator?.Host ?? d.Host) === myCoordinatorHost)
+        .map((d) => d.Host);
+      if (!hosts.includes(this.deviceIp)) hosts.push(this.deviceIp);
+    } catch {
+      hosts = [this.deviceIp]; // discovery not ready — fade at least this device
+    }
+
+    const members: Array<{ host: string; preVolume: number; liveVolume: number; setVolume: (v: number) => Promise<void> }> = [];
+    await Promise.all(hosts.map(async (host) => {
+      const controller = host === this.deviceIp ? this : sonosDeviceManager.peekController(host);
+      if (controller) {
+        members.push({
+          host,
+          preVolume: this.preFadeVolumes.get(host) ?? controller.currentVolume,
+          liveVolume: controller.currentVolume,
+          setVolume: (v) => controller.applyFadeVolume(v),
+        });
+        return;
+      }
+      const device = sonosManager.Devices.find((d) => d.Host === host);
+      if (!device) return;
+      try {
+        const vol = await withTimeout(
+          device.RenderingControlService.GetVolume({ InstanceID: 0, Channel: 'Master' }),
+          3000,
+          `fade GetVolume (${host})`,
+        );
+        members.push({
+          host,
+          preVolume: this.preFadeVolumes.get(host) ?? vol.CurrentVolume,
+          liveVolume: vol.CurrentVolume,
+          setVolume: async (v) => {
+            await withTimeout(
+              device.RenderingControlService.SetVolume({ InstanceID: 0, Channel: 'Master', DesiredVolume: v }),
+              SET_VOLUME_TIMEOUT_MS,
+              `fade SetVolume (${host})`,
+            );
+          },
+        });
+      } catch { /* member unreachable — leave it out of the fade entirely */ }
+    }));
+    return members;
+  }
+
+  // Sets this device's volume AND keeps currentVolume + volume callbacks in sync, exactly like a
+  // device event would. Silently poking currentVolume instead made the event/poll dedup treat the
+  // device's own echo of every fade step as "no change", so watching Volume dials froze mid-fade
+  // and stayed stale afterwards (hardware-observed: the pie chart simply stopped updating). The
+  // later echo events dedup away correctly because currentVolume already matches.
+  private async applyFadeVolume(volume: number): Promise<void> {
+    await this.setVolume(volume);
+    if (volume !== this.currentVolume) {
+      this.currentVolume = volume;
+      this.volumeInfoCallbacks.forEach((cb) => cb({ volume, mute: this.currentMute }));
+    }
+  }
+
+  private async ramp(setVolume: (v: number) => Promise<void>, from: number, to: number, durationMs: number, isCancelled: () => boolean): Promise<void> {
     for (const step of computeFadeSteps(from, to, durationMs)) {
       await new Promise((resolve) => setTimeout(resolve, step.delayMs));
       if (isCancelled()) return;
-      await this.setVolume(step.volume);
-      this.currentVolume = step.volume;
+      await setVolume(step.volume);
     }
   }
 

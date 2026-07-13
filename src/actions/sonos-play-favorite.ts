@@ -15,6 +15,7 @@ import { SonosDevice } from "@svrooij/sonos";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
+import { piT } from "../utils/pi-i18n";
 
 type Favorite = {
     Title: string;
@@ -158,6 +159,19 @@ export class SonosPlayFavorite extends SingletonAction<SonosFavoriteSettings> {
                     streamDeck.ui.sendToPropertyInspector({
                         event: 'get-devices',
                         items: [{ label: "-- Choose device --", value: "" }, ...deviceItems]
+                    });
+                    break;
+                }
+                case 'get-fade-options': {
+                    streamDeck.ui.sendToPropertyInspector({
+                        event: 'get-fade-options',
+                        items: [
+                            { label: piT('Off'), value: '0' },
+                            { label: '2 s', value: '2' },
+                            { label: '3 s', value: '3' },
+                            { label: '5 s', value: '5' },
+                            { label: '8 s', value: '8' },
+                        ],
                     });
                     break;
                 }

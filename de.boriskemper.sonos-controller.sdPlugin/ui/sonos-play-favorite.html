@@ -29,19 +29,15 @@
       <sdpi-checkbox setting="showTitle"></sdpi-checkbox>
     </sdpi-item>
 
+    <!-- Options come from the plugin (get-fade-options) like every other working select in this
+         plugin — a static <option> list left the control stuck/unopenable in the SD webview. -->
     <sdpi-item label="Fade out" data-i18n="fade_out">
-      <sdpi-select setting="fadeDuration">
-        <option value="0" data-i18n="fade_off">Off</option>
-        <option value="2">2 s</option>
-        <option value="3">3 s</option>
-        <option value="5">5 s</option>
-        <option value="8">8 s</option>
-      </sdpi-select>
+      <sdpi-select setting="fadeDuration" datasource="get-fade-options"></sdpi-select>
     </sdpi-item>
 
     <sdpi-item>
       <sdpi-item-value class="hint" data-i18n-html="fade_hint">
-        Fades the current track out before starting this favorite, then fades the new one back in.
+        Fades the whole group out before starting this favorite, then restores each speaker's volume.
       </sdpi-item-value>
     </sdpi-item>
 

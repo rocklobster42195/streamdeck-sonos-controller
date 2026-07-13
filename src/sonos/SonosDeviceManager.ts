@@ -70,6 +70,14 @@ class SonosDeviceManager {
         return promise;
     }
 
+    // Non-owning lookup: returns the pooled controller for `ip` if one currently exists, WITHOUT
+    // touching the refcount or creating one. For short-lived side channels (the group fade routes
+    // a member's volume through its pooled controller so that member's dials stay live) — callers
+    // must tolerate the controller being destroyed mid-use (their calls then just reject).
+    public peekController(ip: string): SonosDeviceController | undefined {
+        return this.controllerEntries.get(ip)?.controller;
+    }
+
     // Shutdown-only: UNSUBSCRIBEs every live controller's GENA subscriptions in parallel so the
     // speakers don't keep NOTIFYing a dead process for up to an hour (see graceful-shutdown.ts).
     // Deliberately does NOT destroy the controllers — the process exits right after.
