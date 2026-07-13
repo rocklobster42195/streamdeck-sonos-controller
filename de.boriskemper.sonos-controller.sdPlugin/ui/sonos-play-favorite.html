@@ -6,7 +6,10 @@
     <title>SONOS Play Favorite Settings</title>
     <script src="i18n.js" defer></script>
     <script src="sdpi-components.js" defer></script>
-    <style>:root { color-scheme: dark; }</style>
+    <style>
+      :root { color-scheme: dark; }
+      .hint { font-size: 11px; color: #888; line-height: 1.4; }
+    </style>
   </head>
 
   <body>
@@ -24,6 +27,22 @@
 
     <sdpi-item label="Show title" data-i18n="show_title">
       <sdpi-checkbox setting="showTitle"></sdpi-checkbox>
+    </sdpi-item>
+
+    <sdpi-item label="Fade out" data-i18n="fade_out">
+      <sdpi-select setting="fadeDuration">
+        <option value="0" data-i18n="fade_off">Off</option>
+        <option value="2">2 s</option>
+        <option value="3">3 s</option>
+        <option value="5">5 s</option>
+        <option value="8">8 s</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item>
+      <sdpi-item-value class="hint" data-i18n-html="fade_hint">
+        Fades the current track out before starting this favorite, then fades the new one back in.
+      </sdpi-item-value>
     </sdpi-item>
 
     <script>

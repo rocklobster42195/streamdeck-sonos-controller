@@ -70,6 +70,14 @@ class SonosDeviceManager {
         return promise;
     }
 
+    // Shutdown-only: UNSUBSCRIBEs every live controller's GENA subscriptions in parallel so the
+    // speakers don't keep NOTIFYing a dead process for up to an hour (see graceful-shutdown.ts).
+    // Deliberately does NOT destroy the controllers — the process exits right after.
+    public async cancelAllSubscriptions(): Promise<void> {
+        const controllers = [...this.controllerEntries.values()].map(e => e.controller);
+        await Promise.allSettled(controllers.map(c => c.cancelSubscriptions()));
+    }
+
     public releaseController(ip: string): void {
         const entry = this.controllerEntries.get(ip);
         if (entry) {

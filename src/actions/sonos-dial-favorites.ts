@@ -23,6 +23,7 @@ import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 type SonosFavDialSettings = {
     deviceIp?: string;
     browseTimeout?: number; // seconds before returning to now-playing, default 3
+    fadeDuration?: string;  // seconds as string from the PI select, "0"/undefined = no fade
 };
 
 interface FavDialState {
@@ -320,14 +321,22 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         const fav = favs[state.currentIndex];
         if (!fav) return;
 
+        // Switch the dial back to now-playing right away — with a fade the actual track change
+        // takes seconds, and the display shouldn't sit in browse mode until it finishes.
+        if (state.browseTimeoutId) clearTimeout(state.browseTimeoutId);
+        state.currentIndex = -1;
+        state.browseTimeoutId = undefined;
+        state.playingFav = { Title: fav.Title, AlbumArtUri: fav.AlbumArtUri };
+        marqueeAnimator.update(context, { text: fav.Title ?? '', availableWidth: 97 });
+        this.queueRender(context);
+
+        const fadeMs = (Number(ev.payload.settings.fadeDuration) || 0) * 1000;
         try {
-            await controller.playFavorite(fav);
-            if (state.browseTimeoutId) clearTimeout(state.browseTimeoutId);
-            state.currentIndex = -1;
-            state.browseTimeoutId = undefined;
-            state.playingFav = { Title: fav.Title, AlbumArtUri: fav.AlbumArtUri };
-            marqueeAnimator.update(context, { text: fav.Title ?? '', availableWidth: 97 });
-            this.queueRender(context);
+            if (fadeMs > 0) {
+                await controller.playFavoriteWithFade(fav, fadeMs);
+            } else {
+                await controller.playFavorite(fav);
+            }
         } catch (e) {
             streamDeck.logger.error(`[FavDial] Error playing favorite "${fav.Title}":`, e);
         }

@@ -24,8 +24,9 @@ type Favorite = {
 
 type SonosFavoriteSettings = {
     deviceIp?: string;
-    favorite?: string; 
+    favorite?: string;
     showTitle?: boolean;
+    fadeDuration?: string; // seconds as string from the PI select, "0"/undefined = no fade
 };
 
 @action({ UUID: "de.boriskemper.sonos-controller.play-favorite" })
@@ -119,17 +120,25 @@ export class SonosPlayFavorite extends SingletonAction<SonosFavoriteSettings> {
     override async onKeyDown(ev: KeyDownEvent<SonosFavoriteSettings>): Promise<void> {
         const { action, payload } = ev;
         const controller = this.controllers.get(action.id);
-        const { favorite } = payload.settings;
+        const { favorite, fadeDuration } = payload.settings;
 
         if (!controller || !favorite) {
             action.showAlert();
             return;
         }
 
+        const fadeMs = (Number(fadeDuration) || 0) * 1000;
         try {
             const favObject = JSON.parse(favorite);
-            await controller.playFavorite(favObject);
-            action.showOk();
+            if (fadeMs > 0) {
+                // A multi-second fade shouldn't leave the key without feedback — confirm the
+                // press immediately; the audible fade itself signals the switch is underway.
+                action.showOk();
+                await controller.playFavoriteWithFade(favObject, fadeMs);
+            } else {
+                await controller.playFavorite(favObject);
+                action.showOk();
+            }
         } catch (e) {
             streamDeck.logger.error("Error playing favorite:", e);
             action.showAlert();

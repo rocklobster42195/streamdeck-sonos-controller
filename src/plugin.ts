@@ -12,6 +12,7 @@ import { SonosDialParticles } from "./actions/sonos-dial-particles";
 import { SonosDialGroupVolume } from "./actions/sonos-dial-group-volume";
 import { SonosDialDiagnostics } from "./actions/sonos-dial-diagnostics";
 import { SonosDialQueue } from "./actions/sonos-dial-queue";
+import { registerGracefulShutdown } from "./utils/graceful-shutdown";
 
 streamDeck.logger.setLevel("info");
 
@@ -31,3 +32,7 @@ streamDeck.actions.registerAction(new SonosDialQueue());
 // Finally, connect to the Stream Deck immediately.
 streamDeck.connect();
 streamDeck.logger.info('Stream Deck plugin connected. Discovery running in background.');
+
+// UNSUBSCRIBE all UPnP subscriptions in the grace window when Stream Deck stops/restarts the
+// plugin (websocket close) or the process is signalled — see graceful-shutdown.ts for why.
+registerGracefulShutdown();

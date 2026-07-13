@@ -8,6 +8,7 @@ import { normalizeBrowseResult } from "./queueUtils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
 import { SonosZoneGroupStates, TrackInfo, VolumeInfo } from "./SonosTypes";
 import { withTimeout } from "../utils/fetchWithTimeout";
+import { computeFadeSteps } from "../utils/volume-fade";
 import { fetchBatteryStatus, SonosBatteryStatus } from "./SonosBattery";
 // Lazy/deferred use only (inside methods, never at module scope) — SonosDeviceManager itself
 // imports SonosDeviceController, so this is a circular import; safe here because sonosDeviceManager
@@ -58,6 +59,12 @@ export class SonosDeviceController {
   // Internal state
   private currentVolume: number = 0;
   private currentMute: boolean = false;
+  // Fade-before-favorite coordination: a newer playFavoriteWithFade call bumps the generation,
+  // which aborts any ramp still in flight. preFadeVolume remembers the volume from BEFORE the
+  // first fade started, so rapidly switching favorites mid-fade never adopts a half-faded volume
+  // as the level to restore to.
+  private fadeGeneration = 0;
+  private preFadeVolume: number | undefined;
   private currentAlbumArtUri: string = '';
   private currentTrack: TrackInfo | undefined;
   // Only ever set when a cover is successfully loaded; never cleared by track events with no art.
@@ -279,13 +286,22 @@ export class SonosDeviceController {
           this.volumeInfoCallbacks.forEach(cb => cb({ volume: newVol, mute: newMute }));
         }
 
-        // Re-fetch cover if still missing while playing (e.g. device was not yet online after standby).
-        // Bounded — see coverFetchAttempts comment above.
-        if (ts === 'PLAYING' && !this.lastKnownCover && this.coverFetchAttempts < SonosDeviceController.MAX_COVER_FETCH_ATTEMPTS) {
+        // Re-fetch cover while playing if it's missing (e.g. device was not yet online after
+        // standby) OR stale — stale meaning the current track declares an AlbumArtUri that was
+        // never successfully resolved (its event-time fetch failed or its resolved cover got
+        // dropped by a racing track update). Self-heals within one 8s tick instead of showing
+        // the previous track's art until the next track change. Bounded — see coverFetchAttempts
+        // comment above; the currentTrack event handler resets the counter per track.
+        const wantedArtUri = this.currentTrack?.AlbumArtUri;
+        const coverMissingOrStale = !this.lastKnownCover || (!!wantedArtUri && wantedArtUri !== this.currentAlbumArtUri);
+        if (ts === 'PLAYING' && coverMissingOrStale && this.coverFetchAttempts < SonosDeviceController.MAX_COVER_FETCH_ATTEMPTS) {
           this.coverFetchAttempts++;
-          const cover = await this.getCurrentTrackCover().catch(() => undefined);
+          const cover = wantedArtUri
+            ? await this.resolveCoverArt(wantedArtUri)
+            : await this.getCurrentTrackCover().catch(() => undefined);
           if (cover) {
             this.lastKnownCover = cover;
+            if (wantedArtUri) this.currentAlbumArtUri = wantedArtUri;
             this.coverFetchAttempts = 0;
             if (!this.currentTrack) this.currentTrack = { albumArtDataUri: cover } as TrackInfo;
             else this.currentTrack.albumArtDataUri = cover;
@@ -338,7 +354,12 @@ export class SonosDeviceController {
             (track.AlbumArtUri ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri) : false);
         if (track.AlbumArtUri) {
             const cover = await loadImageFromUri(track.AlbumArtUri, this.transportDevice);
-            if (cover) { this.currentTrack.albumArtDataUri = cover; this.lastKnownCover = cover; }
+            if (cover) {
+                this.currentTrack.albumArtDataUri = cover;
+                this.lastKnownCover = cover;
+                // Mark as resolved so the poll's stale-cover check doesn't re-fetch it right away.
+                this.currentAlbumArtUri = track.AlbumArtUri;
+            }
         }
     }
 
@@ -607,7 +628,21 @@ export class SonosDeviceController {
   }
 
   // --- Subscriptions ---
-  async cancelSubscriptions(): Promise<void> { await this.sonosDevice.CancelEvents(); }
+  // The lib's public teardown (CancelEvents → service removeListener hooks) fires its GENA
+  // UNSUBSCRIBE calls fire-and-forget AND only covers the device-level synthesized events — the
+  // direct AVTransport/RenderingControl service listeners from initializeSubscriptions kept
+  // their speaker-side subscriptions (and 10-min renew timers) alive past destroy(). Cancel each
+  // service's subscription directly instead: awaitable (needed inside the ~600ms grace window
+  // Stream Deck grants before force-killing the process — see graceful-shutdown.ts), covers both
+  // listener styles, and no-ops for a service that was never subscribed. cancelSubscription is
+  // typed private in the lib but is a plain method at runtime, hence the cast.
+  async cancelSubscriptions(): Promise<void> {
+    const services = [
+      this.sonosDevice.AVTransportService,
+      this.sonosDevice.RenderingControlService,
+    ] as unknown as Array<{ cancelSubscription(): Promise<boolean> }>;
+    await Promise.allSettled(services.map((s) => s.cancelSubscription()));
+  }
   
   async initializeSubscriptions(): Promise<void> {
     try {
@@ -681,6 +716,8 @@ export class SonosDeviceController {
                 : (previousTrack?.isRadio ?? false));
 
         this.currentTrack = newTrackInfo;
+        // A fresh track gets a fresh set of heal attempts (see the poll loop's stale-cover check).
+        this.coverFetchAttempts = 0;
         this.trackInfoCallbacks.forEach(cb => cb(newTrackInfo));
 
         if (!track.AlbumArtUri) {
@@ -695,13 +732,37 @@ export class SonosDeviceController {
         // than skipping the second call here) means both end up with the correct cover instead of
         // the second one racing ahead with the previous track's art.
         void this.resolveCoverArt(track.AlbumArtUri).then(cover => {
-            // Superseded by a newer track change while this fetch was in flight — drop it.
-            if (!cover || this.currentTrack !== newTrackInfo) return;
-            newTrackInfo.albumArtDataUri = cover;
+            // Apply to whatever object is current NOW, matched by art URI rather than object
+            // identity: duplicate events, coordinator forwards (grouped members) and the track
+            // poll all replace this.currentTrack with a NEW object for the SAME track, and an
+            // identity check here silently dropped the resolved cover in all of those cases
+            // (observed as covers arriving only via the 24s poll, or sticking until the next
+            // track). The title match keeps the cover when an art-less follow-up event for the
+            // same track (radio news segments) already cleared AlbumArtUri.
+            const current = this.currentTrack;
+            const stillWanted = !!current && (
+                current.AlbumArtUri === track.AlbumArtUri ||
+                (!current.AlbumArtUri && current.Title === track.Title)
+            );
+            if (!cover || !stillWanted) return;
+            current!.albumArtDataUri = cover;
             this.lastKnownCover = cover;
             this.currentAlbumArtUri = track.AlbumArtUri!;
-            this.trackInfoCallbacks.forEach(cb => cb(newTrackInfo));
+            this.trackInfoCallbacks.forEach(cb => cb(current!));
         }).catch(err => streamDeck.logger.error("Error loading cover art", err));
+      });
+
+      // Warm the shared cover cache (loadImageFromUri's resolvedCache) for the queue's NEXT track
+      // while the current one still plays — by the time the track actually changes, the
+      // currentTrack handler's resolve above is a cache hit and the "real cover" second fire
+      // happens near-instantly instead of after the 2-3s the Sonos art proxy needs on a cache
+      // miss. Radio streams carry no next-track metadata, so this never fires for them (their
+      // station logo URL is stable and cached after the first load anyway). The lib only emits
+      // this when NextTrackURI actually changed, so it's one throttled, deduped fetch per queue
+      // advance — and it overlaps for free with Queue Dial's own ±2 neighbor prefetch, since both
+      // share the same URL-keyed cache/dedup.
+      this.sonosDevice.Events.on(SonosEvents.NextTrackMetadata, (next: Track) => {
+        if (next?.AlbumArtUri) void this.resolveCoverArt(next.AlbumArtUri);
       });
     } catch (error) { streamDeck.logger.error("Error initializing subscriptions", error); }
   }
@@ -881,6 +942,53 @@ export class SonosDeviceController {
   }
 
   // --- Main Logic: Play Favorite ---
+
+  /**
+   * Like playFavorite, but fades the current track out first and fades the new favorite back in.
+   * Falls back to a plain playFavorite when nothing is audibly playing (paused, muted, volume 0)
+   * so the switch stays instant in those cases.
+   */
+  async playFavoriteWithFade(favorite: any, fadeOutMs: number): Promise<void> {
+    const generation = ++this.fadeGeneration;
+    const cancelled = () => this.fadeGeneration !== generation;
+
+    // If a previous fade is still running, restore to ITS original volume, not the half-faded one.
+    const targetVolume = this.preFadeVolume ?? this.currentVolume;
+
+    let isPlaying = false;
+    try {
+      isPlaying = (await this.getTransportState()) === 'PLAYING';
+    } catch { /* device didn't answer — treat as not playing and switch without fade */ }
+
+    if (fadeOutMs <= 0 || targetVolume <= 0 || this.currentMute || !isPlaying) {
+      await this.playFavorite(favorite);
+      return;
+    }
+
+    this.preFadeVolume = targetVolume;
+    try {
+      await this.rampVolume(this.currentVolume, 0, fadeOutMs, cancelled);
+      if (cancelled()) return; // a newer favorite press took over mid-fade
+      await this.playFavorite(favorite);
+      // Fade the new favorite in faster than the fade-out — sound should come back promptly.
+      await this.rampVolume(0, targetVolume, Math.min(fadeOutMs / 2, 2000), cancelled);
+    } finally {
+      if (!cancelled()) {
+        this.preFadeVolume = undefined;
+        // Idempotent after a completed fade-in; after an error it rescues the speaker from silence.
+        await this.setVolume(targetVolume).catch(() => {});
+      }
+    }
+  }
+
+  private async rampVolume(from: number, to: number, durationMs: number, isCancelled: () => boolean): Promise<void> {
+    for (const step of computeFadeSteps(from, to, durationMs)) {
+      await new Promise((resolve) => setTimeout(resolve, step.delayMs));
+      if (isCancelled()) return;
+      await this.setVolume(step.volume);
+      this.currentVolume = step.volume;
+    }
+  }
 
   async playFavorite(favorite: any): Promise<void> {
     const logPrefix = `[PlayFavorite] [${favorite.Title}]`;
