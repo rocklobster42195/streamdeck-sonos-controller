@@ -146,6 +146,7 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Browse timeout | Seconds of inactivity before returning to now playing |
+| Fade out *(beta)* | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
 
 ---
 
@@ -212,11 +213,14 @@ Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim a
 
 Play one of your saved Sonos favorites with a single key press. The key displays the favorite's cover art while it is playing.
 
+With **Fade out** *(beta)* enabled, the currently playing music fades down smoothly across the whole group before the favorite starts, and every speaker returns to its own volume afterwards — switch playlists mid-evening without anyone noticing a hard cut.
+
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Favorite | Select from your Sonos favorites list |
 | Show title | Display the favorite's title on the key |
+| Fade out *(beta)* | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
 
 ---
 
