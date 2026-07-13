@@ -1,6 +1,28 @@
-# Changelog
-
 <!-- NEXT -->
+
+---
+
+## [0.4.0] — 2026-07-13
+
+### New
+
+- **Queue Dial** *(Stream Deck+)* — browse the current queue as a cover-art carousel, press to jump straight to a track, auto-return to now playing
+- **Diagnostics Dial** *(Stream Deck+)* — live WiFi signal sparkline and connection details for the selected speaker
+- **Fade out for favorites** — Play Favorite and Favorites Dial can fade the whole group down (2–8 s) before switching, then restore every speaker's own volume, so a line-out zone keeps its level and playlist changes never hard-cut
+- **Battery indicator** — Track Dial and Play/Pause key can show a battery badge for portable speakers (Roam, Move): `Off`, `Warning`, or `Always`
+
+### Improvements
+
+- Covers now change practically in sync with the track: the next queue track's art is prefetched, and all cover fetches are deduplicated, throttled per speaker, and time-bounded
+- Unreachable speakers show a clear speaker-off icon on every key and dial, retry their setup automatically, and fully recover the moment they're back online
+- Panorama track text: the background pill behind the title is now sized with real font metrics instead of a rough estimate — no more oversized box sticking out left of long titles
+- The plugin now unsubscribes cleanly from speaker events on shutdown, keeping event delivery fast across plugin restarts
+
+### Fixes
+
+- Grouped speakers: Next/Previous reliably target the group coordinator, and grouped members' covers no longer fail to load
+- A failed device discovery at startup no longer breaks device lists and covers for the whole session — discovery retries until it succeeds
+- Play/Pause key no longer defaults its cover art to hidden; Track Dial's full-bleed cover no longer squished
 
 ---
 

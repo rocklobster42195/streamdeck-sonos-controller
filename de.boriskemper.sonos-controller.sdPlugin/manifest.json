@@ -1,6 +1,6 @@
 {
 	"Name": "SONOS-Controller",
-	"Version": "0.3.3.5",
+	"Version": "0.4.0.0",
 	"Author": "Boris Kemper",
 	"Actions": [
 		{
@@ -173,7 +173,7 @@
 				"layout": "$A0",
 				"TriggerDescription": {
 					"Push": "Skip to next track",
-					"Rotate": "Seek ±5% in track",
+					"Rotate": "Seek Â±5% in track",
 					"Touch": "Toggle Play/Pause"
 				}
 			},
