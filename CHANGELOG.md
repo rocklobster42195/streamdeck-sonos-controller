@@ -2,6 +2,18 @@
 
 ---
 
+## [0.4.1] — 2026-07-14
+
+- docs: link At a Glance entries to their action sections
+- feat: enhance Play/Pause key description with playlist auditioning functionality
+- feat: progress bar on the Play/Pause key
+- feat: truncate + crossfade Panorama Effects Dial track text; strip duplicate PI BOMs
+- fix: escape XML in TitleAnimator's scrolling title text
+- feat: Favorites Dial background effect + heart icon mode; fix panorama text-anchor bug
+- chore: move marketplace listing text to local docs
+
+---
+
 ## [0.4.0] — 2026-07-13
 
 ### New
