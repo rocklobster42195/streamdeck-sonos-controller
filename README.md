@@ -227,7 +227,7 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 ## Requirements
 
-- **Elgato Stream Deck** — any model for key actions; **Stream Deck+** required for dial actions (developed and tested on the 4-dial Stream Deck+; hardware with more dials per row, e.g. a 6-dial Stream Deck XL, is untested)
+- **Elgato Stream Deck** — any model for key actions; **Stream Deck+** required for dial actions (developed and tested on the 4-dial Stream Deck+; hardware with more dials per row, e.g. a 6-dial Stream Deck+ XL, is untested)
 - **Stream Deck software** — version 6.9 or later
 - **Sonos system** — any Sonos speaker on the same local network as your computer
 - **Network** — plugin and speaker must be on the same subnet (no VLAN isolation between them)
