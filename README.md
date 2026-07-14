@@ -37,6 +37,7 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Show cover art | Display album art on the key while playing |
+| Progress bar | Thin bar at the bottom of the key showing track position, tinted to the cover's dominant color |
 | Show track title | Scroll the track title and artist across the key |
 | Font color | Color for the scrolling title text |
 | Font size | Size of the title text (px) |

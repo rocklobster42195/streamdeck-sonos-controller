@@ -15,7 +15,8 @@ import { SonosDevice } from "@svrooij/sonos";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
-import { generateTransportIcon, renderBatteryBadge, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
+import { generateTransportIcon, renderBatteryBadge, renderProgressBar, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
+import { getDominantColor } from "../utils/colorExtract";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 
@@ -38,6 +39,10 @@ type SonosSettings = {
     // react to it through the settings-sync channel (a hidden <sdpi-checkbox setting="hasBattery">
     // toggles the battery-mode dropdown's visibility — see battery-capability.js).
     hasBattery?: boolean;
+    // Thin bar at the bottom of the key showing track position, filled in the cover's dominant
+    // color — mirrors Track Dial's progress bar. Off by default (an extra always-off UPnP poll
+    // per key otherwise); see fetchAndStorePosition/startProgressTimer.
+    showProgress?: boolean;
 };
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-toggle-play" })
@@ -47,6 +52,11 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
     private currentCover: Map<string, string | undefined> = new Map();
     private batteryStatuses: Map<string, SonosBatteryStatus | undefined> = new Map();
     private lastTransportState: Map<string, string> = new Map();
+    // Progress-bar-only state (all no-ops when a key's showProgress setting is off).
+    private trackPositions: Map<string, { pos: number; dur: number; time: number }> = new Map();
+    private dominantColors: Map<string, string> = new Map();
+    private lastColorUri: Map<string, string> = new Map();
+    private progressTimers: Map<string, NodeJS.Timeout> = new Map();
 
     private onTrackInfoChanged(context: string, trackInfo: TrackInfo): void {
         const newCover = trackInfo.albumArtDataUri || undefined;
@@ -57,13 +67,99 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
         // Skip when no new art arrives but a cached cover is already visible.
         if (!newCover && oldCover) return;
 
-        if (newCover) this.currentCover.set(context, newCover);
+        if (newCover) {
+            this.currentCover.set(context, newCover);
+            this.updateDominantColor(context, newCover);
+        }
         const controller = this.controllers.get(context);
         if (controller) {
             controller.getTransportState().then(state => {
                 this.handleTransportStateChange(context, state, newCover);
             });
         }
+    }
+
+    // --- Progress bar helpers (all independent of showTrackTitle) ---
+
+    private parseRelTime(t: string): number {
+        if (!t || t === 'NOT_IMPLEMENTED') return 0;
+        const parts = t.split(':').map(Number);
+        return (parts.length === 3 && parts.every(n => !isNaN(n)))
+            ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+            : 0;
+    }
+
+    private ensureVisibleColor(color: string): string {
+        const m = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
+        if (!m) return '#CCCCCC';
+        const [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255];
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (lum >= 0.25) return color;
+        const mix = (v: number) => Math.min(255, Math.round(v * 255 + 255 * 0.55));
+        return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+    }
+
+    private updateDominantColor(context: string, cover: string): void {
+        if (this.lastColorUri.get(context) === cover) return;
+        this.lastColorUri.set(context, cover);
+        getDominantColor(cover).then(color => {
+            this.dominantColors.set(context, this.ensureVisibleColor(color));
+        }).catch(() => {});
+    }
+
+    private async fetchAndStorePosition(context: string, controller: SonosDeviceController): Promise<void> {
+        try {
+            const pos = await controller.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
+            this.trackPositions.set(context, {
+                pos: this.parseRelTime(pos.RelTime),
+                dur: this.parseRelTime(pos.TrackDuration),
+                time: Date.now(),
+            });
+        } catch { /* keep last known position */ }
+    }
+
+    // undefined = no usable duration yet (radio, or position not fetched); 0-1 otherwise.
+    private computeProgress(context: string): number | undefined {
+        const p = this.trackPositions.get(context);
+        if (!p || p.dur <= 5) return undefined;
+        const elapsed = this.lastTransportState.get(context) === 'PLAYING' ? (Date.now() - p.time) / 1000 : 0;
+        return Math.max(0, Math.min(1, (p.pos + elapsed) / p.dur));
+    }
+
+    // Only runs while PLAYING (the key shows a static icon, no cover/bar at all, whenever it
+    // isn't) — ticks every 1s, cheap enough for a progress bar (no need for TitleAnimator's
+    // 50-80ms marquee cadence). Pushes into TitleAnimator when the marquee is active (its own
+    // loop then picks the new value up on its next tick); repaints directly otherwise, since a
+    // cover-only key has no other redraw loop to piggyback on.
+    private refreshProgressTick(context: string): void {
+        const settings = this.currentSettings.get(context);
+        if (!settings?.showProgress || this.lastTransportState.get(context) !== 'PLAYING') {
+            this.stopProgressTimer(context);
+            return;
+        }
+        const progress = this.computeProgress(context) ?? 0;
+        const color = this.dominantColors.get(context) ?? '#CCCCCC';
+
+        if (titleAnimator.isRunning(context)) {
+            titleAnimator.setProgress(context, progress, color);
+            return;
+        }
+
+        const action = streamDeck.actions.getActionById(context);
+        const cover = this.currentCover.get(context);
+        if (!action || settings.showCoverArt === false || !cover) return;
+        const badge72 = renderBatteryBadge(settings.batteryDisplayMode ?? 'warning', this.batteryStatuses.get(context), 56, 3, 12);
+        void action.setImage(wrapImageWithBadge(cover, badge72 + renderProgressBar(progress, color)));
+    }
+
+    private startProgressTimer(context: string): void {
+        if (this.progressTimers.has(context)) return;
+        this.progressTimers.set(context, setInterval(() => this.refreshProgressTick(context), 1000));
+    }
+
+    private stopProgressTimer(context: string): void {
+        const t = this.progressTimers.get(context);
+        if (t) { clearInterval(t); this.progressTimers.delete(context); }
     }
 
     private onBatteryChanged(context: string, battery: SonosBatteryStatus | undefined): void {
@@ -95,8 +191,20 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                 // station logo from the stream URI, stable even during news).
                 try { cover = await controller.getCurrentTrackCover() || undefined; } catch {}
             }
-            if (cover) this.currentCover.set(context, cover);
-            
+            if (cover) {
+                this.currentCover.set(context, cover);
+                this.updateDominantColor(context, cover);
+            }
+
+            if (settings.showProgress) {
+                await this.fetchAndStorePosition(context, controller);
+                this.startProgressTimer(context);
+            } else {
+                this.stopProgressTimer(context);
+            }
+            const progress = settings.showProgress ? (this.computeProgress(context) ?? 0) : undefined;
+            const progressColor = this.dominantColors.get(context) ?? '#CCCCCC';
+
             streamDeck.logger.debug(`[${context}] showTrackTitle: ${settings.showTrackTitle}, showCoverArt: ${settings.showCoverArt}, cover available: ${cover ? "yes" : "no"}`);
 
             if (settings.showTrackTitle) {
@@ -112,25 +220,30 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                     fontSize: settings.fontSize ? settings.fontSize : 13,
                     pauseDuration: 120,
                     interval: 80,
-                    batteryBadge: badge72
+                    batteryBadge: badge72,
+                    progress,
+                    progressColor,
                 };
 
                 if (titleAnimator.isRunning(context)) {
                     titleAnimator.update(context, { text: title, backgroundImage: animOptions.backgroundImage });
                     titleAnimator.setBatteryBadge(context, badge72);
+                    titleAnimator.setProgress(context, progress, progressColor);
                 } else {
                     titleAnimator.start(action, animOptions);
                 }
             } else {
                 titleAnimator.stop(context);
                 if (settings.showCoverArt !== false && cover) {
-                    await action.setImage(wrapImageWithBadge(cover, badge72));
+                    const progressBar = progress !== undefined ? renderProgressBar(progress, progressColor) : '';
+                    await action.setImage(wrapImageWithBadge(cover, badge72 + progressBar));
                 } else {
                     await action.setImage(generateTransportIcon('play', undefined, badge24));
                 }
             }
         } else {
             titleAnimator.stop(context);
+            this.stopProgressTimer(context);
 
             switch (transportState) {
                 case "TRANSITIONING":
@@ -164,6 +277,7 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             sonosDeviceManager.releaseController(oldController.deviceIp);
             this.controllers.delete(context);
         }
+        this.stopProgressTimer(context);
         this.currentCover.delete(context);
 
         if (!settings.deviceIp) {
@@ -264,11 +378,15 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                 sonosDeviceManager.releaseController(ev.payload.settings.deviceIp);
             }
         }
+        this.stopProgressTimer(context);
         this.controllers.delete(context);
         this.currentSettings.delete(context);
         this.currentCover.delete(context);
         this.batteryStatuses.delete(context);
         this.lastTransportState.delete(context);
+        this.trackPositions.delete(context);
+        this.dominantColors.delete(context);
+        this.lastColorUri.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<SonosSettings>): Promise<void> {

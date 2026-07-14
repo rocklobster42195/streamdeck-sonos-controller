@@ -56,15 +56,63 @@ export function generateTransportIcon(state: 'play' | 'loading', color = '#CCCCC
     return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
-// Wraps an already-rendered raster/data-URI image (e.g. Sonos cover art) in an SVG so a battery
-// badge fragment (from renderBatteryBadge) can be composited on top — returns the image
-// untouched when there's no badge to draw, avoiding the extra SVG wrap for the common no-battery
-// case (most Sonos speakers are mains-powered).
-export function wrapImageWithBadge(imageDataUri: string, batteryBadge: string, size = 72): string {
-    if (!batteryBadge) return imageDataUri;
+// Wraps an already-rendered raster/data-URI image (e.g. Sonos cover art) in an SVG so overlay
+// fragments (battery badge, progress bar, ...) can be composited on top — returns the image
+// untouched when there's nothing to overlay, avoiding the extra SVG wrap for the common case
+// (most Sonos speakers are mains-powered, most keys don't opt into the progress bar).
+export function wrapImageWithBadge(imageDataUri: string, overlay: string, size = 72): string {
+    if (!overlay) return imageDataUri;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
-        `<image href="${imageDataUri}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice"/>${batteryBadge}</svg>`;
+        `<image href="${imageDataUri}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice"/>${overlay}</svg>`;
     return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+// --- Progress bar (Play/Pause key, opt-in via PI "Progress bar") ---
+
+// Thin rounded bar sitting in the leftover space below TitleAnimator's title box (which stays
+// fixed regardless of this bar — see its own textY comment: box bottom edge is at textY+6, i.e.
+// 66px at size=72, leaving 6px above the key's own bottom edge). That leftover space is split
+// evenly around the bar — gap above (box→bar) equal to the gap below (bar→edge) — rather than
+// flush against either. Dim track always visible once a duration is known, filled portion in
+// `color` (the cover's dominant color, so it reads as part of the artwork rather than generic UI
+// chrome). Carries its own small dark backing pill — cover art is unpredictable (light/busy
+// backgrounds happen), and the fill color comes from that same cover, so without a
+// guaranteed-dark backdrop a light dominant color can end up with no real contrast against either
+// the track or the artwork behind it. `progress` undefined means no track/duration known yet —
+// same "nothing to show" contract as renderBatteryBadge.
+export function renderProgressBar(progress: number | undefined, color: string, size = 72): string {
+    if (progress === undefined) return '';
+    const margin = Math.round(size * 0.04);
+    const height = Math.max(2, Math.round(size * 0.045));
+    const boxBottom = size - Math.round(size * 0.083); // 66 @ 72 — mirrors TitleAnimator's textY+6
+    const gap = Math.max(0, (size - boxBottom - height) / 2);
+    const y = boxBottom + gap;
+    const width = size - margin * 2;
+    const fillW = Math.round(width * Math.min(1, Math.max(0, progress)));
+    const pad = 1;
+    return [
+        `<rect x="${margin - pad}" y="${y - pad}" width="${width + pad * 2}" height="${height + pad * 2}" rx="${(height + pad * 2) / 2}" fill="#000000" fill-opacity="0.55"/>`,
+        `<rect x="${margin}" y="${y}" width="${width}" height="${height}" rx="${height / 2}" fill="#ffffff" fill-opacity="0.3"/>`,
+        fillW > 0 ? `<rect x="${margin}" y="${y}" width="${fillW}" height="${height}" rx="${height / 2}" fill="${ensureBarVisible(color)}"/>` : '',
+    ].join('');
+}
+
+// A dominant cover color often lands in a "technically not black, not white" mid-range that a
+// generic luminance-≥0.25 boost (see ensureVisibleColor in the dial actions) leaves untouched —
+// fine for tinting a large area, but at this bar's ~3px height that whole mid-range reads as
+// "same as the dark backing" and "same as the dim white track" simultaneously. Boost to a much
+// higher luminance floor computed exactly (not a fixed blend amount) so it lands where intended
+// regardless of how dark or already-bright the source color was.
+function ensureBarVisible(color: string): string {
+    const m = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
+    if (!m) return '#e6e6e6';
+    const [r, g, b] = [+m[1], +m[2], +m[3]];
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const target = 0.62;
+    if (lum >= target) return color;
+    const f = (target - lum) / (1 - lum);
+    const mix = (v: number) => Math.round(v + (255 - v) * f);
+    return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
 }
 
 // --- Playback Control ---

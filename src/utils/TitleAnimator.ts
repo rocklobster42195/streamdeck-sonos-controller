@@ -2,6 +2,7 @@ import streamDeck from '@elgato/streamdeck';
 import * as opentype from 'opentype.js';
 import * as path from 'path';
 import * as fs from 'fs';
+import { renderProgressBar } from './icons';
 
 export interface AnimationOptions {
     text: string;
@@ -14,6 +15,11 @@ export interface AnimationOptions {
     // Pre-rendered SVG fragment (e.g. from utils/icons.ts renderBatteryBadge) composited on top,
     // independent of text/backgroundImage changes — see setBatteryBadge().
     batteryBadge?: string;
+    // 0-1 playback progress, or undefined for "no progress bar at all" (feature off / no track
+    // loaded yet) — see setProgress(). Rendered flush with the bottom edge, below the text row;
+    // see renderProgressBar in utils/icons.ts for why it carries its own dark backing.
+    progress?: number;
+    progressColor?: string;
 }
 
 enum AnimPhase {
@@ -109,6 +115,17 @@ export class TitleAnimator {
     public setBatteryBadge(context: string, badge: string): void {
         const state = this.animationStates.get(context);
         if (state) state.options.batteryBadge = badge;
+    }
+
+    // Updates the progress bar independently of everything else — same rationale as
+    // setBatteryBadge. The caller (sonos-toggle-play.ts) owns its own ~1s timer and recomputes
+    // the live 0-1 fraction itself; this just hands the latest value over for the next tick to
+    // pick up, no animation/easing here.
+    public setProgress(context: string, progress: number | undefined, color?: string): void {
+        const state = this.animationStates.get(context);
+        if (!state) return;
+        state.options.progress = progress;
+        if (color !== undefined) state.options.progressColor = color;
     }
 
     public async update(context: string, newOptions: { text: string; backgroundImage?: string }): Promise<void> {
@@ -238,7 +255,9 @@ export class TitleAnimator {
     private renderSvg(state: AnimationState): string {
         const { options, offset, boxOpacity, textOpacity, isFading, oldBackgroundImage, fadeOpacity } = state;
         const fontSize = options.fontSize || 13;
-        const textY = 64;
+        // A few px up from the old 64 — that sat the box's bottom edge almost flush with the
+        // key's own bottom edge (only ~2px clearance), tight regardless of the progress bar.
+        const textY = 60;
         const barY = textY - fontSize - 2;
 
         const textX = state.shouldScroll 
@@ -271,6 +290,7 @@ export class TitleAnimator {
                     font-weight="bold"
                 >${this.escapeXml(options.text)}</text>
                 ${options.batteryBadge || ''}
+                ${renderProgressBar(options.progress, options.progressColor || '#CCCCCC')}
             </svg>
         `;
         return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
