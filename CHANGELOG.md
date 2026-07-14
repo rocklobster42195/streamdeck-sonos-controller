@@ -4,17 +4,12 @@
 
 ## [0.4.2] — 2026-07-14
 
----
-
-## [0.4.1] — 2026-07-14
-
-- docs: link At a Glance entries to their action sections
-- feat: enhance Play/Pause key description with playlist auditioning functionality
-- feat: progress bar on the Play/Pause key
-- feat: truncate + crossfade Panorama Effects Dial track text; strip duplicate PI BOMs
-- fix: escape XML in TitleAnimator's scrolling title text
-- feat: Favorites Dial background effect + heart icon mode; fix panorama text-anchor bug
-- chore: move marketplace listing text to local docs
+- **Favorites Dial** can now show a Panorama effect background instead of the cover mosaic — a centered heart icon (filled while playing, outlined while paused), with a Left/Center/Right alignment setting
+- **Play/Pause key**: optional progress bar at the bottom of the key, tinted to the cover's dominant color
+- Panorama Effects Dial: title/artist text now truncates with an ellipsis instead of running off the group's edge, and crossfades smoothly on track change instead of snapping
+- Fixed a bug where a track title containing `&` (or other XML-special characters) broke the Play/Pause key and Play Favorite key's cover art entirely
+- Fixed the Panorama Effects Dial's track-info text disappearing when a non-Particles dial (Track/Volume/Group Volume/Favorites) sat at the right edge of a panorama group
+- Cleaned up stray duplicate encoding markers in several Property Inspector files
 
 ---
 
