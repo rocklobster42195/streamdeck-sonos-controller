@@ -1,6 +1,6 @@
 # Sonos Controller for Elgato Stream Deck
 
-Full Sonos playback control for your Stream Deck — cover art, track info, volume dials, favorites browsing, and ambient particle animations.
+Full Sonos playback control for your Stream Deck — cover art, track info, volume dials, favorites browsing, and ambient panorama effects.
 
 [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/rocklobster42195)
 [![GitHub release](https://img.shields.io/github/v/release/rocklobster42195/streamdeck-sonos-controller)](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases/latest)
@@ -17,11 +17,11 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 | Key Actions | Dial Actions *(Stream Deck+ only)* |
 |---|---|
 | **Play / Pause** — cover art + scrolling title | **Track Dial** — cover art · title · progress · EQ Effect |
-| **Playback Control** — next · previous · shuffle · repeat | **Volume Dial** — pie chart · mute · preset |
-| **Volume Key** — up · down · mute · preset | **Group Volume Dial** — control a whole Sonos group's volume together |
-| **Play Favorite** — one tap to play a saved favorite | **Panorama Effects** — ambient art spanning multiple panels |
-| | **Favorites Dial** — browse & play your favorites list |
-| | **Queue Dial** — browse & jump within the current queue |
+| **Playback Control** — next · previous · shuffle · repeat | **Queue Dial** — browse & jump within the current queue |
+| **Volume Key** — up · down · mute · preset | **Volume Dial** — pie chart · mute · preset |
+| **Play Favorite** — one tap to play a saved favorite | **Group Volume Dial** — control a whole Sonos group's volume together |
+| | **Favorites Dial** — browse & play your favorites list · cover mosaic or effect + heart icon |
+| | **Panorama Effects** — ambient art spanning multiple panels |
 
 ---
 
@@ -59,10 +59,21 @@ The LCD panel shows the album or station cover art, a scrolling track title, art
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
-| Background | `None` (track info only), `EQ Effect` (animated bars), or `Particles` |
-| Particle count | Number of particles (Particles mode) |
-| Particle speed | Animation speed (Particles mode) |
+| Background | `None` (track info only), `EQ Effect` (animated bars), or any Panorama effect |
 | Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon in the corner for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
+
+---
+
+### Playback Control Key
+
+Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim automatically** when a radio station is playing, since seek controls are unavailable for live streams.
+
+<img src="assets/screenshots/key-playback-control.png" width="100" alt="Playback Control Key — Next"/> <img src="assets/screenshots/key-playback-control-radio.png" width="100" alt="Playback Control Key dimmed during radio"/>
+
+| Setting | Description |
+|---------|-------------|
+| Device | Which Sonos speaker to control |
+| Command | `Next Track`, `Previous Track`, `Toggle Shuffle`, or `Toggle Repeat` |
 
 ---
 
@@ -85,6 +96,21 @@ Browse and jump within the currently playing queue without interrupting playback
 
 ---
 
+### Volume Key
+
+Increase, decrease, mute, or set a preset volume with a single key press.
+
+<img src="assets/screenshots/key-volume.png" width="100" alt="Volume Key"/>
+
+| Setting | Description |
+|---------|-------------|
+| Device | Which Sonos speaker to control |
+| Command | `Volume Up`, `Volume Down`, `Mute / Preset`, or `Volume Preset` |
+| Preset Volume | Target volume for the preset command |
+| Show preset | Display the preset value on the key |
+
+---
+
 ### Volume Dial *(Stream Deck+ only)*
 
 Dedicated volume control with a live pie chart showing the current level. When muted, a volume-off icon replaces the pie.
@@ -104,7 +130,7 @@ Dedicated volume control with a live pie chart showing the current level. When m
 | Preset Volume | Target volume for touch |
 | Show text | Show/hide the volume percentage and device name on the dial |
 | Alignment | Position of the pie: `Left`, `Center`, or `Right` |
-| Background | `None` or `Particles` |
+| Background | `None` or any Panorama effect |
 
 ---
 
@@ -124,13 +150,28 @@ Controls the volume of an entire Sonos group — all speakers currently grouped 
 | Group | Which Sonos group to control (selected by any of its member speakers) |
 | Show text | Show/hide the volume percentage on the dial |
 | Alignment | Position of the pie: `Left`, `Center`, or `Right` |
-| Background | `None` or `Particles` |
+| Background | `None` or any Panorama effect |
+
+---
+
+### Play Favorite
+
+Play one of your saved Sonos favorites with a single key press. The key displays the favorite's cover art while it is playing.
+
+With **Fade out** enabled, the currently playing music fades down smoothly across the whole group before the favorite starts, and every speaker returns to its own volume afterwards — switch playlists mid-evening without anyone noticing a hard cut.
+
+| Setting | Description |
+|---------|-------------|
+| Device | Which Sonos speaker to control |
+| Favorite | Select from your Sonos favorites list |
+| Show title | Display the favorite's title on the key |
+| Fade out | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
 
 ---
 
 ### Favorites Dial *(Stream Deck+ only)*
 
-Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art, title, and position indicator for the highlighted item.
+Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art, title, and position indicator for the highlighted item. Outside of browsing, the display shows either a cover-art mosaic of your favorites (default) or — if a Panorama effect is selected as the background — the animated effect with a centered heart icon, filled while playing and outlined while paused.
 
 <img src="assets/favorites_dial_demo.gif" width="200" alt="Favorites Dial browsing the list"/>
 
@@ -145,6 +186,8 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 | Device | Which Sonos speaker to control |
 | Browse timeout | Seconds of inactivity before returning to now playing |
 | Fade out | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
+| Alignment | Position of the heart icon in effect mode: `Left`, `Center`, or `Right` |
+| Background | `Cover mosaic` (default) or any Panorama effect, shown for idle and now-playing with a centered heart icon |
 
 ---
 
@@ -179,52 +222,9 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 ---
 
-### Volume Key
-
-Increase, decrease, mute, or set a preset volume with a single key press.
-
-<img src="assets/screenshots/key-volume.png" width="100" alt="Volume Key"/>
-
-| Setting | Description |
-|---------|-------------|
-| Device | Which Sonos speaker to control |
-| Command | `Volume Up`, `Volume Down`, `Mute / Preset`, or `Volume Preset` |
-| Preset Volume | Target volume for the preset command |
-| Show preset | Display the preset value on the key |
-
----
-
-### Playback Control Key
-
-Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim automatically** when a radio station is playing, since seek controls are unavailable for live streams.
-
-<img src="assets/screenshots/key-playback-control.png" width="100" alt="Playback Control Key — Next"/> <img src="assets/screenshots/key-playback-control-radio.png" width="100" alt="Playback Control Key dimmed during radio"/>
-
-| Setting | Description |
-|---------|-------------|
-| Device | Which Sonos speaker to control |
-| Command | `Next Track`, `Previous Track`, `Toggle Shuffle`, or `Toggle Repeat` |
-
----
-
-### Play Favorite
-
-Play one of your saved Sonos favorites with a single key press. The key displays the favorite's cover art while it is playing.
-
-With **Fade out** enabled, the currently playing music fades down smoothly across the whole group before the favorite starts, and every speaker returns to its own volume afterwards — switch playlists mid-evening without anyone noticing a hard cut.
-
-| Setting | Description |
-|---------|-------------|
-| Device | Which Sonos speaker to control |
-| Favorite | Select from your Sonos favorites list |
-| Show title | Display the favorite's title on the key |
-| Fade out | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
-
----
-
 ## Requirements
 
-- **Elgato Stream Deck** — any model for key actions; **Stream Deck+** required for dial actions
+- **Elgato Stream Deck** — any model for key actions; **Stream Deck+** required for dial actions (developed and tested on the 4-dial Stream Deck+; hardware with more dials per row, e.g. a 6-dial Stream Deck XL, is untested)
 - **Stream Deck software** — version 6.9 or later
 - **Sonos system** — any Sonos speaker on the same local network as your computer
 - **Network** — plugin and speaker must be on the same subnet (no VLAN isolation between them)
@@ -260,6 +260,7 @@ With **Fade out** enabled, the currently playing music fades down smoothly acros
 **Panorama Effects not connecting across panels**
 - All Panorama Effects dials must be placed in **adjacent slots** in the same profile row.
 - Each dial detects its neighbors automatically — no manual column setting is needed.
+- Development and testing so far has only been done on a **Stream Deck+** (4 dials). Behavior on hardware with more dials per row (e.g. a 6-dial Stream Deck XL) is untested — hardware needed.
 
 ---
 

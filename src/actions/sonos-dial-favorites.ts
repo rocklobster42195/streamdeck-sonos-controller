@@ -3,28 +3,32 @@ import streamDeck, {
     action,
     DialRotateEvent,
     WillAppearEvent,
-    SingletonAction,
     DialDownEvent,
     SendToPluginEvent,
     DidReceiveSettingsEvent,
-    WillDisappearEvent,
     TouchTapEvent
 } from "@elgato/streamdeck";
+import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCapableDialAction";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise, sonosFavoritesCache } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
-import { mdiCog } from "@mdi/js";
-import { buildUnreachableDialSvg, INACTIVE_ICON_COLOR } from "../utils/icons";
-import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
+import { mdiCog, mdiHeartCircle, mdiHeartCircleOutline } from "@mdi/js";
+import { INACTIVE_ICON_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
+import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
+import { effectRegistry } from "../effects/registry.generated";
 
-type SonosFavDialSettings = {
+type SonosFavDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
     browseTimeout?: number; // seconds before returning to now-playing, default 3
     fadeDuration?: string;  // seconds as string from the PI select, "0"/undefined = no fade
+    align?: 'left' | 'center' | 'right'; // heart icon position in icon mode, default 'center'
+    // visualizerMode ('mosaic' | any registered effect id) comes from PanoramaCapableSettings.
+    // 'mosaic' is the non-effect baseline (today's cover-mosaic/now-playing look); any effect id
+    // switches idle + now-playing to a full-canvas effect background with a centered heart icon.
 };
 
 interface FavDialState {
@@ -41,10 +45,16 @@ interface FavDialState {
 }
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-favorites" })
-export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
+export class SonosDialFavorites extends PanoramaCapableDialAction<SonosFavDialSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private states: Map<string, FavDialState> = new Map();
     private renderGen: Map<string, number> = new Map();
+
+    // 'mosaic' is this dial's non-effect baseline (like TrackDial's 'none'/'eq') — everything else
+    // is a registered effect id.
+    protected override isEffectMode(mode?: string): boolean {
+        return !!mode && mode !== 'mosaic';
+    }
 
     // Batch rapid state changes into a single render — only the latest gen fires.
     private queueRender(context: string): void {
@@ -147,27 +157,19 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         }, INTERVAL_MS);
     }
 
-    private setupRetry = new SetupRetryScheduler();
-
-    private async onInstanceUpdate(ev: WillAppearEvent<SonosFavDialSettings> | DidReceiveSettingsEvent<SonosFavDialSettings>): Promise<void> {
+    protected override async onInstanceUpdate(ev: WillAppearEvent<SonosFavDialSettings> | DidReceiveSettingsEvent<SonosFavDialSettings>): Promise<void> {
         const context = ev.action.id;
-        const settings = ev.payload.settings;
-        this.setupRetry.cancel(context);
+        let settings = ev.payload.settings;
 
-        const old = this.controllers.get(context);
-        if (old) {
-            old.unregisterVolumeCallback(context);
-            old.unregisterTransportStateCallback(context);
-            old.unregisterTrackInfoCallback(context);
-            old.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(old.deviceIp);
-            this.controllers.delete(context);
-        }
-
+        // Preserve browse position (and last-known playback state) across a settings-only update.
         const existing = this.states.get(context);
+        this.cleanupInstance(context);
+
+        settings = this.applyBackfill(ev, settings, { visualizerMode: 'mosaic', align: 'center' });
+        this.settingsMap.set(context, settings);
+
         const browseTimeoutMs = (settings.browseTimeout ?? 3) * 1000;
 
-        // Preserve browse position when only settings change.
         this.states.set(context, {
             currentIndex: existing?.currentIndex ?? -1,
             browseTimeoutMs,
@@ -175,6 +177,7 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             isMuted: existing?.isMuted ?? false,
             transportState: existing?.transportState ?? 'STOPPED',
             currentTrack: existing?.currentTrack,
+            playingFav: existing?.playingFav,
         });
 
         marqueeAnimator.start(context, () => { this.queueRender(context); }, {
@@ -184,6 +187,8 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             availableWidth: 97
         });
 
+        this.syncPanoramaParticipation(context, settings);
+
         await this.renderDial(context);
 
         if (!settings.deviceIp) return;
@@ -192,20 +197,7 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             const controller = await sonosDeviceManager.getController(settings.deviceIp);
             this.controllers.set(context, controller);
 
-            controller.registerReachabilityCallback(context, (reachable) => {
-                if (reachable) {
-                    void this.onInstanceUpdate(ev);
-                } else {
-                    const sdAction = streamDeck.actions.getActionById(context);
-                    if (sdAction?.isDial()) {
-                        const svg = buildUnreachableDialSvg('FAVORITES');
-                        void sdAction.setFeedback({
-                            'full-canvas': `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
-                            'title': '',
-                        }).catch(() => {});
-                    }
-                }
-            });
+            this.registerReachabilityHandling(controller, ev, 'FAVORITES');
             controller.registerVolumeCallback(context, (vol) => this.onVolumeInfoChanged(context, vol));
             controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
             controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
@@ -241,29 +233,12 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             await this.renderDial(context);
         } catch (e) {
             streamDeck.logger.error(`[FavDial ${context}] Setup error:`, e);
-            const sdAction = streamDeck.actions.getActionById(context);
-            if (sdAction?.isDial()) {
-                const svg = buildUnreachableDialSvg('FAVORITES');
-                await sdAction.setFeedback({
-                    'full-canvas': `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
-                    'title': '',
-                }).catch(() => {});
-            }
-            this.setupRetry.schedule(context, () => void this.onInstanceUpdate(ev));
+            await this.renderUnreachableDial(context, 'FAVORITES');
+            this.scheduleSetupRetry(ev);
         }
     }
 
-    override async onWillAppear(ev: WillAppearEvent<SonosFavDialSettings>): Promise<void> {
-        await this.onInstanceUpdate(ev);
-    }
-
-    override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SonosFavDialSettings>): Promise<void> {
-        await this.onInstanceUpdate(ev);
-    }
-
-    override async onWillDisappear(ev: WillDisappearEvent<SonosFavDialSettings>): Promise<void> {
-        const context = ev.action.id;
-        this.setupRetry.cancel(context);
+    protected cleanupInstance(context: string): void {
         const state = this.states.get(context);
         if (state?.browseTimeoutId) clearTimeout(state.browseTimeoutId);
         if (state?.fadeTimer) clearInterval(state.fadeTimer);
@@ -275,12 +250,14 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
             controller.unregisterTrackInfoCallback(context);
             controller.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
+            this.controllers.delete(context);
         }
 
-        this.controllers.delete(context);
-        this.states.delete(context);
-        this.renderGen.delete(context);
         marqueeAnimator.destroy(context);
+
+        this.renderGen.delete(context);
+        this.settingsMap.delete(context);
+        this.states.delete(context);
     }
 
     override async onDialRotate(ev: DialRotateEvent<SonosFavDialSettings>): Promise<void> {
@@ -383,10 +360,66 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
                 });
                 break;
             }
+            case 'get-viz-options': {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'get-viz-options',
+                    items: [
+                        { label: piT('Cover mosaic'), value: 'mosaic' },
+                        ...[...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })),
+                    ],
+                });
+                break;
+            }
+            case 'get-align-options': {
+                streamDeck.ui.sendToPropertyInspector({
+                    event: 'get-align-options',
+                    items: [
+                        { label: piT('Left'), value: 'left' },
+                        { label: piT('Center'), value: 'center' },
+                        { label: piT('Right'), value: 'right' },
+                    ],
+                });
+                break;
+            }
         }
     }
 
-    private async renderDial(context: string): Promise<void> {
+    // Full-canvas panorama effect background with a heart icon centered per `align` — filled
+    // circle while PLAYING, outline otherwise. No cover/title text: this mode is deliberately a
+    // minimal ambient view, independent of the fragile favorite-title matching used elsewhere.
+    private async renderIconModeDial(action: ReturnType<typeof streamDeck.actions.getActionById>, context: string, settings: SonosFavDialSettings, isPlaying: boolean): Promise<void> {
+        if (!action || !action.isDial()) return;
+
+        const align = settings.align ?? 'center';
+        const cx = align === 'left' ? 50 : align === 'right' ? 150 : 100;
+        const cy = 50;
+
+        const rawPanoramaKey = panoramaContextGroupKey.get(context);
+        const panoramaKey = isPanoramaEffectActive(rawPanoramaKey) ? rawPanoramaKey : undefined;
+        const particleFrag = panoramaKey ? renderPanoramaEffectSlice(panoramaKey, getPanoramaSliceOffset(context)) : '';
+
+        const heartPath = isPlaying ? mdiHeartCircle : mdiHeartCircleOutline;
+        // mdiHeartCircle's own outer ring only spans 20 of its 24 viewBox units (2px inset each
+        // side) — a plain 76px box (VolumeDial pie's rOuter*2) renders visually smaller than the
+        // pie, which draws its arcs edge-to-edge with no such built-in padding. Scale the box up
+        // so the glyph's actual ring diameter matches the pie's 76px.
+        const size = Math.round(76 * (24 / 20));
+        const scale = size / 24;
+
+        const svg = [
+            '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+            panoramaKey
+                ? `<defs><clipPath id="c"><rect width="200" height="100"/></clipPath></defs><rect width="200" height="100" fill="#000"/><g clip-path="url(#c)">${particleFrag}</g>`
+                : '<rect width="200" height="100" fill="#0a0a0a"/>',
+            `<g transform="translate(${cx - size / 2},${cy - size / 2}) scale(${scale.toFixed(3)})"><path fill="#CCCCCC" d="${heartPath}"/></g>`,
+            '</svg>',
+        ].join('');
+
+        const img = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+        await action.setFeedback({ 'full-canvas': img }).catch(() => {});
+    }
+
+    protected async renderDial(context: string): Promise<void> {
         const action = streamDeck.actions.getActionById(context);
         const state = this.states.get(context);
         if (!action || !action.isDial() || !state) return;
@@ -394,6 +427,16 @@ export class SonosDialFavorites extends SingletonAction<SonosFavDialSettings> {
         const isBrowsing = state.currentIndex !== -1;
         const favs = this.getFavorites();
         const isPlaying = state.transportState === 'PLAYING';
+
+        // Icon mode (effect background + centered heart) replaces idle AND now-playing — browsing
+        // always shows the actually-selected favorite's real cover, unaffected. Gated on a
+        // configured device so an unconfigured tile still falls through to the cog placeholder
+        // below instead of animating an effect nobody can act on.
+        const settings = this.settingsMap.get(context);
+        if (!isBrowsing && settings?.deviceIp && this.isEffectMode(settings.visualizerMode)) {
+            await this.renderIconModeDial(action, context, settings, isPlaying);
+            return;
+        }
 
         let cover: string | undefined;
         let subtitleText: string;

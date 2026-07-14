@@ -6,6 +6,7 @@
   <title>Favorites Dial Settings</title>
   <script src="i18n.js" defer></script>
   <script src="sdpi-components.js" defer></script>
+  <script src="effect-fields.js" defer></script>
   <style>
     :root { color-scheme: dark; }
     .hint { font-size: 11px; color: #888; line-height: 1.4; }
@@ -50,6 +51,14 @@
     </sdpi-item-value>
   </sdpi-item>
 
+  <sdpi-item label="Background" data-i18n="background">
+    <sdpi-select id="vizSelect" setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
+  </sdpi-item>
+  <sdpi-item id="alignItem" label="Alignment" data-i18n="alignment">
+    <sdpi-select setting="align" datasource="get-align-options"></sdpi-select>
+  </sdpi-item>
+  <div id="effectFieldsContainer"></div>
+
   <sdpi-item>
     <sdpi-item-value class="hint" data-i18n-html="fav_hint">
       Rotate to browse all your Sonos favorites.<br>
@@ -70,6 +79,16 @@
         btNumber.value = n;
         btRange.value = n;
         btRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    });
+
+    // 'mosaic' has no icon to align and no effect fields — hide both extras for it.
+    var vizSelect = document.getElementById('vizSelect');
+    var alignItem = document.getElementById('alignItem');
+    var effectFieldsContainer = document.getElementById('effectFieldsContainer');
+    vizSelect.addEventListener('valuechange', function () {
+        var isIconMode = vizSelect.value && vizSelect.value !== 'mosaic';
+        alignItem.hidden = !isIconMode;
+        window.renderEffectFields(effectFieldsContainer, vizSelect.value);
     });
   </script>
 </body>

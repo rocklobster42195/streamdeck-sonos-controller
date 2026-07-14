@@ -611,13 +611,21 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         const fragment = effect ? safeEffectCall(() => effect.renderSlice(sliceOffsetX, DISPLAY_W, DISPLAY_H), '', 'renderSlice') : '';
 
         const myCol = panoramaColumns.get(context) ?? 0;
-        const cols = key ? panoramaOrchestrator.colsFromKey(key) : [myCol];
-        const maxCol = Math.max(...cols);
+        // Anchor against the rightmost column among THIS action's own tiles only — external
+        // panorama participants (Track/Volume/GroupVolume/Favorite dial) render the shared effect
+        // slice but never this text overlay, so anchoring past them (the full group's `cols`,
+        // pre-fix) pointed the text at a tile that doesn't draw it, making it vanish whenever an
+        // external participant happened to sit rightmost in the group.
+        const ownCols = key
+            ? [...(this.groupContexts.get(key) ?? [context])].map(c => panoramaColumns.get(c) ?? 0)
+            : [myCol];
+        const maxCol = Math.max(...ownCols);
         const showTrackInfo = !!key && (this.groupShowTrackInfo.get(key) ?? false);
         const trackInfo = showTrackInfo ? (this.groupTrackInfo.get(key!) ?? null) : null;
 
-        // Text anchor at x=196 of the rightmost display, expressed in this display's local coords.
-        // With text-anchor="end", long titles overflow leftward into adjacent displays naturally.
+        // Text anchor at x=196 of the rightmost own-tile display, expressed in this display's
+        // local coords. With text-anchor="end", long titles overflow leftward into adjacent
+        // own-tile displays naturally.
         const textAnchorX = 196 + (maxCol - myCol) * DISPLAY_W;
 
         const titleW = trackInfo?.title ? measureArialWidth(trackInfo.title, 20) : 0;

@@ -1,10 +1,11 @@
 # Contributing a Panorama Effect
 
-Panorama Effects is the shared visual background system used by four dial actions in this
-plugin: **Panorama Effects**, **Track Dial**, **Volume Dial**, and **Group Volume Dial**. All
-four render the same effect behind their own foreground (cover art, track title/artist, volume
-indicator, etc.), and — when several dials are placed on adjacent columns of a Stream Deck+ —
-they automatically join into one seamless **panorama** spanning all of their displays.
+Panorama Effects is the shared visual background system used by five dial actions in this
+plugin: **Panorama Effects**, **Track Dial**, **Volume Dial**, **Group Volume Dial**, and
+**Favorites Dial**. All five render the same effect behind their own foreground (cover art,
+track title/artist, volume indicator, a centered heart icon, etc.), and — when several dials are
+placed on adjacent columns of a Stream Deck+ — they automatically join into one seamless
+**panorama** spanning all of their displays.
 
 This document explains how to add a new effect so it becomes selectable in the effect picker,
 without touching any other part of the plugin. The goal: **one folder, one pull request.**
@@ -109,8 +110,9 @@ export interface EffectInstance<S> {
   destroy?(): void;
 
   /** Optional interaction hooks. Only ever invoked when this effect is running on the
-   *  Panorama Effects action itself — Track/Volume/Group Volume dials keep rotate/press/touch
-   *  bound to their own primary function (seek, volume, mute) and never forward them. */
+   *  Panorama Effects action itself — Track/Volume/Group Volume/Favorites dials keep
+   *  rotate/press/touch bound to their own primary function (seek, volume, mute, browse) and
+   *  never forward them. */
   onRotate?(ticks: number): void;
   onPress?(): void;
   onTouch?(x: number, y: number): void;
@@ -186,7 +188,9 @@ of once per group, and a second joining dial visibly stalled rendering). Follow 
 - Guard against `NaN`/`undefined` creeping into coordinates over a long-running session (dials
   can render for days without a restart) — clamp, don't let drift accumulate unbounded.
 - Test in both solo mode (single display) and grouped mode (place 2–3 dials adjacently) before
-  opening a PR — behavior and performance can differ significantly between the two.
+  opening a PR — behavior and performance can differ significantly between the two. All testing
+  so far has been on a 4-dial Stream Deck+; a wider row (e.g. a 6-dial Stream Deck XL) is
+  untested — hardware needed.
 
 **Don't:**
 - Don't do pairwise (O(n²)) or otherwise super-linear work inside `renderSlice`. If several
