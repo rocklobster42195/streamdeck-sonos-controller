@@ -16,12 +16,12 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 | Key Actions | Dial Actions *(Stream Deck+ only)* |
 |---|---|
-| **Play / Pause** — cover art + scrolling title | **Track Dial** — cover art · title · progress · EQ Effect |
-| **Playback Control** — next · previous · shuffle · repeat | **Queue Dial** — browse & jump within the current queue |
-| **Volume Key** — up · down · mute · preset | **Volume Dial** — pie chart · mute · preset |
-| **Play Favorite** — one tap to play a saved favorite | **Group Volume Dial** — control a whole Sonos group's volume together |
-| | **Favorites Dial** — browse & play your favorites list · cover mosaic or effect + heart icon |
-| | **Panorama Effects** — ambient art spanning multiple panels |
+| [**Play / Pause**](#play--pause-key) — cover art + scrolling title | [**Track Dial**](#track-dial-stream-deck-only) — cover art · title · progress · EQ Effect |
+| [**Playback Control**](#playback-control-key) — next · previous · shuffle · repeat | [**Queue Dial**](#queue-dial-stream-deck-only) — browse & jump within the current queue |
+| [**Volume Key**](#volume-key) — up · down · mute · preset | [**Volume Dial**](#volume-dial-stream-deck-only) — pie chart · mute · preset |
+| [**Play Favorite**](#play-favorite) — one tap to play a saved favorite | [**Group Volume Dial**](#group-volume-dial-stream-deck-only) — control a whole Sonos group's volume together |
+| | [**Favorites Dial**](#favorites-dial-stream-deck-only) — browse & play your favorites list · cover mosaic or effect + heart icon |
+| | [**Panorama Effects**](#panorama-effects-dial-stream-deck-only) — ambient art spanning multiple panels |
 
 ---
 
