@@ -2,6 +2,10 @@
 
 ---
 
+## [0.4.2] — 2026-07-14
+
+---
+
 ## [0.4.1] — 2026-07-14
 
 - docs: link At a Glance entries to their action sections
