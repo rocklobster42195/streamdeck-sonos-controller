@@ -49,6 +49,8 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 
 The LCD panel shows the album or station cover art, a scrolling track title, artist name, and a progress bar — tinted to match the cover art palette. If the selected speaker is grouped with others, it correctly reflects the whole group's playback (cover, title, play/pause state) rather than the joined speaker's own idle state.
 
+Also handy for quickly auditioning a playlist: rotate to scrub within the current track, press to jump to the next one.
+
 <img src="assets/track_dial_eq.gif" alt="Track Dial showing cover art and EQ Effect"/>
 
 | Interaction | Effect |
