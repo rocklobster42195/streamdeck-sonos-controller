@@ -49,3 +49,30 @@ export function measureArialWidth(text: string, fontSize: number): number {
 function stripDiacritics(ch: string): string {
     return ch.normalize('NFD')[0] ?? ch;
 }
+
+const ELLIPSIS = '…';
+
+/**
+ * Truncates `text` to the longest prefix (plus a trailing "…") that fits within `maxWidth`
+ * pixels at `fontSize`, measured via {@link measureArialWidth}. Returns `text` unchanged if it
+ * already fits. Binary search over character count rather than a fixed per-character estimate —
+ * exact regardless of how narrow/wide the trailing characters happen to be, and cheap enough to
+ * run every render tick (no I/O, no async, unlike TitleAnimator's opentype-based measurement).
+ */
+export function truncateToWidth(text: string, fontSize: number, maxWidth: number): string {
+    if (measureArialWidth(text, fontSize) <= maxWidth) return text;
+
+    const ellipsisWidth = measureArialWidth(ELLIPSIS, fontSize);
+    let lo = 0, hi = text.length, best = 0;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const candidate = text.slice(0, mid).trimEnd();
+        if (measureArialWidth(candidate, fontSize) + ellipsisWidth <= maxWidth) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return best > 0 ? `${text.slice(0, best).trimEnd()}${ELLIPSIS}` : ELLIPSIS;
+}

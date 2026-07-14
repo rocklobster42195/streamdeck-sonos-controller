@@ -20,7 +20,7 @@ import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
 import type { EffectInstance } from "../effects/types";
 import type { ParticlesEffectSettings } from "../effects/particles";
 import { piT } from "../utils/pi-i18n";
-import { measureArialWidth } from "../utils/text-width";
+import { measureArialWidth, truncateToWidth } from "../utils/text-width";
 
 type ParticlesSettings = {
     // Which registered effect this dial runs. Optional so existing installs (saved before this
@@ -50,6 +50,8 @@ const particlesEffect = effectRegistry.get(DEFAULT_EFFECT_ID)!;
 
 const TICK_INTERVAL = 50;
 const DEFAULT_COLOR = '#404040';
+// 0.1/tick @ 50ms = ~500ms full crossfade — matches CoverArtAnimator's cover-image crossfade feel.
+const TEXT_FADE_STEP = 0.1;
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-particles" })
 export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
@@ -103,6 +105,11 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
     // action's instance at all.
     private groupEffects = groupEffects as Map<string, EffectInstance<ParticlesEffectSettings>>;
     private groupTrackInfo = new Map<string, { title: string; artist: string }>();
+    // Present only while a group's title/artist is mid-crossfade — holds the PREVIOUS text plus
+    // progress (0 = old fully visible/new invisible, 1 = done, entry removed). Ticked alongside
+    // the effect in the group's existing tick interval rather than a separate animator, since one
+    // is already running at the same cadence — see setupGroup / renderDial.
+    private groupTextFade = new Map<string, { title: string; artist: string; fadeOpacity: number }>();
     private groupShowTrackInfo = new Map<string, boolean>();
     // Which effect id is actually running for each group key. Needed because the group key
     // itself is derived purely from column adjacency (see PanoramaOrchestrator.panoramaKey) —
@@ -131,6 +138,19 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         if (lum >= 0.25) return color;
         const mix = (v: number) => Math.min(255, Math.round(v * 255 + 255 * 0.55));
         return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+    }
+
+    // Updates a group's displayed title/artist, starting a crossfade from whatever was showing
+    // before if the text actually changed (a same-value update, e.g. a redundant LastChange
+    // event, is a no-op here — doesn't restart/interrupt an in-progress fade). The very first
+    // set for a group has no previous value to fade from, so it just appears instantly, same as
+    // CoverArtAnimator's initial image.
+    private setGroupTrackInfo(key: string, title: string, artist: string): void {
+        const prev = this.groupTrackInfo.get(key);
+        if (prev && (prev.title !== title || prev.artist !== artist)) {
+            this.groupTextFade.set(key, { title: prev.title, artist: prev.artist, fadeOpacity: 0 });
+        }
+        this.groupTrackInfo.set(key, { title, artist });
     }
 
     private queueRender(context: string): void {
@@ -220,6 +240,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         this.groupContexts.delete(key);
         this.groupStaticColor.delete(key);
         this.groupTrackInfo.delete(key);
+        this.groupTextFade.delete(key);
         this.groupShowTrackInfo.delete(key);
     }
 
@@ -307,6 +328,13 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             const timer = setInterval(() => {
                 const effect = this.groupEffects.get(key);
                 if (effect) safeEffectCall(() => effect.tickPanorama(TICK_INTERVAL), undefined, 'tickPanorama');
+
+                const fade = this.groupTextFade.get(key);
+                if (fade) {
+                    fade.fadeOpacity += TEXT_FADE_STEP;
+                    if (fade.fadeOpacity >= 1) this.groupTextFade.delete(key);
+                }
+
                 // Render every member (own tiles + external participants like Track Dial) from
                 // this exact tick, instead of each polling on its own independent timer — keeps
                 // every display in the group perfectly in sync.
@@ -374,7 +402,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             controller.getCurrentTrack().then(track => {
                 if (!track) return;
                 if (track.Title || track.Artist) {
-                    this.groupTrackInfo.set(key, { title: track.Title ?? '', artist: track.Artist ?? '' });
+                    this.setGroupTrackInfo(key, track.Title ?? '', track.Artist ?? '');
                     const g = this.groupContexts.get(key);
                     if (g) for (const ctx of g) this.queueRender(ctx);
                 }
@@ -388,10 +416,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             }).catch(() => {});
 
             controller.registerTrackInfoCallback(`pano-color-${key}`, (trackInfo) => {
-                this.groupTrackInfo.set(key, {
-                    title: trackInfo.Title ?? '',
-                    artist: trackInfo.Artist ?? '',
-                });
+                this.setGroupTrackInfo(key, trackInfo.Title ?? '', trackInfo.Artist ?? '');
                 const g = this.groupContexts.get(key);
                 if (g) for (const ctx of g) this.queueRender(ctx);
 
@@ -600,6 +625,20 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
 
     // ── Rendering ────────────────────────────────────────────────────────────
 
+    // Renders `current` right-anchored at (x, y) — or, while `fadeOpacity` is defined (a group
+    // crossfade in progress), `old` and `current` stacked with complementary opacities so the
+    // previous title/artist dissolves into the new one instead of snapping.
+    private renderFadeableText(x: number, y: number, fontSize: number, color: string, fontWeight: string | undefined, current: string, old: string, fadeOpacity?: number): string {
+        const attrs = `fill="${color}" font-family="Arial,sans-serif" font-size="${fontSize}"${fontWeight ? ` font-weight="${fontWeight}"` : ''} text-anchor="end" clip-path="url(#c)"`;
+        if (fadeOpacity === undefined) {
+            return current ? `<text x="${x}" y="${y}" ${attrs}>${this.escapeXml(current)}</text>` : '';
+        }
+        const parts: string[] = [];
+        if (old) parts.push(`<text x="${x}" y="${y}" ${attrs} opacity="${(1 - fadeOpacity).toFixed(2)}">${this.escapeXml(old)}</text>`);
+        if (current) parts.push(`<text x="${x}" y="${y}" ${attrs} opacity="${fadeOpacity.toFixed(2)}">${this.escapeXml(current)}</text>`);
+        return parts.join('');
+    }
+
     private async renderDial(context: string): Promise<void> {
         const sdAction = streamDeck.actions.getActionById(context);
         if (!sdAction || !sdAction.isDial()) return;
@@ -624,12 +663,33 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
         const trackInfo = showTrackInfo ? (this.groupTrackInfo.get(key!) ?? null) : null;
 
         // Text anchor at x=196 of the rightmost own-tile display, expressed in this display's
-        // local coords. With text-anchor="end", long titles overflow leftward into adjacent
-        // own-tile displays naturally.
+        // local coords. With text-anchor="end", titles that still overflow after truncation grow
+        // leftward into adjacent own-tile displays naturally.
         const textAnchorX = 196 + (maxCol - myCol) * DISPLAY_W;
 
-        const titleW = trackInfo?.title ? measureArialWidth(trackInfo.title, 20) : 0;
-        const artistW = trackInfo?.artist ? measureArialWidth(trackInfo.artist, 15) : 0;
+        // Total pixel budget for a single line of text, from the left edge of the leftmost
+        // own-tile display to the anchor point above — independent of which tile is rendering,
+        // so every member of the group truncates to the exact same string. A title/artist that
+        // still doesn't fit here (very long, or a solo 1-display group) gets ellipsized rather
+        // than left to run off the group's left edge — see memory: long titles previously had no
+        // truncation or scroll at all.
+        const minCol = Math.min(...ownCols);
+        const maxTextWidth = 196 + (maxCol - minCol) * DISPLAY_W - 8;
+
+        const titleText = trackInfo?.title ? truncateToWidth(trackInfo.title, 20, maxTextWidth) : '';
+        const artistText = trackInfo?.artist ? truncateToWidth(trackInfo.artist, 15, maxTextWidth) : '';
+        const titleW = titleText ? measureArialWidth(titleText, 20) : 0;
+        const artistW = artistText ? measureArialWidth(artistText, 15) : 0;
+
+        const fade = key ? this.groupTextFade.get(key) : undefined;
+        const oldTitleText = fade?.title ? truncateToWidth(fade.title, 20, maxTextWidth) : '';
+        const oldArtistText = fade?.artist ? truncateToWidth(fade.artist, 15, maxTextWidth) : '';
+        const oldTitleW = oldTitleText ? measureArialWidth(oldTitleText, 20) : 0;
+        const oldArtistW = oldArtistText ? measureArialWidth(oldArtistText, 15) : 0;
+
+        // Pill covers whichever of old/new is wider so neither text clips out of it mid-crossfade.
+        const titlePillW = Math.max(titleW, oldTitleW);
+        const artistPillW = Math.max(artistW, oldArtistW);
 
         const svg = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
@@ -638,10 +698,10 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
             '</defs>',
             '<rect width="200" height="100" fill="#000"/>',
             `<g clip-path="url(#c)">${fragment}</g>`,
-            trackInfo?.title ? `<rect x="${textAnchorX - titleW - 4}" y="49" width="${titleW + 8}" height="27" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : '',
-            trackInfo?.title ? `<text x="${textAnchorX}" y="72" fill="#fff" font-family="Arial,sans-serif" font-size="20" font-weight="500" text-anchor="end" clip-path="url(#c)">${this.escapeXml(trackInfo.title)}</text>` : '',
-            trackInfo?.artist ? `<rect x="${textAnchorX - artistW - 4}" y="77" width="${artistW + 8}" height="20" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : '',
-            trackInfo?.artist ? `<text x="${textAnchorX}" y="93" fill="#aaa" font-family="Arial,sans-serif" font-size="15" text-anchor="end" clip-path="url(#c)">${this.escapeXml(trackInfo.artist)}</text>` : '',
+            titlePillW > 0 ? `<rect x="${textAnchorX - titlePillW - 4}" y="49" width="${titlePillW + 8}" height="27" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : '',
+            this.renderFadeableText(textAnchorX, 72, 20, '#fff', '500', titleText, oldTitleText, fade?.fadeOpacity),
+            artistPillW > 0 ? `<rect x="${textAnchorX - artistPillW - 4}" y="77" width="${artistPillW + 8}" height="20" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : '',
+            this.renderFadeableText(textAnchorX, 93, 15, '#aaa', undefined, artistText, oldArtistText, fade?.fadeOpacity),
             '</svg>',
         ].join('');
 
