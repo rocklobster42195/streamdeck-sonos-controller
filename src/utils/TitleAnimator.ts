@@ -261,19 +261,25 @@ export class TitleAnimator {
             <svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
                 ${bgHtml}
                 <rect x="0" y="${barY}" width="72" height="${fontSize + 8}" fill="black" fill-opacity="${boxOpacity}" />
-                <text 
-                    x="${textX}" 
-                    y="${textY}" 
-                    fill="${options.fontColor || 'white'}" 
-                    fill-opacity="${textOpacity}" 
-                    font-family="sans-serif" 
-                    font-size="${fontSize}" 
+                <text
+                    x="${textX}"
+                    y="${textY}"
+                    fill="${options.fontColor || 'white'}"
+                    fill-opacity="${textOpacity}"
+                    font-family="sans-serif"
+                    font-size="${fontSize}"
                     font-weight="bold"
-                >${options.text}</text>
+                >${this.escapeXml(options.text)}</text>
                 ${options.batteryBadge || ''}
             </svg>
         `;
         return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+    }
+
+    private escapeXml(s: string): string {
+        return String(s).replace(/[<>&"']/g, (c) =>
+            ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' } as any)[c] || c
+        );
     }
 }
 
