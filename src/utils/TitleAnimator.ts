@@ -15,9 +15,10 @@ export interface AnimationOptions {
     // Pre-rendered SVG fragment (e.g. from utils/icons.ts renderBatteryBadge) composited on top,
     // independent of text/backgroundImage changes — see setBatteryBadge().
     batteryBadge?: string;
-    // 0-1 playback progress, or undefined for "no progress bar at all" (feature off / no track
-    // loaded yet) — see setProgress(). Rendered flush with the bottom edge, below the text row;
-    // see renderProgressBar in utils/icons.ts for why it carries its own dark backing.
+    // 0-1 playback progress to draw the bar for, or undefined when the current source has no
+    // known duration (radio) — renderProgressBar skips drawing entirely in that case. textY is a
+    // fixed constant regardless (see renderSvg), so the text row never jumps between radio and
+    // tracks with a real duration.
     progress?: number;
     progressColor?: string;
 }

@@ -137,7 +137,9 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             this.stopProgressTimer(context);
             return;
         }
-        const progress = this.computeProgress(context) ?? 0;
+        // undefined (radio / no known duration) means "don't draw the bar this tick" — passed
+        // straight through rather than coerced to 0, see AnimationOptions.progress's doc comment.
+        const progress = this.computeProgress(context);
         const color = this.dominantColors.get(context) ?? '#CCCCCC';
 
         if (titleAnimator.isRunning(context)) {
@@ -202,7 +204,9 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
             } else {
                 this.stopProgressTimer(context);
             }
-            const progress = settings.showProgress ? (this.computeProgress(context) ?? 0) : undefined;
+            // undefined both when the feature is off AND when the current source has no known
+            // duration (radio) — either way, no bar to draw. See AnimationOptions.progress.
+            const progress = settings.showProgress ? this.computeProgress(context) : undefined;
             const progressColor = this.dominantColors.get(context) ?? '#CCCCCC';
 
             streamDeck.logger.debug(`[${context}] showTrackTitle: ${settings.showTrackTitle}, showCoverArt: ${settings.showCoverArt}, cover available: ${cover ? "yes" : "no"}`);

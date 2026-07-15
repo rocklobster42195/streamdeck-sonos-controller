@@ -42,6 +42,13 @@ interface QueueDialState {
     liveTrackIndex: number; // 0-based; -1 = unknown/not applicable
     dominantColor: string;
     lastColorUri?: string;
+    // Which dominantColor value has already been pushed into a live panorama effect — lets
+    // renderDial retry the push on every tick until it actually lands, instead of relying solely
+    // on the one-shot check inside extractDominantColor's async callback (which can silently miss
+    // if the panorama group finishes forming just AFTER that callback already ran for the current
+    // cover — nothing re-triggers extractDominantColor for an unchanged cover, so the effect would
+    // otherwise stay on its default color until the next actual track change). See renderDial.
+    colorPushedFor?: string;
     // AVTransport's LastChange event bundles ALL fields on every fire, so this callback fires on
     // every track change too, not just genuine shuffle/repeat toggles — track the last value to
     // tell a real change from a no-op one (see onPlayModeChanged).
@@ -636,6 +643,14 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         const rawPanoKey = this.isEffectMode(settings.visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
         const panoramaKey = isPanoramaEffectActive(rawPanoKey) ? rawPanoKey : undefined;
 
+        // Retried on every render (i.e. every panorama tick once the group is active) rather than
+        // only right when extractDominantColor's async callback resolves — see colorPushedFor's
+        // doc comment for the race this closes.
+        if (panoramaKey && state.colorPushedFor !== state.dominantColor) {
+            groupEffects.get(panoramaKey)?.onSettingsChange?.({ color: this.ensureVisibleColor(state.dominantColor) });
+            state.colorPushedFor = state.dominantColor;
+        }
+
         let backgroundFrag = '<rect width="200" height="100" fill="black"/>';
         let pillFrags = '';
         if (panoramaKey) {
@@ -757,8 +772,10 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
         return Math.max(0, Math.ceil(text.length * fontSize * 0.55) + 4);
     }
 
-    // Extracts the cover's dominant color (async — cheap re-render once it resolves) and, when a
-    // panorama effect is active, feeds it into that effect's live settings, same as Track Dial.
+    // Extracts the cover's dominant color (async — cheap re-render once it resolves) and stores
+    // it; renderDial's own retry (see colorPushedFor) is what actually feeds it into a live
+    // panorama effect's settings, so this doesn't need to (and reliably would've missed the
+    // window right as a group is still forming — see colorPushedFor's doc comment).
     private extractDominantColor(context: string, cover: string | undefined): void {
         const state = this.states.get(context);
         if (!state || !cover || cover === state.lastColorUri) return;
@@ -767,11 +784,6 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
             const s = this.states.get(context);
             if (!s) return;
             s.dominantColor = color;
-            const visibleColor = this.ensureVisibleColor(color);
-            const pk = panoramaContextGroupKey.get(context);
-            if (isPanoramaEffectActive(pk)) {
-                groupEffects.get(pk!)?.onSettingsChange?.({ color: visibleColor });
-            }
             void this.renderDial(context);
         }).catch(() => {});
     }
