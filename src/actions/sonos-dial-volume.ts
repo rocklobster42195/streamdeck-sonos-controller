@@ -95,8 +95,13 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
         if (!state) return;
         if (fading) {
             this.stopVolumeAnim(context);
-            state.fading = true;
+            // Reads the cached (already-real) displayVolume, NOT currentDisplayVolume() — that
+            // would see fading=true (set right below) plus stale fadeStartTime/fadeDurationMs
+            // left over from a PREVIOUS fade and compute a bogus "already fully faded" progress
+            // off of them (hit this exact bug in sonos-key-volume.ts — starts every fade after
+            // the first one from 0 instead of the real current volume).
             state.fadeStartVolume = state.displayVolume ?? state.volume ?? 0;
+            state.fading = true;
             state.fadeStartTime = Date.now();
             state.fadeDurationMs = Math.max(1, durationMs);
             this.startFadeAnim(context);

@@ -77,8 +77,13 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
         if (!state || state.command !== 'mute') return;
         if (fading) {
             this.stopVolumeAnim(context);
+            // Read the cached (already-real, not fade-live) value BEFORE flipping state.fading —
+            // calling currentDisplayVolume() after would see fading=true plus stale
+            // fadeStartTime/fadeDurationMs left over from a PREVIOUS fade and compute a bogus
+            // "already fully faded" progress off of them, starting every fade after the first
+            // one from 0 instead of the real current volume (confirmed on hardware).
+            state.fadeStartVolume = state.displayVolume;
             state.fading = true;
-            state.fadeStartVolume = this.currentDisplayVolume(state);
             state.fadeStartTime = Date.now();
             state.fadeDurationMs = Math.max(1, durationMs);
             this.startFadeAnim(context);
