@@ -2,6 +2,18 @@
 
 ---
 
+## [0.4.3] — 2026-07-15
+
+- fix: Queue Dial panorama color race; hide progress bar for unknown duration
+- fix: fake fade-out starting from 0 on the second+ fade
+- feat: fake-smooth volume fade-out on Volume/Group Volume Dial and Volume Key
+- Update CONTRIBUTING_EFFECTS.md with testing notes
+- Update README with improved action descriptions
+- docs: correct typo in Stream Deck+ XL description
+- docs: fix empty 0.4.2 changelog entry
+
+---
+
 ## [0.4.2] — 2026-07-14
 
 - **Favorites Dial** can now show a Panorama effect background instead of the cover mosaic — a centered heart icon (filled while playing, outlined while paused), with a Left/Center/Right alignment setting
