@@ -119,7 +119,7 @@ export class TitleAnimator {
     }
 
     // Updates the progress bar independently of everything else — same rationale as
-    // setBatteryBadge. The caller (sonos-toggle-play.ts) owns its own ~1s timer and recomputes
+    // setBatteryBadge. The caller (play-pause-key.ts) owns its own ~1s timer and recomputes
     // the live 0-1 fraction itself; this just hands the latest value over for the next tick to
     // pick up, no animation/easing here.
     public setProgress(context: string, progress: number | undefined, color?: string): void {

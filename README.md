@@ -8,7 +8,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 > **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
 
-<img src="assets/favorite_demo.gif" width="340" alt="Favorites Dial — browse and play Sonos favorites"/>
+<img src="assets/favorite_demo.gif" width="340" alt="Favorites — browse and play Sonos favorites"/>
 
 ---
 
@@ -16,18 +16,18 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 | Key Actions | Dial Actions *(Stream Deck+ only)* |
 |---|---|
-| [**Play / Pause**](#play--pause-key) — cover art · scrolling title · progress | [**Track Dial**](#track-dial-stream-deck-only) — cover art · title · progress · EQ Effect |
-| [**Playback Control**](#playback-control-key) — next · previous · shuffle · repeat | [**Queue Dial**](#queue-dial-stream-deck-only) — browse & jump within the current queue |
-| [**Volume Key**](#volume-key) — up · down · mute · preset | [**Volume Dial**](#volume-dial-stream-deck-only) — pie chart · mute · preset |
-| [**Play Favorite**](#play-favorite) — one tap to play a saved favorite | [**Group Volume Dial**](#group-volume-dial-stream-deck-only) — control a whole Sonos group's volume together |
-| | [**Favorites Dial**](#favorites-dial-stream-deck-only) — browse & play your favorites list · cover mosaic or effect + heart icon |
-| | [**Panorama Effects**](#panorama-effects-dial-stream-deck-only) — ambient art spanning multiple panels |
+| [**Play / Pause**](#play--pause) — cover art · scrolling title · progress | [**Track Control**](#track-control-stream-deck-only) — cover art · title · progress · EQ Effect |
+| [**Playback Control**](#playback-control) — next · previous · shuffle · repeat | [**Queue**](#queue-stream-deck-only) — browse & jump within the current queue |
+| [**Volume Control**](#volume-control) — up · down · mute · preset | [**Volume**](#volume-stream-deck-only) — pie chart · mute · preset |
+| [**Play Favorite**](#play-favorite) — one tap to play a saved favorite | [**Group Volume**](#group-volume-stream-deck-only) — control a whole Sonos group's volume together |
+| | [**Favorites**](#favorites-stream-deck-only) — browse & play your favorites list · cover mosaic or effect + heart icon |
+| | [**Panorama Effects**](#panorama-effects-stream-deck-only) — ambient art spanning multiple panels |
 
 ---
 
 ## Actions
 
-### Play / Pause Key
+### Play / Pause
 
 Toggles playback on your Sonos speaker. While playing, the key displays the current album or radio station cover art. A scrolling marquee shows track title and artist. Works correctly for a speaker that's grouped with others, following the group's actual playback rather than the joined speaker's own idle state.
 
@@ -45,13 +45,13 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 
 ---
 
-### Track Dial *(Stream Deck+ only)*
+### Track Control *(Stream Deck+ only)*
 
 The LCD panel shows the album or station cover art, a scrolling track title, artist name, and a progress bar — tinted to match the cover art palette. If the selected speaker is grouped with others, it correctly reflects the whole group's playback (cover, title, play/pause state) rather than the joined speaker's own idle state.
 
 Also handy for quickly auditioning a playlist: rotate to scrub within the current track, press to jump to the next one.
 
-<img src="assets/track_dial_eq.gif" alt="Track Dial showing cover art and EQ Effect"/>
+<img src="assets/track_dial_eq.gif" alt="Track Control showing cover art and EQ Effect"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -67,11 +67,11 @@ Also handy for quickly auditioning a playlist: rotate to scrub within the curren
 
 ---
 
-### Playback Control Key
+### Playback Control
 
 Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim automatically** when a radio station is playing, since seek controls are unavailable for live streams.
 
-<img src="assets/screenshots/key-playback-control.png" width="100" alt="Playback Control Key — Next"/> <img src="assets/screenshots/key-playback-control-radio.png" width="100" alt="Playback Control Key dimmed during radio"/>
+<img src="assets/screenshots/key-playback-control.png" width="100" alt="Playback Control — Next"/> <img src="assets/screenshots/key-playback-control-radio.png" width="100" alt="Playback Control dimmed during radio"/>
 
 | Setting | Description |
 |---------|-------------|
@@ -80,7 +80,7 @@ Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim a
 
 ---
 
-### Queue Dial *(Stream Deck+ only)*
+### Queue *(Stream Deck+ only)*
 
 Browse and jump within the currently playing queue without interrupting playback. Rotate to preview upcoming or previous tracks — the LCD shows the previewed title with its neighbors above and below; press to jump playback there, touch or wait to cancel and return to now playing. For radio, shows a simple now-playing card since there's no queue to browse.
 
@@ -99,11 +99,11 @@ Browse and jump within the currently playing queue without interrupting playback
 
 ---
 
-### Volume Key
+### Volume Control
 
 Increase, decrease, mute, or set a preset volume with a single key press.
 
-<img src="assets/screenshots/key-volume.png" width="100" alt="Volume Key"/>
+<img src="assets/screenshots/key-volume.png" width="100" alt="Volume Control"/>
 
 | Setting | Description |
 |---------|-------------|
@@ -114,11 +114,11 @@ Increase, decrease, mute, or set a preset volume with a single key press.
 
 ---
 
-### Volume Dial *(Stream Deck+ only)*
+### Volume *(Stream Deck+ only)*
 
 Dedicated volume control with a live pie chart showing the current level. When muted, a volume-off icon replaces the pie.
 
-<img src="assets/volume_dial_demo.gif" width="200" alt="Volume Dial"/>
+<img src="assets/volume_dial_demo.gif" width="200" alt="Volume"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -137,7 +137,7 @@ Dedicated volume control with a live pie chart showing the current level. When m
 
 ---
 
-### Group Volume Dial *(Stream Deck+ only)*
+### Group Volume *(Stream Deck+ only)*
 
 Controls the volume of an entire Sonos group — all speakers currently grouped together — instead of a single device. Rotating moves every group member by the same number of percentage points, so a speaker that's already louder than the others (e.g. a Sonos Port next to quieter satellites) keeps its relative balance instead of being flattened to match them. Automatically follows the group even if its membership or coordinator changes later.
 
@@ -172,11 +172,11 @@ With **Fade out** enabled, the currently playing music fades down smoothly acros
 
 ---
 
-### Favorites Dial *(Stream Deck+ only)*
+### Favorites *(Stream Deck+ only)*
 
 Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art, title, and position indicator for the highlighted item. Outside of browsing, the display shows either a cover-art mosaic of your favorites (default) or — if a Panorama effect is selected as the background — the animated effect with a centered heart icon, filled while playing and outlined while paused.
 
-<img src="assets/favorites_dial_demo.gif" width="200" alt="Favorites Dial browsing the list"/>
+<img src="assets/favorites_dial_demo.gif" width="200" alt="Favorites browsing the list"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -194,7 +194,7 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 
 ---
 
-### Panorama Effects Dial *(Stream Deck+ only)*
+### Panorama Effects *(Stream Deck+ only)*
 
 Ambient visual effect animation that spans multiple adjacent LCD panels as one continuous scene. Place two or more side by side to connect them into a seamless panorama. Pick from several built-in effects, or see [CONTRIBUTING_EFFECTS.md](CONTRIBUTING_EFFECTS.md) if you want to add your own.
 

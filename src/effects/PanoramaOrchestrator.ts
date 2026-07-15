@@ -4,7 +4,7 @@
 // Responsibility split: this module only tracks column adjacency and computes which
 // contexts belong to which group (connected components over column adjacency). It knows
 // nothing about SONOS devices, colors, or which effect is running — that stays owned by
-// whichever action registers the group-sync handler (today: SonosDialParticles).
+// whichever action registers the group-sync handler (today: PanoramaEffectsDial).
 //
 // Registration happens in that action's constructor, which always runs at plugin startup
 // (see src/plugin.ts) regardless of whether a Panorama Effects tile is currently placed on
@@ -19,7 +19,7 @@ export const DISPLAY_H = 100;
 
 export type GroupSyncHandler = (newGrouping: Map<string, string[]>) => Promise<void> | void;
 // Called with the set of contexts whose effect settings changed (e.g. a PI slider edit), debounced
-// the same way as group sync — lets the group owner (SonosDialParticles) push the new values into
+// the same way as group sync — lets the group owner (PanoramaEffectsDial) push the new values into
 // an ALREADY-RUNNING effect instance via onSettingsChange, without tearing it down/recreating it
 // (which would reset live-tuned state like Boing Ball's current bounce position).
 export type SettingsChangeHandler = (contexts: Iterable<string>) => void;
@@ -50,18 +50,18 @@ class PanoramaOrchestratorImpl {
     // Each context's own raw settings blob (whichever of the 4 dial actions owns it), keyed the
     // same way. Populated generically — every action just hands over its own settings object,
     // not just the fields it happens to know about — so `gatherEffectSettings` (owned by
-    // SonosDialParticles) can read effect-tunable fields like `savedDensity`/`savedSpeed`/
+    // PanoramaEffectsDial) can read effect-tunable fields like `savedDensity`/`savedSpeed`/
     // `primaryColor` from ANY group member, not only from Panorama Effects' own tiles. This is
     // what lets Volume/Track/GroupVolume dial's own PI-configured effect settings actually reach
     // the running effect instance when no Panorama Effects tile is present in the group.
     readonly contextEffectSettings = new Map<string, Record<string, unknown>>();
     // The currently-running EffectInstance per group key. Owned/populated by whichever action
-    // registers the group-sync handler (SonosDialParticles) — it creates, ticks, and destroys
+    // registers the group-sync handler (PanoramaEffectsDial) — it creates, ticks, and destroys
     // these — but stored here so OTHER actions in the same panorama (Track/Volume/Group Volume
     // dial) can render their own slice of it without any direct coupling to that action.
     readonly groupEffects = new Map<string, EffectInstance<any>>();
     // Per-context "please redraw yourself now" callbacks. Every action registers its own here
-    // when it registers into the panorama. The shared group tick (owned by SonosDialParticles)
+    // when it registers into the panorama. The shared group tick (owned by PanoramaEffectsDial)
     // calls all of a group's callbacks immediately after ticking the effect, so every display in
     // the group renders from the exact same tick instead of each polling on its own independent
     // setInterval — independent timers drift out of phase with each other over time, which

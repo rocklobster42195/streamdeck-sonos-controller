@@ -14,6 +14,7 @@ import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { fetchDiagnosticsSample } from "../sonos/SonosDiagnostics";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
+import { piT } from "../utils/pi-i18n";
 
 // Nerdy power-user tool built while tracking down a real flaky-speaker issue — see
 // src/sonos/SonosDiagnostics.ts for why this reads an UNOFFICIAL Sonos endpoint. Not meant to be
@@ -77,8 +78,8 @@ function buildSparklineSvg(samples: number[], width: number, height: number, col
     return `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" opacity="0.85"/>`;
 }
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-diagnostics" })
-export class SonosDialDiagnostics extends SingletonAction<SonosDiagnosticsSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.diagnostics-dial" })
+export class DiagnosticsDial extends SingletonAction<SonosDiagnosticsSettings> {
     private settingsMap: Map<string, SonosDiagnosticsSettings> = new Map();
     private states: Map<string, DialState> = new Map();
     private pollTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -192,7 +193,7 @@ export class SonosDialDiagnostics extends SingletonAction<SonosDiagnosticsSettin
                 const items = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
-                    items: [{ label: '-- Choose Device --', value: '' }, ...items],
+                    items: [{ label: piT('-- Choose device --'), value: '' }, ...items],
                 });
             }
         }

@@ -4,7 +4,7 @@
 // writes it back via setSettings() — this file reacts to that value arriving through the same
 // settings-sync channel every other bound field already uses (proven reliable throughout this
 // plugin), via the same "listen for valuechange" pattern used elsewhere (e.g. vizSelect in
-// sonos-dial-track.html). Confirmed working via console logging before wiring up the hide/show
+// track-control-dial.html). Confirmed working via console logging before wiring up the hide/show
 // behavior below (checkbox correctly receives hasBattery:true for a Roam).
 //
 // Earlier versions of this file tried a live PI<->plugin message round trip instead (three

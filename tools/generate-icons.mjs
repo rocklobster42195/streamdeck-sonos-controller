@@ -26,16 +26,16 @@ async function write(mdiPath, outDir, name) {
     console.log(`  ✓ ${path.join(outDir, name)}.png`);
 }
 
-await write(mdiPlayCircle,   `${IMGS}/actions/sonos-toggle-play`,      'icon');
-await write(mdiHeartCircle,  `${IMGS}/actions/sonos-play-favorite`,    'icon');
-await write(mdiPlaylistPlay, `${IMGS}/actions/sonos-playback-control`, 'icon');
-await write(mdiVolumeHigh,   `${IMGS}/actions/sonos-key-volume`,       'icon');
-await write(mdiVolumeOff,    `${IMGS}/actions/sonos-key-volume`,       'icon-muted');
-await write(mdiKnob,         `${IMGS}/actions/sonos-dial-volume`,      'icon');
-await write(mdiHeartCircle,  `${IMGS}/actions/sonos-dial-favorites`,   'icon');
-await write(mdiCreation,     `${IMGS}/actions/sonos-dial-particles`,   'icon');
-await write(mdiMusicCircle,  `${IMGS}/actions/sonos-dial-track`,       'icon');
-await write(mdiAccessPointNetwork, `${IMGS}/actions/sonos-dial-diagnostics`, 'icon');
-await write(mdiPlaylistMusic, `${IMGS}/actions/sonos-dial-queue`,       'icon');
+await write(mdiPlayCircle,   `${IMGS}/actions/play-pause-key`,      'icon');
+await write(mdiHeartCircle,  `${IMGS}/actions/play-favorite-key`,    'icon');
+await write(mdiPlaylistPlay, `${IMGS}/actions/playback-control-key`, 'icon');
+await write(mdiVolumeHigh,   `${IMGS}/actions/volume-control-key`,       'icon');
+await write(mdiVolumeOff,    `${IMGS}/actions/volume-control-key`,       'icon-muted');
+await write(mdiKnob,         `${IMGS}/actions/volume-dial`,      'icon');
+await write(mdiHeartCircle,  `${IMGS}/actions/favorites-dial`,   'icon');
+await write(mdiCreation,     `${IMGS}/actions/panorama-effects-dial`,   'icon');
+await write(mdiMusicCircle,  `${IMGS}/actions/track-control-dial`,       'icon');
+await write(mdiAccessPointNetwork, `${IMGS}/actions/diagnostics-dial`, 'icon');
+await write(mdiPlaylistMusic, `${IMGS}/actions/queue-dial`,       'icon');
 
 console.log('Done.');

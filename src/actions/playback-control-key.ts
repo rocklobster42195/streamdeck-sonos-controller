@@ -22,8 +22,8 @@ type SonosPlaybackSettings = {
     command?: 'next' | 'previous' | 'shuffle' | 'repeat';
 };
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-playback-control" })
-export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.playback-control-key" })
+export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private initializedHash: Map<string, string> = new Map();
     private isRadioByContext: Map<string, boolean> = new Map();
@@ -201,7 +201,7 @@ export class SonosPlaybackControl extends SingletonAction<SonosPlaybackSettings>
 
                 await streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
-                    items: [{ label: "-- Choose device --", value: "" }, ...deviceItems]
+                    items: [{ label: piT("-- Choose device --"), value: "" }, ...deviceItems]
                 });
             }
             if (ev.payload.event === 'get-command-options') {

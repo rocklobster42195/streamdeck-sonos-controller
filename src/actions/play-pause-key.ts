@@ -21,7 +21,7 @@ import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 
 /**
- * Settings for {@link SonosTogglePlay}.
+ * Settings for {@link PlayPauseKey}.
  */
 type SonosSettings = {
     deviceIp?: string;
@@ -45,8 +45,8 @@ type SonosSettings = {
     showProgress?: boolean;
 };
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-toggle-play" })
-export class SonosTogglePlay extends SingletonAction<SonosSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.play-pause-key" })
+export class PlayPauseKey extends SingletonAction<SonosSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private currentSettings: Map<string, SonosSettings> = new Map();
     private currentCover: Map<string, string | undefined> = new Map();
@@ -417,7 +417,7 @@ export class SonosTogglePlay extends SingletonAction<SonosSettings> {
                     }));
                     streamDeck.ui.sendToPropertyInspector({
                         event: 'get-devices',
-                        items: items
+                        items: [{ label: piT('-- Choose device --'), value: '' }, ...items]
                     });
                     break;
                 }

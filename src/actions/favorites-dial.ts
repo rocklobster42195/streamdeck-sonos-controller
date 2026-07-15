@@ -21,7 +21,7 @@ import { piT } from "../utils/pi-i18n";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
 
-type SonosFavDialSettings = PanoramaCapableSettings & {
+type FavoritesDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
     browseTimeout?: number; // seconds before returning to now-playing, default 3
     fadeDuration?: string;  // seconds as string from the PI select, "0"/undefined = no fade
@@ -44,8 +44,8 @@ interface FavDialState {
     fadeTimer?: NodeJS.Timeout;
 }
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-favorites" })
-export class SonosDialFavorites extends PanoramaCapableDialAction<SonosFavDialSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.favorites-dial" })
+export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private states: Map<string, FavDialState> = new Map();
     private renderGen: Map<string, number> = new Map();
@@ -157,7 +157,7 @@ export class SonosDialFavorites extends PanoramaCapableDialAction<SonosFavDialSe
         }, INTERVAL_MS);
     }
 
-    protected override async onInstanceUpdate(ev: WillAppearEvent<SonosFavDialSettings> | DidReceiveSettingsEvent<SonosFavDialSettings>): Promise<void> {
+    protected override async onInstanceUpdate(ev: WillAppearEvent<FavoritesDialSettings> | DidReceiveSettingsEvent<FavoritesDialSettings>): Promise<void> {
         const context = ev.action.id;
         let settings = ev.payload.settings;
 
@@ -260,7 +260,7 @@ export class SonosDialFavorites extends PanoramaCapableDialAction<SonosFavDialSe
         this.states.delete(context);
     }
 
-    override async onDialRotate(ev: DialRotateEvent<SonosFavDialSettings>): Promise<void> {
+    override async onDialRotate(ev: DialRotateEvent<FavoritesDialSettings>): Promise<void> {
         const context = ev.action.id;
         const state = this.states.get(context);
         const favs = this.getFavorites();
@@ -289,7 +289,7 @@ export class SonosDialFavorites extends PanoramaCapableDialAction<SonosFavDialSe
         this.queueRender(context);
     }
 
-    override async onDialDown(ev: DialDownEvent<SonosFavDialSettings>): Promise<void> {
+    override async onDialDown(ev: DialDownEvent<FavoritesDialSettings>): Promise<void> {
         const context = ev.action.id;
         const state = this.states.get(context);
         const controller = this.controllers.get(context);
@@ -320,7 +320,7 @@ export class SonosDialFavorites extends PanoramaCapableDialAction<SonosFavDialSe
         }
     }
 
-    override async onTouchTap(ev: TouchTapEvent<SonosFavDialSettings>): Promise<void> {
+    override async onTouchTap(ev: TouchTapEvent<FavoritesDialSettings>): Promise<void> {
         const context = ev.action.id;
         const state = this.states.get(context);
         if (!state) return;
@@ -333,7 +333,7 @@ export class SonosDialFavorites extends PanoramaCapableDialAction<SonosFavDialSe
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosFavDialSettings>): Promise<void> {
+    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, FavoritesDialSettings>): Promise<void> {
         const payload = ev.payload;
         if (typeof payload !== 'object' || payload === null || !('event' in payload)) return;
 
@@ -343,7 +343,7 @@ export class SonosDialFavorites extends PanoramaCapableDialAction<SonosFavDialSe
                 const items = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
-                    items: [{ label: '-- Choose device --', value: '' }, ...items]
+                    items: [{ label: piT('-- Choose device --'), value: '' }, ...items]
                 });
                 break;
             }
@@ -387,7 +387,7 @@ export class SonosDialFavorites extends PanoramaCapableDialAction<SonosFavDialSe
     // Full-canvas panorama effect background with a heart icon centered per `align` — filled
     // circle while PLAYING, outline otherwise. No cover/title text: this mode is deliberately a
     // minimal ambient view, independent of the fragile favorite-title matching used elsewhere.
-    private async renderIconModeDial(action: ReturnType<typeof streamDeck.actions.getActionById>, context: string, settings: SonosFavDialSettings, isPlaying: boolean): Promise<void> {
+    private async renderIconModeDial(action: ReturnType<typeof streamDeck.actions.getActionById>, context: string, settings: FavoritesDialSettings, isPlaying: boolean): Promise<void> {
         if (!action || !action.isDial()) return;
 
         const align = settings.align ?? 'center';

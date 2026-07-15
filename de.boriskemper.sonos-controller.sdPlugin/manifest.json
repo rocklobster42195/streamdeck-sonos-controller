@@ -4,76 +4,76 @@
 	"Author": "Boris Kemper",
 	"Actions": [
 		{
-			"Name": "Play Key",
-			"UUID": "de.boriskemper.sonos-controller.sonos-toggle-play",
-			"Icon": "imgs/actions/sonos-toggle-play/icon",
-			"Tooltip": "Play Key with cover art and title animation.",
-			"PropertyInspectorPath": "ui/sonos-toggle-play.html",
+			"Name": "Play/Pause",
+			"UUID": "de.boriskemper.sonos-controller.play-pause-key",
+			"Icon": "imgs/actions/play-pause-key/icon",
+			"Tooltip": "Toggle Play/Pause with cover art and title animation.",
+			"PropertyInspectorPath": "ui/play-pause-key.html",
 			"Controllers": [
 				"Keypad"
 			],
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-toggle-play/icon"
+					"Image": "imgs/actions/play-pause-key/icon"
 				}
 			]
 		},
 		{
 			"Name": "Play Favorite",
-			"UUID": "de.boriskemper.sonos-controller.play-favorite",
-			"Icon": "imgs/actions/sonos-play-favorite/icon",
+			"UUID": "de.boriskemper.sonos-controller.play-favorite-key",
+			"Icon": "imgs/actions/play-favorite-key/icon",
 			"Tooltip": "Plays a selected SONOS favorite.",
-			"PropertyInspectorPath": "ui/sonos-play-favorite.html",
+			"PropertyInspectorPath": "ui/play-favorite-key.html",
 			"Controllers": [
 				"Keypad"
 			],
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-play-favorite/icon"
+					"Image": "imgs/actions/play-favorite-key/icon"
 				}
 			]
 		},
 		{
 			"Name": "Playback Control",
-			"UUID": "de.boriskemper.sonos-controller.sonos-playback-control",
-			"Icon": "imgs/actions/sonos-playback-control/icon",
+			"UUID": "de.boriskemper.sonos-controller.playback-control-key",
+			"Icon": "imgs/actions/playback-control-key/icon",
 			"Tooltip": "Provides playback controls like next, previous, etc.",
-			"PropertyInspectorPath": "ui/sonos-playback-control.html",
+			"PropertyInspectorPath": "ui/playback-control-key.html",
 			"Controllers": [
 				"Keypad"
 			],
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-playback-control/icon"
+					"Image": "imgs/actions/playback-control-key/icon"
 				}
 			]
 		},
 		{
 			"Name": "Volume Control",
-			"UUID": "de.boriskemper.sonos-controller.sonos-key-volume",
-			"Icon": "imgs/actions/sonos-key-volume/icon",
+			"UUID": "de.boriskemper.sonos-controller.volume-control-key",
+			"Icon": "imgs/actions/volume-control-key/icon",
 			"Tooltip": "Control SONOS volume with a key.",
-			"PropertyInspectorPath": "ui/sonos-key-volume.html",
+			"PropertyInspectorPath": "ui/volume-control-key.html",
 			"Controllers": [
 				"Keypad"
 			],
 			"States": [
 				{
 					"Name": "Unmuted",
-					"Image": "imgs/actions/sonos-key-volume/icon"
+					"Image": "imgs/actions/volume-control-key/icon"
 				},
 				{
 					"Name": "Muted",
-					"Image": "imgs/actions/sonos-key-volume/icon-muted"
+					"Image": "imgs/actions/volume-control-key/icon-muted"
 				}
 			]
 		},
 		{
 			"Name": "Volume",
-			"UUID": "de.boriskemper.sonos-controller.sonos-dial-volume",
-			"Icon": "imgs/actions/sonos-dial-volume/icon",
+			"UUID": "de.boriskemper.sonos-controller.volume-dial",
+			"Icon": "imgs/actions/volume-dial/icon",
 			"Tooltip": "Control SONOS volume with a dial.",
-			"PropertyInspectorPath": "ui/sonos-dial-volume.html",
+			"PropertyInspectorPath": "ui/volume-dial.html",
 			"Controllers": [
 				"Encoder"
 			],
@@ -87,16 +87,16 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-dial-volume/icon"
+					"Image": "imgs/actions/volume-dial/icon"
 				}
 			]
 		},
 		{
 			"Name": "Group Volume",
-			"UUID": "de.boriskemper.sonos-controller.sonos-dial-group-volume",
-			"Icon": "imgs/actions/sonos-dial-group-volume/icon",
+			"UUID": "de.boriskemper.sonos-controller.group-volume-dial",
+			"Icon": "imgs/actions/group-volume-dial/icon",
 			"Tooltip": "Control the volume of an entire SONOS group with a dial.",
-			"PropertyInspectorPath": "ui/sonos-dial-group-volume.html",
+			"PropertyInspectorPath": "ui/group-volume-dial.html",
 			"Controllers": [
 				"Encoder"
 			],
@@ -110,16 +110,16 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-dial-group-volume/icon"
+					"Image": "imgs/actions/group-volume-dial/icon"
 				}
 			]
 		},
 		{
-			"Name": "Favorites Dial",
-			"UUID": "de.boriskemper.sonos-controller.sonos-dial-favorites",
-			"Icon": "imgs/actions/sonos-dial-favorites/icon",
+			"Name": "Favorites",
+			"UUID": "de.boriskemper.sonos-controller.favorites-dial",
+			"Icon": "imgs/actions/favorites-dial/icon",
 			"Tooltip": "Browse and play your personal Sonos favorites list.",
-			"PropertyInspectorPath": "ui/sonos-dial-favorites.html",
+			"PropertyInspectorPath": "ui/favorites-dial.html",
 			"Controllers": [
 				"Encoder"
 			],
@@ -133,16 +133,16 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-dial-favorites/icon"
+					"Image": "imgs/actions/favorites-dial/icon"
 				}
 			]
 		},
 		{
 			"Name": "Panorama Effects",
-			"UUID": "de.boriskemper.sonos-controller.sonos-dial-particles",
-			"Icon": "imgs/actions/sonos-dial-particles/icon",
+			"UUID": "de.boriskemper.sonos-controller.panorama-effects-dial",
+			"Icon": "imgs/actions/panorama-effects-dial/icon",
 			"Tooltip": "Visual effect animation spanning up to 4 LCD panels as one continuous scene.",
-			"PropertyInspectorPath": "ui/sonos-dial-particles.html",
+			"PropertyInspectorPath": "ui/panorama-effects-dial.html",
 			"Controllers": [
 				"Encoder"
 			],
@@ -156,16 +156,16 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-dial-particles/icon"
+					"Image": "imgs/actions/panorama-effects-dial/icon"
 				}
 			]
 		},
 		{
-			"Name": "Track Dial",
-			"UUID": "de.boriskemper.sonos-controller.sonos-dial-track",
-			"Icon": "imgs/actions/sonos-dial-track/icon",
+			"Name": "Track Control",
+			"UUID": "de.boriskemper.sonos-controller.track-control-dial",
+			"Icon": "imgs/actions/track-control-dial/icon",
 			"Tooltip": "Displays current track info and controls volume.",
-			"PropertyInspectorPath": "ui/sonos-dial-track.html",
+			"PropertyInspectorPath": "ui/track-control-dial.html",
 			"Controllers": [
 				"Encoder"
 			],
@@ -173,22 +173,22 @@
 				"layout": "$A0",
 				"TriggerDescription": {
 					"Push": "Skip to next track",
-					"Rotate": "Seek Â±5% in track",
+					"Rotate": "Seek ±5% in track",
 					"Touch": "Toggle Play/Pause"
 				}
 			},
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-dial-track/icon"
+					"Image": "imgs/actions/track-control-dial/icon"
 				}
 			]
 		},
 		{
-			"Name": "Queue Dial",
-			"UUID": "de.boriskemper.sonos-controller.sonos-dial-queue",
-			"Icon": "imgs/actions/sonos-dial-queue/icon",
+			"Name": "Queue",
+			"UUID": "de.boriskemper.sonos-controller.queue-dial",
+			"Icon": "imgs/actions/queue-dial/icon",
 			"Tooltip": "Browse and jump within the current playlist/queue; shows a now-playing card for radio.",
-			"PropertyInspectorPath": "ui/sonos-dial-queue.html",
+			"PropertyInspectorPath": "ui/queue-dial.html",
 			"Controllers": [
 				"Encoder"
 			],
@@ -202,16 +202,16 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-dial-queue/icon"
+					"Image": "imgs/actions/queue-dial/icon"
 				}
 			]
 		},
 		{
-			"Name": "Diagnostics Dial",
-			"UUID": "de.boriskemper.sonos-controller.sonos-dial-diagnostics",
-			"Icon": "imgs/actions/sonos-dial-diagnostics/icon",
+			"Name": "Diagnostics",
+			"UUID": "de.boriskemper.sonos-controller.diagnostics-dial",
+			"Icon": "imgs/actions/diagnostics-dial/icon",
 			"Tooltip": "Nerdy WiFi connection diagnostics sparkline for a SONOS speaker (unofficial, may break with firmware updates).",
-			"PropertyInspectorPath": "ui/sonos-dial-diagnostics.html",
+			"PropertyInspectorPath": "ui/diagnostics-dial.html",
 			"Controllers": [
 				"Encoder"
 			],
@@ -225,7 +225,7 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/actions/sonos-dial-diagnostics/icon"
+					"Image": "imgs/actions/diagnostics-dial/icon"
 				}
 			]
 		}

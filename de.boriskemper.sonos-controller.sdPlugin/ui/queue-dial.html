@@ -71,7 +71,7 @@
             qtRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
         });
 
-        // Wrapped in DOMContentLoaded — see sonos-dial-track.html for why this can't be an
+        // Wrapped in DOMContentLoaded — see track-control-dial.html for why this can't be an
         // inline `<script defer>` relying on effect-fields.js (a real deferred external script)
         // having already run.
         document.addEventListener('DOMContentLoaded', function () {

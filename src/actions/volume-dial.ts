@@ -20,7 +20,7 @@ import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { piT } from "../utils/pi-i18n";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
 
-type SonosDialVolumeSettings = PanoramaCapableSettings & {
+type VolumeDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
     presetVolume?: number;
     align?: 'left' | 'center' | 'right';
@@ -44,8 +44,8 @@ interface DialState {
     fadeDurationMs?: number;
 }
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-volume" })
-export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.volume-dial" })
+export class VolumeDial extends PanoramaCapableDialAction<VolumeDialSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private states: Map<string, DialState> = new Map();
     private rotateSend: Map<string, { target: number; timer?: NodeJS.Timeout; sending: boolean; resendNeeded: boolean; lastSentAt: number }> = new Map();
@@ -60,12 +60,12 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
     // Brief on-device confirmation that a long-touch preset save succeeded — dial actions have
     // no showOk()/showAlert()-style flash for this, so swap the pie for a checkmark momentarily.
     private flashPresetSaved(context: string): void {
-        this.presetSavedUntil.set(context, Date.now() + SonosDialVolume.PRESET_SAVED_FLASH_MS);
+        this.presetSavedUntil.set(context, Date.now() + VolumeDial.PRESET_SAVED_FLASH_MS);
         void this.renderDial(context);
         setTimeout(() => {
             this.presetSavedUntil.delete(context);
             void this.renderDial(context);
-        }, SonosDialVolume.PRESET_SAVED_FLASH_MS);
+        }, VolumeDial.PRESET_SAVED_FLASH_MS);
     }
 
     private onVolumeInfoChanged(context: string, volumeInfo: VolumeInfo): void {
@@ -98,7 +98,7 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
             // Reads the cached (already-real) displayVolume, NOT currentDisplayVolume() — that
             // would see fading=true (set right below) plus stale fadeStartTime/fadeDurationMs
             // left over from a PREVIOUS fade and compute a bogus "already fully faded" progress
-            // off of them (hit this exact bug in sonos-key-volume.ts — starts every fade after
+            // off of them (hit this exact bug in volume-control-key.ts — starts every fade after
             // the first one from 0 instead of the real current volume).
             state.fadeStartVolume = state.displayVolume ?? state.volume ?? 0;
             state.fading = true;
@@ -201,11 +201,11 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
         }
 
         const elapsed = Date.now() - entry.lastSentAt;
-        if (elapsed >= SonosDialVolume.SEND_THROTTLE_MS) {
+        if (elapsed >= VolumeDial.SEND_THROTTLE_MS) {
             if (entry.timer) { clearTimeout(entry.timer); entry.timer = undefined; }
             void this.flushVolumeSend(context, controller);
         } else if (!entry.timer) {
-            entry.timer = setTimeout(() => void this.flushVolumeSend(context, controller), SonosDialVolume.SEND_THROTTLE_MS - elapsed);
+            entry.timer = setTimeout(() => void this.flushVolumeSend(context, controller), VolumeDial.SEND_THROTTLE_MS - elapsed);
         }
         // else: a timer is already scheduled and will pick up the latest entry.target when it fires.
     }
@@ -221,7 +221,7 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
         try {
             await controller.setVolume(target);
         } catch (e) {
-            streamDeck.logger.error(`SonosDialVolume: error setting volume for ${context}`, e);
+            streamDeck.logger.error(`VolumeDial: error setting volume for ${context}`, e);
         } finally {
             entry.sending = false;
             this.feedbackSuppressUntil.set(context, Date.now() + 800);
@@ -251,7 +251,7 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
         this.presetSavedUntil.delete(context);
     }
 
-    protected override async onInstanceUpdate(ev: WillAppearEvent<SonosDialVolumeSettings> | DidReceiveSettingsEvent<SonosDialVolumeSettings>): Promise<void> {
+    protected override async onInstanceUpdate(ev: WillAppearEvent<VolumeDialSettings> | DidReceiveSettingsEvent<VolumeDialSettings>): Promise<void> {
         const context = ev.action.id;
         let settings = ev.payload.settings;
 
@@ -290,13 +290,13 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
             }
             void this.renderDial(context);
         } catch (e) {
-            streamDeck.logger.error(`SonosDialVolume: error getting initial state for ${settings.deviceIp}`, e);
+            streamDeck.logger.error(`VolumeDial: error getting initial state for ${settings.deviceIp}`, e);
             await this.renderUnreachableDial(context, 'VOLUME');
             this.scheduleSetupRetry(ev);
         }
     }
 
-    override async onDialDown(ev: DialDownEvent<SonosDialVolumeSettings>): Promise<void> {
+    override async onDialDown(ev: DialDownEvent<VolumeDialSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         const state = this.states.get(context);
@@ -308,7 +308,7 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
         void this.renderDial(context);
     }
 
-    override async onTouchTap(ev: TouchTapEvent<SonosDialVolumeSettings>): Promise<void> {
+    override async onTouchTap(ev: TouchTapEvent<VolumeDialSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         if (!controller) return;
@@ -317,7 +317,7 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
             // Long touch: save the current volume as the new preset.
             const state = this.states.get(context);
             if (state?.volume === undefined) return;
-            const settings: SonosDialVolumeSettings = { ...ev.payload.settings, presetVolume: state.volume };
+            const settings: VolumeDialSettings = { ...ev.payload.settings, presetVolume: state.volume };
             this.settingsMap.set(context, settings);
             await ev.action.setSettings(settings);
             this.flashPresetSaved(context);
@@ -327,7 +327,7 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
         await controller.setVolume(ev.payload.settings.presetVolume ?? 50);
     }
 
-    override async onDialRotate(ev: DialRotateEvent<SonosDialVolumeSettings>): Promise<void> {
+    override async onDialRotate(ev: DialRotateEvent<VolumeDialSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         const state = this.states.get(context);
@@ -357,14 +357,14 @@ export class SonosDialVolume extends PanoramaCapableDialAction<SonosDialVolumeSe
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosDialVolumeSettings>): Promise<void> {
+    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, VolumeDialSettings>): Promise<void> {
         if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
             if (ev.payload.event === 'get-devices') {
                 await discoveryPromise;
                 const items = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
-                    items: [{ label: '-- Choose Device --', value: '' }, ...items],
+                    items: [{ label: piT('-- Choose device --'), value: '' }, ...items],
                 });
             }
             if (ev.payload.event === 'get-align-options') {

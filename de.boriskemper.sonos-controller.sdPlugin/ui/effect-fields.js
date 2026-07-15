@@ -1,6 +1,6 @@
 // Generic Property Inspector renderer for effect settingsSchema fields (color/range/checkbox/
-// select) — shared by all 4 dial actions' PI HTML (sonos-dial-particles/track/volume/
-// group-volume.html). Building this once here means a newly contributed effect's settingsSchema
+// select) — shared by all 4 dial actions' PI HTML (panorama-effects-dial/track-control-dial/
+// volume-dial/group-volume-dial.html). Building this once here means a newly contributed effect's settingsSchema
 // automatically gets PI controls on every dial that can host effects, with zero hand-wiring.
 //
 // See CONTRIBUTING_EFFECTS.md for the settingsSchema contract (EffectField union).

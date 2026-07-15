@@ -28,7 +28,7 @@ interface ReachabilitySource {
 // Shared lifecycle for any dial action that can participate in the panorama effects system
 // (Volume/Track/Group Volume dial today; any future dial — e.g. a planned Queue Dial — extends
 // this instead of re-copying the same ~150 lines a 4th time). Deliberately NOT extended by
-// SonosDialParticles ("Panorama Effects" dial) — that action OWNS group orchestration (creates/
+// PanoramaEffectsDial ("Panorama Effects" dial) — that action OWNS group orchestration (creates/
 // destroys effect instances, runs the shared tick, registers the group-sync/settings-change
 // handlers) and has no device concept or "opt in/out of effect mode" lifecycle at all, so its
 // shape doesn't fit this base class.

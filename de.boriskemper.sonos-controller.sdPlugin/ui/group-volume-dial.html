@@ -39,7 +39,7 @@
         // binding mixin declares `value` with `attribute: false`, so a plain HTML attribute has
         // no effect. Pre-seeds the "unset" (brand new tile, no saved showText yet) case to match
         // this dial's own render default (`settings?.showText ?? true` in
-        // sonos-dial-group-volume.ts) — without this the PI checkbox showed unchecked while the
+        // group-volume-dial.ts) — without this the PI checkbox showed unchecked while the
         // dial itself already rendered the % text, since a checkbox's own unset default is
         // unchecked/false. A previously saved value (true or false) still overrides this once the
         // real settings sync arrives.

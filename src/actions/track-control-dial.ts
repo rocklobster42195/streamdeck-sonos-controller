@@ -56,8 +56,8 @@ interface DialState {
     batteryStatus?: SonosBatteryStatus;
 }
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-track" })
-export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.track-control-dial" })
+export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private states: Map<string, DialState> = new Map();
     private animators: Map<string, CoverArtAnimator> = new Map();
@@ -380,7 +380,7 @@ export class SonosDialTrack extends PanoramaCapableDialAction<SonosSettings> {
                 const deviceItems = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
-                    items: [{ label: '-- Choose Device --', value: '' }, ...deviceItems]
+                    items: [{ label: piT('-- Choose device --'), value: '' }, ...deviceItems]
                 });
             }
             if (ev.payload.event === 'get-viz-options') {

@@ -20,7 +20,7 @@ export interface SonosDiagnosticsSample {
      *  itself diagnostically interesting (seen on a speaker with intermittent connectivity). */
     noiseFloorDbm: number | null;
     /** Cumulative PHY error counter since the radio driver's last reset — NOT a rate. Callers
-     *  wanting a rate should diff consecutive samples themselves (see sonos-dial-diagnostics.ts). */
+     *  wanting a rate should diff consecutive samples themselves (see diagnostics-dial.ts). */
     phyErrorsCumulative: number | null;
 }
 

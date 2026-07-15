@@ -53,8 +53,8 @@ const DEFAULT_COLOR = '#404040';
 // 0.1/tick @ 50ms = ~500ms full crossfade — matches CoverArtAnimator's cover-image crossfade feel.
 const TEXT_FADE_STEP = 0.1;
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-particles" })
-export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.panorama-effects-dial" })
+export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
 
     constructor() {
         super();
@@ -613,7 +613,7 @@ export class SonosDialParticles extends SingletonAction<ParticlesSettings> {
                 const deviceItems = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
-                    items: [{ label: '-- No device (static color) --', value: '' }, ...deviceItems]
+                    items: [{ label: piT('-- No device (static color) --'), value: '' }, ...deviceItems]
                 });
             }
             if (ev.payload.event === 'get-effects') {

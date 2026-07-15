@@ -30,8 +30,8 @@ type SonosFavoriteSettings = {
     fadeDuration?: string; // seconds as string from the PI select, "0"/undefined = no fade
 };
 
-@action({ UUID: "de.boriskemper.sonos-controller.play-favorite" })
-export class SonosPlayFavorite extends SingletonAction<SonosFavoriteSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.play-favorite-key" })
+export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
 
     private setupRetry = new SetupRetryScheduler();
@@ -158,7 +158,7 @@ export class SonosPlayFavorite extends SingletonAction<SonosFavoriteSettings> {
                     }));
                     streamDeck.ui.sendToPropertyInspector({
                         event: 'get-devices',
-                        items: [{ label: "-- Choose device --", value: "" }, ...deviceItems]
+                        items: [{ label: piT("-- Choose device --"), value: "" }, ...deviceItems]
                     });
                     break;
                 }

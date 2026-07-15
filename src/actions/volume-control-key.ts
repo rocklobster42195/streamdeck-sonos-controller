@@ -27,8 +27,8 @@ type SonosKeyVolumeSettings = {
     showPreset?: boolean;
 };
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-key-volume" })
-export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.volume-control-key" })
+export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private initializedHash: Map<string, string> = new Map();
     private timers: Map<string, NodeJS.Timeout> = new Map();
@@ -43,7 +43,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
     private fadeAnimTimers: Map<string, NodeJS.Timeout> = new Map();
 
     // Eases the fader icon toward the actual volume instead of snapping to it,
-    // matching the SonosDialVolume behavior. Only relevant for the 'mute' command,
+    // matching the VolumeDial behavior. Only relevant for the 'mute' command,
     // whose icon is the only one that visualizes the volume level.
     private startVolumeAnim(context: string): void {
         if (this.volumeAnimTimers.has(context)) return;
@@ -99,7 +99,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
     }
 
     // Computes the fader icon's current value on demand from elapsed real time rather than caching
-    // it in a timer-written field — see the identical comment on SonosDialVolume.currentDisplayVolume
+    // it in a timer-written field — see the identical comment on VolumeDial.currentDisplayVolume
     // for why (two independently-paced timers stomping on a shared cached value stutters).
     private currentDisplayVolume(state: { displayVolume: number; fading?: boolean; fadeStartVolume?: number; fadeStartTime?: number; fadeDurationMs?: number }): number {
         if (state.fading && state.fadeStartTime !== undefined && state.fadeDurationMs !== undefined) {
@@ -134,7 +134,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
         if (!action) return;
 
         let iconFile = '';
-        const basePath = 'imgs/actions/sonos-key-volume/';
+        const basePath = 'imgs/actions/volume-control-key/';
 
         switch (command) {
             case 'mute':
@@ -420,7 +420,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
                 }));
 
                 const itemsWithPlaceholder = [
-                    { label: "-- Choose device --", value: "" },
+                    { label: piT("-- Choose device --"), value: "" },
                     ...deviceItems
                 ];
 

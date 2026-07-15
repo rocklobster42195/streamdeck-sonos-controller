@@ -89,8 +89,8 @@ function cursorMarqueeKey(context: string): string {
     return `${context}:cursor`;
 }
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-queue" })
-export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.queue-dial" })
+export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private states: Map<string, QueueDialState> = new Map();
     private animators: Map<string, CoverArtAnimator> = new Map();
@@ -550,7 +550,7 @@ export class SonosDialQueue extends PanoramaCapableDialAction<QueueDialSettings>
                 const deviceItems = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-devices',
-                    items: [{ label: '-- Choose Device --', value: '' }, ...deviceItems]
+                    items: [{ label: piT('-- Choose device --'), value: '' }, ...deviceItems]
                 });
             }
             if (ev.payload.event === 'get-cover-position-options') {

@@ -19,7 +19,7 @@ import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { piT } from "../utils/pi-i18n";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
 
-type SonosDialGroupVolumeSettings = PanoramaCapableSettings & {
+type GroupVolumeDialSettings = PanoramaCapableSettings & {
     groupIp?: string;
     // Per-member volumes captured via long-touch — host -> volume. Deliberately not a single
     // absolute number: a group preset should restore each speaker's own balance (e.g. a Port at
@@ -46,8 +46,8 @@ interface DialState {
     fadeDurationMs?: number;
 }
 
-@action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-group-volume" })
-export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGroupVolumeSettings> {
+@action({ UUID: "de.boriskemper.sonos-controller.group-volume-dial" })
+export class GroupVolumeDial extends PanoramaCapableDialAction<GroupVolumeDialSettings> {
     private controllers: Map<string, SonosGroupController> = new Map();
     private states: Map<string, DialState> = new Map();
     private rotateSend: Map<string, { pendingDelta: number; timer?: NodeJS.Timeout; sending: boolean; lastSentAt: number }> = new Map();
@@ -62,12 +62,12 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
     // Brief on-device confirmation that a long-touch preset save succeeded — dial actions have
     // no showOk()/showAlert()-style flash for this, so swap the pie for a checkmark momentarily.
     private flashPresetSaved(context: string): void {
-        this.presetSavedUntil.set(context, Date.now() + SonosDialGroupVolume.PRESET_SAVED_FLASH_MS);
+        this.presetSavedUntil.set(context, Date.now() + GroupVolumeDial.PRESET_SAVED_FLASH_MS);
         void this.renderDial(context);
         setTimeout(() => {
             this.presetSavedUntil.delete(context);
             void this.renderDial(context);
-        }, SonosDialGroupVolume.PRESET_SAVED_FLASH_MS);
+        }, GroupVolumeDial.PRESET_SAVED_FLASH_MS);
     }
 
     private onVolumeInfoChanged(context: string, volumeInfo: VolumeInfo): void {
@@ -100,7 +100,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
             // Reads the cached (already-real) displayVolume, NOT currentDisplayVolume() — that
             // would see fading=true (set right below) plus stale fadeStartTime/fadeDurationMs
             // left over from a PREVIOUS fade and compute a bogus "already fully faded" progress
-            // off of them (hit this exact bug in sonos-key-volume.ts — starts every fade after
+            // off of them (hit this exact bug in volume-control-key.ts — starts every fade after
             // the first one from 0 instead of the real current volume).
             state.fadeStartVolume = state.displayVolume ?? state.volume ?? 0;
             state.fading = true;
@@ -202,11 +202,11 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         if (entry.sending) return; // flushVolumeAdjust's finally block will pick up the accumulated delta.
 
         const elapsed = Date.now() - entry.lastSentAt;
-        if (elapsed >= SonosDialGroupVolume.SEND_THROTTLE_MS) {
+        if (elapsed >= GroupVolumeDial.SEND_THROTTLE_MS) {
             if (entry.timer) { clearTimeout(entry.timer); entry.timer = undefined; }
             void this.flushVolumeAdjust(context, controller);
         } else if (!entry.timer) {
-            entry.timer = setTimeout(() => void this.flushVolumeAdjust(context, controller), SonosDialGroupVolume.SEND_THROTTLE_MS - elapsed);
+            entry.timer = setTimeout(() => void this.flushVolumeAdjust(context, controller), GroupVolumeDial.SEND_THROTTLE_MS - elapsed);
         }
         // else: a timer is already scheduled and will flush the accumulated delta when it fires.
     }
@@ -222,17 +222,17 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         try {
             await controller.adjustVolume(delta);
         } catch (e) {
-            streamDeck.logger.error(`SonosDialGroupVolume: error adjusting group volume for ${context}`, e);
+            streamDeck.logger.error(`GroupVolumeDial: error adjusting group volume for ${context}`, e);
             entry.pendingDelta += delta; // don't lose the delta — retry it along with whatever accumulates next.
         } finally {
             entry.sending = false;
             this.feedbackSuppressUntil.set(context, Date.now() + 800);
             if (entry.pendingDelta !== 0) {
                 const elapsed = Date.now() - entry.lastSentAt;
-                if (elapsed >= SonosDialGroupVolume.SEND_THROTTLE_MS) {
+                if (elapsed >= GroupVolumeDial.SEND_THROTTLE_MS) {
                     void this.flushVolumeAdjust(context, controller);
                 } else if (!entry.timer) {
-                    entry.timer = setTimeout(() => void this.flushVolumeAdjust(context, controller), SonosDialGroupVolume.SEND_THROTTLE_MS - elapsed);
+                    entry.timer = setTimeout(() => void this.flushVolumeAdjust(context, controller), GroupVolumeDial.SEND_THROTTLE_MS - elapsed);
                 }
             }
         }
@@ -258,7 +258,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         this.presetSavedUntil.delete(context);
     }
 
-    protected override async onInstanceUpdate(ev: WillAppearEvent<SonosDialGroupVolumeSettings> | DidReceiveSettingsEvent<SonosDialGroupVolumeSettings>): Promise<void> {
+    protected override async onInstanceUpdate(ev: WillAppearEvent<GroupVolumeDialSettings> | DidReceiveSettingsEvent<GroupVolumeDialSettings>): Promise<void> {
         const context = ev.action.id;
         let settings = ev.payload.settings;
 
@@ -297,13 +297,13 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
             }
             void this.renderDial(context);
         } catch (e) {
-            streamDeck.logger.error(`SonosDialGroupVolume: error getting initial state for ${settings.groupIp}`, e);
+            streamDeck.logger.error(`GroupVolumeDial: error getting initial state for ${settings.groupIp}`, e);
             await this.renderUnreachableDial(context, 'GROUP');
             this.scheduleSetupRetry(ev);
         }
     }
 
-    override async onDialDown(ev: DialDownEvent<SonosDialGroupVolumeSettings>): Promise<void> {
+    override async onDialDown(ev: DialDownEvent<GroupVolumeDialSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         const state = this.states.get(context);
@@ -314,7 +314,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         void this.renderDial(context);
     }
 
-    override async onTouchTap(ev: TouchTapEvent<SonosDialGroupVolumeSettings>): Promise<void> {
+    override async onTouchTap(ev: TouchTapEvent<GroupVolumeDialSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         if (!controller) return;
@@ -322,7 +322,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         if (ev.payload.hold) {
             // Long touch: save each member's current volume as the new preset.
             const snapshot = await controller.getMemberVolumeSnapshot();
-            const settings: SonosDialGroupVolumeSettings = { ...ev.payload.settings, presetMemberVolumes: snapshot };
+            const settings: GroupVolumeDialSettings = { ...ev.payload.settings, presetMemberVolumes: snapshot };
             this.settingsMap.set(context, settings);
             await ev.action.setSettings(settings);
             this.flashPresetSaved(context);
@@ -333,7 +333,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         if (preset) await controller.recallMemberVolumes(preset);
     }
 
-    override async onDialRotate(ev: DialRotateEvent<SonosDialGroupVolumeSettings>): Promise<void> {
+    override async onDialRotate(ev: DialRotateEvent<GroupVolumeDialSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         const state = this.states.get(context);
@@ -367,7 +367,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosDialGroupVolumeSettings>): Promise<void> {
+    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, GroupVolumeDialSettings>): Promise<void> {
         if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
             if (ev.payload.event === 'get-groups') {
                 await discoveryPromise;
@@ -381,7 +381,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
                 }
                 streamDeck.ui.sendToPropertyInspector({
                     event: 'get-groups',
-                    items: [{ label: '-- Choose Group --', value: '' }, ...items],
+                    items: [{ label: piT('-- Choose group --'), value: '' }, ...items],
                 });
             }
             if (ev.payload.event === 'get-align-options') {
