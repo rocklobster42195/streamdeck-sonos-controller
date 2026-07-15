@@ -189,7 +189,7 @@ of once per group, and a second joining dial visibly stalled rendering). Follow 
   can render for days without a restart) — clamp, don't let drift accumulate unbounded.
 - Test in both solo mode (single display) and grouped mode (place 2–3 dials adjacently) before
   opening a PR — behavior and performance can differ significantly between the two. All testing
-  so far has been on a 4-dial Stream Deck+; a wider row (e.g. a 6-dial Stream Deck XL) is
+  so far has been on a 4-dial Stream Deck+; a wider row (e.g. a 6-dial Stream Deck+ XL) is
   untested — hardware needed.
 
 **Don't:**
