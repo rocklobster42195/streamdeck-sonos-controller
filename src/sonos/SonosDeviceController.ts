@@ -29,6 +29,11 @@ const SET_VOLUME_TIMEOUT_MS = 5000;
 // battery display mode) is registered; see registerBatteryCallback/unregisterBatteryCallback.
 const BATTERY_POLL_MS = 15000;
 
+// Matches the "restart current track vs. skip to previous" convention used by Spotify/iTunes/the
+// Sonos app itself — none of that lives in the UPnP Previous action, which always skips straight
+// to the previous track regardless of playback position.
+const PREVIOUS_RESTART_THRESHOLD_SECONDS = 3;
+
 export class SonosDeviceController {
   public readonly deviceIp: string;
   public sonosDevice: SonosDevice; 
@@ -393,8 +398,30 @@ export class SonosDeviceController {
   // used transportDevice and worked correctly for a grouped member, which is what exposed this.
   async togglePlayPause(): Promise<void> { await this.transportDevice.TogglePlayback(); }
   async next(): Promise<void> { await this.transportDevice.Next(); }
-  async previous(): Promise<void> { await this.transportDevice.Previous(); }
-  
+
+  // If we're more than a few seconds into the current track, restart it instead of skipping to
+  // the actual previous track (standard media-player UX). GetPositionInfo throws for sources that
+  // don't report a position (e.g. some radio streams) — fall through to plain Previous() then.
+  async previous(): Promise<void> {
+    try {
+      const positionInfo = await this.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
+      const elapsedSeconds = this.parseRelTime(positionInfo.RelTime);
+      if (elapsedSeconds > PREVIOUS_RESTART_THRESHOLD_SECONDS) {
+        await this.transportDevice.AVTransportService.Seek({ InstanceID: 0, Unit: 'REL_TIME', Target: '0:00:00' });
+        return;
+      }
+    } catch { /* fall through to native previous */ }
+    await this.transportDevice.Previous();
+  }
+
+  private parseRelTime(t: string): number {
+    if (!t || t === 'NOT_IMPLEMENTED') return 0;
+    const parts = t.split(':').map(Number);
+    return (parts.length === 3 && parts.every(n => !isNaN(n)))
+      ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+      : 0;
+  }
+
   async setVolume(volume: number): Promise<void> {
     await withTimeout(
       this.sonosDevice.RenderingControlService.SetVolume({ DesiredVolume: volume, InstanceID: 0, Channel: "Master" }),
