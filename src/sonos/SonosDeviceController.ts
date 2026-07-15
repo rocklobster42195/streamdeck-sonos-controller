@@ -34,6 +34,12 @@ export class SonosDeviceController {
   public sonosDevice: SonosDevice; 
 
   private volumeInfoCallbacks: Map<string, (volumeInfo: VolumeInfo) => void> = new Map();
+  // Fired around a fade-out ramp (see playFavoriteWithFade) so a watching dial can fake a smooth
+  // visual descent instead of hopping between the actual coarse SetVolume steps (~150ms+ apart,
+  // see volume-fade.ts's MIN_STEP_INTERVAL_MS) — purely a UI signal, changes nothing about the
+  // real fade mechanics. May be fired on a DIFFERENT controller instance than the one orchestrating
+  // the fade — see collectFadeMembers, which calls this on each member's own pooled controller.
+  private fadeStateCallbacks: Map<string, (fading: boolean, durationMs: number) => void> = new Map();
   private transportStateCallbacks: Map<string, (transportState: string) => void> = new Map();
   private playModeCallbacks: Map<string, (playMode: string) => void> = new Map();
   private trackInfoCallbacks: Map<string, (trackInfo: TrackInfo) => void> = new Map();
@@ -568,6 +574,9 @@ export class SonosDeviceController {
   // --- Callbacks ---
   registerVolumeCallback(id: string, callback: (volumeInfo: VolumeInfo) => void): void { this.volumeInfoCallbacks.set(id, callback); }
   unregisterVolumeCallback(id: string): void { this.volumeInfoCallbacks.delete(id); }
+  registerFadeStateCallback(id: string, callback: (fading: boolean, durationMs: number) => void): void { this.fadeStateCallbacks.set(id, callback); }
+  unregisterFadeStateCallback(id: string): void { this.fadeStateCallbacks.delete(id); }
+  notifyFadeState(fading: boolean, durationMs = 0): void { this.fadeStateCallbacks.forEach(cb => cb(fading, durationMs)); }
   registerTransportStateCallback(id: string, callback: (transportState: string) => void): void { this.transportStateCallbacks.set(id, callback); }
   unregisterTransportStateCallback(id: string): void { this.transportStateCallbacks.delete(id); }
   registerPlayModeCallback(id: string, callback: (playMode: string) => void): void { this.playModeCallbacks.set(id, callback); }
@@ -973,6 +982,9 @@ export class SonosDeviceController {
     // ORIGINAL volume, not the half-faded one it happens to be at (collectFadeMembers reads
     // this map before we replace it).
     this.preFadeVolumes = new Map(audible.map((m) => [m.host, m.preVolume]));
+    // Told up front, before the first actual SetVolume goes out — see notifyFadeState's doc
+    // comment for why this is a pure UI signal to whichever dial is watching each member.
+    audible.forEach((m) => m.notifyFading(true, fadeOutMs));
     try {
       await Promise.allSettled(audible.map((m) => this.ramp(m.setVolume, m.liveVolume, 0, fadeOutMs, cancelled)));
       if (cancelled()) return; // a newer favorite press took over mid-fade
@@ -984,6 +996,10 @@ export class SonosDeviceController {
         // a couple of seconds after Play() returns, so this lands while the group is still
         // silent and the audio then comes in at the correct level. Doubles as the error rescue.
         await Promise.allSettled(audible.map((m) => m.setVolume(m.preVolume).catch(() => {})));
+        // Only the winning (non-cancelled) fade ever turns fading back off — a superseded fade
+        // must NOT do this, or its own delayed cleanup could race a newer fade's notifyFading(true)
+        // and turn the fake animation off while that newer fade is still actually running.
+        audible.forEach((m) => m.notifyFading(false, 0));
       }
     }
   }
@@ -993,7 +1009,7 @@ export class SonosDeviceController {
   // straight to the manager-owned device otherwise (no watchers to notify, and deliberately NOT
   // sonosDeviceManager.getController(): spinning up a full controller with poll loops and GENA
   // subscriptions per fade for a device no action is watching would be far too heavy).
-  private async collectFadeMembers(): Promise<Array<{ host: string; preVolume: number; liveVolume: number; setVolume: (v: number) => Promise<void> }>> {
+  private async collectFadeMembers(): Promise<Array<{ host: string; preVolume: number; liveVolume: number; setVolume: (v: number) => Promise<void>; notifyFading: (fading: boolean, durationMs: number) => void }>> {
     let hosts: string[];
     try {
       const managed = sonosManager.Devices.find((d) => d.Host === this.deviceIp);
@@ -1006,7 +1022,7 @@ export class SonosDeviceController {
       hosts = [this.deviceIp]; // discovery not ready — fade at least this device
     }
 
-    const members: Array<{ host: string; preVolume: number; liveVolume: number; setVolume: (v: number) => Promise<void> }> = [];
+    const members: Array<{ host: string; preVolume: number; liveVolume: number; setVolume: (v: number) => Promise<void>; notifyFading: (fading: boolean, durationMs: number) => void }> = [];
     await Promise.all(hosts.map(async (host) => {
       const controller = host === this.deviceIp ? this : sonosDeviceManager.peekController(host);
       if (controller) {
@@ -1015,6 +1031,7 @@ export class SonosDeviceController {
           preVolume: this.preFadeVolumes.get(host) ?? controller.currentVolume,
           liveVolume: controller.currentVolume,
           setVolume: (v) => controller.applyFadeVolume(v),
+          notifyFading: (fading, durationMs) => controller.notifyFadeState(fading, durationMs),
         });
         return;
       }
@@ -1037,6 +1054,8 @@ export class SonosDeviceController {
               `fade SetVolume (${host})`,
             );
           },
+          // No pooled controller ⇒ no dial is watching this device, nothing to signal.
+          notifyFading: () => {},
         });
       } catch { /* member unreachable — leave it out of the fade entirely */ }
     }));

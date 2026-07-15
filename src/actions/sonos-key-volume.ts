@@ -34,8 +34,13 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
     private timers: Map<string, NodeJS.Timeout> = new Map();
     private longPressExecuted: Map<string, boolean> = new Map();
     private actionRefs: Map<string, any> = new Map();
-    private volumeAnimState: Map<string, { volume: number; displayVolume: number; isMuted: boolean; command?: 'mute' | 'vol-up' | 'vol-down' | 'vol-preset' }> = new Map();
+    private volumeAnimState: Map<string, {
+        volume: number; displayVolume: number; isMuted: boolean; command?: 'mute' | 'vol-up' | 'vol-down' | 'vol-preset';
+        // Fade-out fake-animation fields — see onFadeStateChanged/currentDisplayVolume.
+        fading?: boolean; fadeStartVolume?: number; fadeStartTime?: number; fadeDurationMs?: number;
+    }> = new Map();
     private volumeAnimTimers: Map<string, NodeJS.Timeout> = new Map();
+    private fadeAnimTimers: Map<string, NodeJS.Timeout> = new Map();
 
     // Eases the fader icon toward the actual volume instead of snapping to it,
     // matching the SonosDialVolume behavior. Only relevant for the 'mute' command,
@@ -61,6 +66,63 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
     private stopVolumeAnim(context: string): void {
         const timer = this.volumeAnimTimers.get(context);
         if (timer) { clearInterval(timer); this.volumeAnimTimers.delete(context); }
+    }
+
+    // Called (via SonosDeviceController.registerFadeStateCallback) right as a group fade-out
+    // starts/ends. Fakes a continuous descent to 0 over the fade's own known duration instead of
+    // showing the real, coarsely-stepped SetVolume echoes — then glides back to the real, restored
+    // volume once the fade actually ends. Only the 'mute' command's fader icon visualizes volume.
+    private onFadeStateChanged(context: string, fading: boolean, durationMs: number): void {
+        const state = this.volumeAnimState.get(context);
+        if (!state || state.command !== 'mute') return;
+        if (fading) {
+            this.stopVolumeAnim(context);
+            state.fading = true;
+            state.fadeStartVolume = this.currentDisplayVolume(state);
+            state.fadeStartTime = Date.now();
+            state.fadeDurationMs = Math.max(1, durationMs);
+            this.startFadeAnim(context);
+        } else {
+            // Freeze wherever the live-computed descent currently reads as displayVolume's real
+            // value — state.fading flips false right after, so currentDisplayVolume's fade branch
+            // won't be consulted again, and the glide-up below needs a definite starting point.
+            state.displayVolume = this.currentDisplayVolume(state);
+            state.fading = false;
+            this.stopFadeAnim(context);
+            this.startVolumeAnim(context);
+        }
+    }
+
+    // Computes the fader icon's current value on demand from elapsed real time rather than caching
+    // it in a timer-written field — see the identical comment on SonosDialVolume.currentDisplayVolume
+    // for why (two independently-paced timers stomping on a shared cached value stutters).
+    private currentDisplayVolume(state: { displayVolume: number; fading?: boolean; fadeStartVolume?: number; fadeStartTime?: number; fadeDurationMs?: number }): number {
+        if (state.fading && state.fadeStartTime !== undefined && state.fadeDurationMs !== undefined) {
+            const progress = Math.min(1, (Date.now() - state.fadeStartTime) / state.fadeDurationMs);
+            return (state.fadeStartVolume ?? 0) * (1 - progress);
+        }
+        return state.displayVolume;
+    }
+
+    private startFadeAnim(context: string): void {
+        if (this.fadeAnimTimers.has(context)) return;
+        const timer = setInterval(() => {
+            const state = this.volumeAnimState.get(context);
+            const action = this.actionRefs.get(context);
+            if (!state?.fading || !action || state.fadeStartTime === undefined || state.fadeDurationMs === undefined) {
+                this.stopFadeAnim(context);
+                return;
+            }
+            void this.updateIcon(action, this.currentDisplayVolume(state), state.isMuted, state.command);
+            const progress = (Date.now() - state.fadeStartTime) / state.fadeDurationMs;
+            if (progress >= 1) this.stopFadeAnim(context);
+        }, 25);
+        this.fadeAnimTimers.set(context, timer);
+    }
+
+    private stopFadeAnim(context: string): void {
+        const timer = this.fadeAnimTimers.get(context);
+        if (timer) { clearInterval(timer); this.fadeAnimTimers.delete(context); }
     }
 
     private async updateIcon(action: any, volume: number, isMuted: boolean, command?: 'mute' | 'vol-up' | 'vol-down' | 'vol-preset') {
@@ -149,6 +211,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
             const oldController = this.controllers.get(context);
             if (oldController) {
                 oldController.unregisterVolumeCallback(context);
+                oldController.unregisterFadeStateCallback(context);
                 oldController.unregisterReachabilityCallback(context);
                 sonosDeviceManager.releaseController(oldController.deviceIp);
             }
@@ -164,22 +227,27 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
                     void action.setTitle("");
                 }
             });
+            controller.registerFadeStateCallback(context, (fading, durationMs) => this.onFadeStateChanged(context, fading, durationMs));
 
             // Register callback for live mute/volume updates
             controller.unregisterVolumeCallback(context);
             controller.registerVolumeCallback(context, (volume) => {
-                const state = this.volumeAnimState.get(context);
+                let state = this.volumeAnimState.get(context);
                 if (state) {
                     state.volume = volume.volume;
                     state.isMuted = volume.mute;
                     state.command = command;
                 } else {
-                    this.volumeAnimState.set(context, {
-                        volume: volume.volume, displayVolume: volume.volume, isMuted: volume.mute, command,
-                    });
+                    state = { volume: volume.volume, displayVolume: volume.volume, isMuted: volume.mute, command };
+                    this.volumeAnimState.set(context, state);
                 }
-                if (command === 'mute') this.startVolumeAnim(context);
-                else this.updateIcon(action, volume.volume, volume.mute, command);
+                if (command === 'mute') {
+                    // The fake-fade animation owns the icon right now — this real echo is one of
+                    // the actual coarse steps the whole mechanism exists to hide.
+                    if (!state.fading) this.startVolumeAnim(context);
+                } else {
+                    this.updateIcon(action, volume.volume, volume.mute, command);
+                }
                 this.updateTitle(action, settings, volume);
             });
 
@@ -215,10 +283,12 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
         const controller = this.controllers.get(context);
         if (controller) {
             controller.unregisterVolumeCallback(context);
+            controller.unregisterFadeStateCallback(context);
         }
 
         this.initializedHash.delete(context);
         this.stopVolumeAnim(context);
+        this.stopFadeAnim(context);
         this.volumeAnimState.delete(context);
         await this.onInstanceUpdate(ev);
     }
@@ -229,6 +299,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
         const controller = this.controllers.get(context);
         if (controller) {
             controller.unregisterVolumeCallback(context);
+            controller.unregisterFadeStateCallback(context);
             controller.unregisterReachabilityCallback(context);
             sonosDeviceManager.releaseController(controller.deviceIp);
         }
@@ -243,6 +314,7 @@ export class SonosKeyVolume extends SingletonAction<SonosKeyVolumeSettings> {
         this.longPressExecuted.delete(context);
 
         this.stopVolumeAnim(context);
+        this.stopFadeAnim(context);
         this.volumeAnimState.delete(context);
         this.actionRefs.delete(context);
     }

@@ -37,6 +37,13 @@ interface DialState {
     displayVolume?: number;
     isMuted?: boolean;
     groupName?: string;
+    // Set while a group fade-out (see SonosDeviceController.playFavoriteWithFade, relayed through
+    // SonosGroupController) is running — the pie fakes a smooth local descent instead of hopping
+    // between the real, coarsely-stepped SetVolume echoes. See onFadeStateChanged/startFadeAnim.
+    fading?: boolean;
+    fadeStartVolume?: number;
+    fadeStartTime?: number;
+    fadeDurationMs?: number;
 }
 
 @action({ UUID: "de.boriskemper.sonos-controller.sonos-dial-group-volume" })
@@ -46,6 +53,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
     private rotateSend: Map<string, { pendingDelta: number; timer?: NodeJS.Timeout; sending: boolean; lastSentAt: number }> = new Map();
     private feedbackSuppressUntil: Map<string, number> = new Map();
     private volumeAnimTimers: Map<string, NodeJS.Timeout> = new Map();
+    private fadeAnimTimers: Map<string, NodeJS.Timeout> = new Map();
     private presetSavedUntil: Map<string, number> = new Map();
 
     private static readonly SEND_THROTTLE_MS = 120;
@@ -71,9 +79,79 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         if (state) {
             state.volume = volumeInfo.volume;
             state.isMuted = volumeInfo.mute;
+            // The fake-fade animation owns displayVolume right now — real echoes during a fade
+            // are the actual coarse steps this whole mechanism exists to hide (see
+            // onFadeStateChanged). state.volume itself still tracks reality underneath.
+            if (state.fading) return;
             this.startVolumeAnim(context);
             void this.renderDial(context);
         }
+    }
+
+    // Called (via SonosGroupController.registerFadeStateCallback, relaying each member's own
+    // SonosDeviceController signal) right as a group fade-out starts/ends. Fakes a continuous
+    // descent to 0 over the fade's own known duration instead of showing the real, coarsely-
+    // stepped SetVolume echoes — then glides back to the real, restored volume once the fade ends.
+    private onFadeStateChanged(context: string, fading: boolean, durationMs: number): void {
+        const state = this.states.get(context);
+        if (!state) return;
+        if (fading) {
+            this.stopVolumeAnim(context);
+            state.fading = true;
+            state.fadeStartVolume = state.displayVolume ?? state.volume ?? 0;
+            state.fadeStartTime = Date.now();
+            state.fadeDurationMs = Math.max(1, durationMs);
+            this.startFadeAnim(context);
+        } else {
+            // Freeze wherever the live-computed descent currently reads as displayVolume's real
+            // value — state.fading flips false right after, so currentDisplayVolume's fade branch
+            // won't be consulted again, and the glide-up below needs a definite starting point.
+            state.displayVolume = this.currentDisplayVolume(state);
+            state.fading = false;
+            this.stopFadeAnim(context);
+            // Ease from wherever the fake descent left off back up to the real (already-restored)
+            // volume — reads as one continuous motion rather than a hard cut.
+            this.startVolumeAnim(context);
+        }
+    }
+
+    // Computes the pie's current value on demand from elapsed real time rather than caching it in
+    // a timer-written field — a dial with an active Panorama effect background already has its OWN
+    // ~50ms render tick (PanoramaCapableDialAction.startAnimTimer / the shared group tick) running
+    // independent of whichever cadence drives the fade. Two independently-paced timers each
+    // rendering a value the OTHER last wrote made the pie visibly stutter (confirmed on hardware)
+    // — computing fresh here means it doesn't matter which timer happens to trigger a given render,
+    // the value is always exactly correct for that instant.
+    private currentDisplayVolume(state: DialState): number {
+        if (state.fading && state.fadeStartTime !== undefined && state.fadeDurationMs !== undefined) {
+            const progress = Math.min(1, (Date.now() - state.fadeStartTime) / state.fadeDurationMs);
+            return (state.fadeStartVolume ?? 0) * (1 - progress);
+        }
+        return state.displayVolume ?? state.volume ?? 0;
+    }
+
+    // Just a redraw pulse while fading — currentDisplayVolume computes the actual value, this only
+    // exists so a dial with NO active effect background (nothing else re-rendering it) still
+    // animates smoothly. Self-stops once fully faded rather than ticking forever waiting for the
+    // real fade-end signal, which can lag behind slightly.
+    private startFadeAnim(context: string): void {
+        if (this.fadeAnimTimers.has(context)) return;
+        const timer = setInterval(() => {
+            const state = this.states.get(context);
+            if (!state?.fading || state.fadeStartTime === undefined || state.fadeDurationMs === undefined) {
+                this.stopFadeAnim(context);
+                return;
+            }
+            void this.renderDial(context);
+            const progress = (Date.now() - state.fadeStartTime) / state.fadeDurationMs;
+            if (progress >= 1) this.stopFadeAnim(context);
+        }, 25);
+        this.fadeAnimTimers.set(context, timer);
+    }
+
+    private stopFadeAnim(context: string): void {
+        const timer = this.fadeAnimTimers.get(context);
+        if (timer) { clearInterval(timer); this.fadeAnimTimers.delete(context); }
     }
 
     // Eases the pie icon toward state.volume instead of snapping to it on every tick,
@@ -159,6 +237,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         const oldController = this.controllers.get(context);
         if (oldController) {
             oldController.unregisterVolumeCallback(context);
+            oldController.unregisterFadeStateCallback(context);
             oldController.unregisterReachabilityCallback(context);
             sonosGroupManager.releaseController(oldController.anchorIp);
             this.controllers.delete(context);
@@ -170,6 +249,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         this.rotateSend.delete(context);
         this.feedbackSuppressUntil.delete(context);
         this.stopVolumeAnim(context);
+        this.stopFadeAnim(context);
         this.presetSavedUntil.delete(context);
     }
 
@@ -200,6 +280,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
             this.controllers.set(context, controller);
             this.registerReachabilityHandling(controller, ev, 'GROUP');
             controller.registerVolumeCallback(context, (vi: VolumeInfo) => this.onVolumeInfoChanged(context, vi));
+            controller.registerFadeStateCallback(context, (fading, durationMs) => this.onFadeStateChanged(context, fading, durationMs));
 
             const vol = await controller.getVolume();
             const state = this.states.get(context);
@@ -404,7 +485,7 @@ export class SonosDialGroupVolume extends PanoramaCapableDialAction<SonosDialGro
         }
 
         const volume = state?.volume ?? 0;
-        const displayVolume = state?.displayVolume ?? volume;
+        const displayVolume = state ? this.currentDisplayVolume(state) : volume;
         const isMuted = state?.isMuted ?? false;
         const groupName = state?.groupName ?? '';
         const cx = align === 'center' ? 100 : align === 'right' ? 150 : 50;

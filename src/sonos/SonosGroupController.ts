@@ -48,6 +48,17 @@ export class SonosGroupController {
   private currentMute = false;
 
   private volumeCallbacks: Map<string, (volumeInfo: VolumeInfo) => void> = new Map();
+  // Relayed from each member's own SonosDeviceController.notifyFadeState — the group as a whole
+  // counts as "fading" while ANY member is (a group-wide fade starts/stops every member together,
+  // see playFavoriteWithFade, so in practice they all flip in the same tick).
+  private fadeStateCallbacks: Map<string, (fading: boolean, durationMs: number) => void> = new Map();
+  private memberFading: Map<string, boolean> = new Map();
+  // Last AGGREGATE value actually announced — a group-wide fade starts/ends all members in the
+  // same synchronous forEach (see playFavoriteWithFade), so e.g. the end of a 3-member fade fires
+  // this callback 3 times in a row (member 1 → false, member 2 → false, member 3 → false) while
+  // members 2 and 3 are still momentarily "true" in between, making the aggregate flicker back to
+  // true right as it was about to settle false. Deduping on the actual aggregate value fixes that.
+  private lastAnnouncedFading = false;
   // Forwards the ANCHOR member's reachability (see SonosDeviceController's poll-driven detection)
   // as the group's own: the anchor is the device the user actually configured on the dial, so its
   // disappearance is what should read as "this tile's speaker is off". Other members dropping out
@@ -77,13 +88,17 @@ export class SonosGroupController {
     if (this.topologyTimer) clearInterval(this.topologyTimer);
     for (const [host, controller] of this.memberControllers) {
       controller.unregisterVolumeCallback(this.callbackId);
+      controller.unregisterFadeStateCallback(this.callbackId);
       controller.unregisterReachabilityCallback(this.callbackId);
       sonosDeviceManager.releaseController(host);
     }
     this.memberControllers.clear();
     this.memberVolumes.clear();
     this.memberSuppressUntil.clear();
+    this.memberFading.clear();
+    this.lastAnnouncedFading = false;
     this.volumeCallbacks.clear();
+    this.fadeStateCallbacks.clear();
     this.reachabilityCallbacks.clear();
   }
 
@@ -113,11 +128,13 @@ export class SonosGroupController {
     for (const host of [...this.memberControllers.keys()]) {
       if (currentHosts.has(host)) continue;
       this.memberControllers.get(host)?.unregisterVolumeCallback(this.callbackId);
+      this.memberControllers.get(host)?.unregisterFadeStateCallback(this.callbackId);
       this.memberControllers.get(host)?.unregisterReachabilityCallback(this.callbackId);
       sonosDeviceManager.releaseController(host);
       this.memberControllers.delete(host);
       this.memberVolumes.delete(host);
       this.memberSuppressUntil.delete(host);
+      this.memberFading.delete(host);
     }
 
     for (const host of currentHosts) {
@@ -131,6 +148,13 @@ export class SonosGroupController {
           if (Date.now() < (this.memberSuppressUntil.get(host) ?? 0)) return;
           this.memberVolumes.set(host, vi.volume);
           this.notifyVolumeChanged();
+        });
+        controller.registerFadeStateCallback(this.callbackId, (fading: boolean, durationMs: number) => {
+          this.memberFading.set(host, fading);
+          const anyFading = [...this.memberFading.values()].some((f) => f);
+          if (anyFading === this.lastAnnouncedFading) return; // no actual change at the group level
+          this.lastAnnouncedFading = anyFading;
+          this.fadeStateCallbacks.forEach((cb) => cb(anyFading, durationMs));
         });
         if (host === this.anchorIp) {
           controller.registerReachabilityCallback(this.callbackId, (reachable) => {
@@ -275,6 +299,8 @@ export class SonosGroupController {
 
   registerVolumeCallback(id: string, callback: (volumeInfo: VolumeInfo) => void): void { this.volumeCallbacks.set(id, callback); }
   unregisterVolumeCallback(id: string): void { this.volumeCallbacks.delete(id); }
+  registerFadeStateCallback(id: string, callback: (fading: boolean, durationMs: number) => void): void { this.fadeStateCallbacks.set(id, callback); }
+  unregisterFadeStateCallback(id: string): void { this.fadeStateCallbacks.delete(id); }
   registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void { this.reachabilityCallbacks.set(id, callback); }
   unregisterReachabilityCallback(id: string): void { this.reachabilityCallbacks.delete(id); }
 }
