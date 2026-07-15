@@ -16,7 +16,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 | Key Actions | Dial Actions *(Stream Deck+ only)* |
 |---|---|
-| [**Play / Pause**](#play--pause-key) — cover art + scrolling title | [**Track Dial**](#track-dial-stream-deck-only) — cover art · title · progress · EQ Effect |
+| [**Play / Pause**](#play--pause-key) — cover art · scrolling title · progress | [**Track Dial**](#track-dial-stream-deck-only) — cover art · title · progress · EQ Effect |
 | [**Playback Control**](#playback-control-key) — next · previous · shuffle · repeat | [**Queue Dial**](#queue-dial-stream-deck-only) — browse & jump within the current queue |
 | [**Volume Key**](#volume-key) — up · down · mute · preset | [**Volume Dial**](#volume-dial-stream-deck-only) — pie chart · mute · preset |
 | [**Play Favorite**](#play-favorite) — one tap to play a saved favorite | [**Group Volume Dial**](#group-volume-dial-stream-deck-only) — control a whole Sonos group's volume together |
