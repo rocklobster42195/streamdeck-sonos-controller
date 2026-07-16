@@ -20,7 +20,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 | [**Playback Control**](#playback-control) — next · previous · shuffle · repeat | [**Queue**](#queue-stream-deck-only) — browse & jump within the current queue |
 | [**Volume Control**](#volume-control) — up · down · mute · preset | [**Volume**](#volume-stream-deck-only) — pie chart · mute · preset |
 | [**Play Favorite**](#play-favorite) — one tap to play a saved favorite | [**Group Volume**](#group-volume-stream-deck-only) — control a whole Sonos group's volume together |
-| | [**Favorites**](#favorites-stream-deck-only) — browse & play your favorites list · cover mosaic or effect + heart icon |
+| [**Multi-Control**](#multi-control) — Line-In switching (optional fade) or a live Battery display | [**Favorites**](#favorites-stream-deck-only) — browse & play your favorites list · cover mosaic or effect + heart icon |
 | | [**Panorama Effects**](#panorama-effects-stream-deck-only) — ambient art spanning multiple panels |
 
 ---
@@ -172,6 +172,20 @@ With **Fade out** enabled, the currently playing music fades down smoothly acros
 
 ---
 
+### Multi-Control
+
+One key, pick a function per instance: switch a speaker to its **Line-In** input, or turn the whole key into a live **Battery** status display for portable speakers (Sonos Roam, Move).
+
+With **Fade out** enabled on Line-In, the currently playing music fades down across the whole group before switching, and every speaker returns to its own volume right after. With **Battery** selected, the key shows the live level (color-coded green/orange/red) and charging status; pressing the key forces an immediate refresh instead of waiting for the next check.
+
+| Setting | Description |
+|---------|-------------|
+| Device | Which Sonos speaker to control |
+| Function | `Line-In` or `Battery` — Battery is only offered for devices that actually report battery data |
+| Fade out | *(Line-In only)* Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
+
+---
+
 ### Favorites *(Stream Deck+ only)*
 
 Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art, title, and position indicator for the highlighted item. Outside of browsing, the display shows either a cover-art mosaic of your favorites (default) or — if a Panorama effect is selected as the background — the animated effect with a centered heart icon, filled while playing and outlined while paused.
@@ -189,6 +203,7 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 | Device | Which Sonos speaker to control |
 | Browse timeout | Seconds of inactivity before returning to now playing |
 | Fade out | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
+| Append Line-In | Add Line-In as a final entry in the rotation, shown with an icon instead of cover art — only offered when the selected speaker actually has a Line-In input |
 | Alignment | Position of the heart icon in effect mode: `Left`, `Center`, or `Right` |
 | Background | `Cover mosaic` (default) or any Panorama effect, shown for idle and now-playing with a centered heart icon |
 
