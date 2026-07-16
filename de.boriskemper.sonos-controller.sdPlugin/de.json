@@ -69,6 +69,11 @@
         "Recall group preset (hold: save preset)": "Gruppen-Preset abrufen (halten: Preset speichern)",
         "Off": "Aus",
         "Warning (low battery only)": "Warnung (nur bei niedrigem Akku)",
-        "Always": "Immer"
+        "Always": "Immer",
+        "Multi-Control": "Multi-Steuerung",
+        "Line-In, battery status, and more SONOS device functions on one key.": "Line-In, Akkustatus und weitere SONOS-Gerätefunktionen auf einer Taste.",
+        "-- Select Function --": "-- Funktion wählen --",
+        "Line-In": "Line-In",
+        "Battery": "Akku"
     }
 }

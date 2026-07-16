@@ -20,4 +20,17 @@
         hasBatteryCheckbox.addEventListener('valuechange', refresh);
         refresh();
     };
+
+    // 2026-07-15: tried a wireBatteryCapabilityOption() here that hid/disabled a single <option>
+    // inside a datasource-populated <sdpi-select> (MultiControlKey's function dropdown), reusing
+    // the same hasBattery checkbox signal. Removed — confirmed not working on hardware (Battery
+    // stayed selectable on a non-battery device). Most likely cause: sdpi-select's `datasource`
+    // items probably aren't materialized as real light-DOM <option> elements at all (rendered
+    // internally instead), so a plain querySelector('option[value=...]') from outside the
+    // component silently finds nothing and no-ops forever. wireBatteryCapability above only ever
+    // hides a whole <sdpi-item> wrapper (a plain layout element, not the select's own internals),
+    // which is why THAT one is proven reliable. Don't retry per-option hiding inside a
+    // datasource-driven select without confirming in a browser devtools inspector first that real
+    // <option> children actually exist in the light DOM — use a separate warning-hint <sdpi-item>
+    // instead (see multi-control-key.html) when a per-option gate is needed.
 })();

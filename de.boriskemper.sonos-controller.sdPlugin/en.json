@@ -69,6 +69,11 @@
         "Adjust group volume": "Adjust group volume",
         "Off": "Off",
         "Warning (low battery only)": "Warning (low battery only)",
-        "Always": "Always"
+        "Always": "Always",
+        "Multi-Control": "Multi-Control",
+        "Line-In, battery status, and more SONOS device functions on one key.": "Line-In, battery status, and more SONOS device functions on one key.",
+        "-- Select Function --": "-- Select Function --",
+        "Line-In": "Line-In",
+        "Battery": "Battery"
     }
 }

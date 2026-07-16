@@ -663,6 +663,17 @@ export class SonosDeviceController {
     this.batteryCallbacks.forEach(cb => cb(status));
   }
 
+  /** Forces an immediate battery re-fetch outside the 15s poll cadence and always notifies
+   *  callbacks, even when the reading is unchanged — for a manual "refresh" key press, which
+   *  should give visible feedback rather than silently no-op like pollBatteryStatus's dedup. */
+  async refreshBatteryStatus(): Promise<SonosBatteryStatus | undefined> {
+    const status = await fetchBatteryStatus(this.sonosDevice, this.deviceIp);
+    this.hasBatteryStatus = true;
+    this.lastBatteryStatus = status;
+    this.batteryCallbacks.forEach(cb => cb(status));
+    return status;
+  }
+
   // --- Subscriptions ---
   // The lib's public teardown (CancelEvents → service removeListener hooks) fires its GENA
   // UNSUBSCRIBE calls fire-and-forget AND only covers the device-level synthesized events — the
@@ -980,28 +991,26 @@ export class SonosDeviceController {
   // --- Main Logic: Play Favorite ---
 
   /**
-   * Like playFavorite, but fades the current playback out first — across the WHOLE group: every
-   * member of this device's current group ramps down in parallel. Once the new favorite has been
-   * started, each member is set straight back to ITS OWN pre-fade volume (no fade-in — a ramp-up
-   * mostly played out inaudibly during radio stream buffering anyway; per-member volumes are
-   * deliberately individual on Sonos, e.g. a line-out zone running much louder than the rest).
-   * Falls back to a plain playFavorite when nothing is audibly playing (paused, or every member
-   * at volume 0).
+   * Fades the WHOLE group's volume to 0 in parallel, runs `action`, then restores every member to
+   * ITS OWN pre-fade volume immediately afterward (no fade-in — see each caller for why that's the
+   * right call for it). Falls back to running `action` directly, no fade, when nothing is audibly
+   * playing (paused, or every member at volume 0) or `fadeOutMs <= 0`. Shared by `playFavoriteWithFade`
+   * (below), MultiControlKey's Line-In switch, and PlayPauseToggle's fade (see feature memory).
    */
-  async playFavoriteWithFade(favorite: any, fadeOutMs: number): Promise<void> {
+  async fadeGroupThenRun(action: () => Promise<void>, fadeOutMs: number): Promise<void> {
     const generation = ++this.fadeGeneration;
     const cancelled = () => this.fadeGeneration !== generation;
 
     let isPlaying = false;
     try {
       isPlaying = (await this.getTransportState()) === 'PLAYING';
-    } catch { /* device didn't answer — treat as not playing and switch without fade */ }
+    } catch { /* device didn't answer — treat as not playing and run without fade */ }
 
     const members = (fadeOutMs > 0 && isPlaying) ? await this.collectFadeMembers() : [];
     const audible = members.filter((m) => m.preVolume > 0);
 
     if (fadeOutMs <= 0 || !isPlaying || audible.length === 0) {
-      await this.playFavorite(favorite);
+      await action();
       return;
     }
 
@@ -1014,8 +1023,8 @@ export class SonosDeviceController {
     audible.forEach((m) => m.notifyFading(true, fadeOutMs));
     try {
       await Promise.allSettled(audible.map((m) => this.ramp(m.setVolume, m.liveVolume, 0, fadeOutMs, cancelled)));
-      if (cancelled()) return; // a newer favorite press took over mid-fade
-      await this.playFavorite(favorite);
+      if (cancelled()) return; // a newer fade took over mid-ramp
+      await action();
     } finally {
       if (!cancelled()) {
         this.preFadeVolumes.clear();
@@ -1029,6 +1038,32 @@ export class SonosDeviceController {
         audible.forEach((m) => m.notifyFading(false, 0));
       }
     }
+  }
+
+  /**
+   * Like playFavorite, but fades the current playback out first — across the WHOLE group: every
+   * member of this device's current group ramps down in parallel. Once the new favorite has been
+   * started, each member is set straight back to ITS OWN pre-fade volume (no fade-in — a ramp-up
+   * mostly played out inaudibly during radio stream buffering anyway; per-member volumes are
+   * deliberately individual on Sonos, e.g. a line-out zone running much louder than the rest).
+   * Falls back to a plain playFavorite when nothing is audibly playing (paused, or every member
+   * at volume 0).
+   */
+  async playFavoriteWithFade(favorite: any, fadeOutMs: number): Promise<void> {
+    return this.fadeGroupThenRun(() => this.playFavorite(favorite), fadeOutMs);
+  }
+
+  /**
+   * Fades the group out, switches THIS device to its own Line-In input, then restores every
+   * member's volume immediately (no fade-in) — the user's mental model here is "unmute the
+   * Line-In source", not "resume music smoothly", unlike PlayPauseToggle's fade. Deliberately
+   * calls `this.sonosDevice.SwitchToLineIn()` directly, NOT `transportDevice`: svrooij/sonos's
+   * SwitchToLineIn() points the AVTransportURI at `x-rincon-stream:<this device's own uuid>`, so
+   * it must run on the physical device with the Line-In port, not the group coordinator (which
+   * may be a different, line-in-less speaker).
+   */
+  async switchToLineInWithFade(fadeOutMs: number): Promise<void> {
+    return this.fadeGroupThenRun(async () => { await this.sonosDevice.SwitchToLineIn(); }, fadeOutMs);
   }
 
   // One entry per group member taking part in a fade. Volume goes through the member's pooled

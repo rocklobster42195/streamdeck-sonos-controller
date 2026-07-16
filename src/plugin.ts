@@ -12,6 +12,7 @@ import { PanoramaEffectsDial } from "./actions/panorama-effects-dial";
 import { GroupVolumeDial } from "./actions/group-volume-dial";
 import { DiagnosticsDial } from "./actions/diagnostics-dial";
 import { QueueDial } from "./actions/queue-dial";
+import { MultiControlKey } from "./actions/multi-control-key";
 import { registerGracefulShutdown } from "./utils/graceful-shutdown";
 
 streamDeck.logger.setLevel("info");
@@ -28,6 +29,7 @@ streamDeck.actions.registerAction(new PanoramaEffectsDial());
 streamDeck.actions.registerAction(new GroupVolumeDial());
 streamDeck.actions.registerAction(new DiagnosticsDial());
 streamDeck.actions.registerAction(new QueueDial());
+streamDeck.actions.registerAction(new MultiControlKey());
 
 // Finally, connect to the Stream Deck immediately.
 streamDeck.connect();

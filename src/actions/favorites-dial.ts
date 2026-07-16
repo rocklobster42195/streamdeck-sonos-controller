@@ -15,9 +15,10 @@ import { sonosManager, discoveryPromise, sonosFavoritesCache } from "../sonos/so
 import { SonosDevice } from "@svrooij/sonos";
 import { TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
-import { mdiCog, mdiHeartCircle, mdiHeartCircleOutline } from "@mdi/js";
+import { mdiCog, mdiHeartCircle, mdiHeartCircleOutline, mdiAudioInputRca } from "@mdi/js";
 import { INACTIVE_ICON_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
+import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
 
@@ -29,6 +30,12 @@ type FavoritesDialSettings = PanoramaCapableSettings & {
     // visualizerMode ('mosaic' | any registered effect id) comes from PanoramaCapableSettings.
     // 'mosaic' is the non-effect baseline (today's cover-mosaic/now-playing look); any effect id
     // switches idle + now-playing to a full-canvas effect background with a centered heart icon.
+    includeLineIn?: boolean; // user opt-in, PI checkbox only offered when hasLineIn is true
+    // Computed on every settings sync (see onInstanceUpdate) and written back via setSettings() so
+    // the PI can react through the settings-sync channel (hidden <sdpi-checkbox setting="hasLineIn">,
+    // see battery-capability.js's wireBatteryCapability — generic despite the name, reused here) to
+    // only offer the "Append Line-In" checkbox for devices that actually have the input.
+    hasLineIn?: boolean;
 };
 
 interface FavDialState {
@@ -39,7 +46,7 @@ interface FavDialState {
     isMuted: boolean;
     transportState: string;
     currentTrack?: TrackInfo;
-    playingFav?: { Title: string; AlbumArtUri?: string };
+    playingFav?: { Title: string; AlbumArtUri?: string; isLineIn?: boolean };
     fadeOpacity?: number;       // black overlay opacity (1=fully black, 0=gone), undefined=no fade
     fadeTimer?: NodeJS.Timeout;
 }
@@ -49,6 +56,10 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
     private controllers: Map<string, SonosDeviceController> = new Map();
     private states: Map<string, FavDialState> = new Map();
     private renderGen: Map<string, number> = new Map();
+    // Whether the currently configured device has a physical Line-In input — resolved
+    // asynchronously (see onInstanceUpdate), not yet known defaults to false (no synthetic entry
+    // until proven present, rather than briefly showing then possibly retracting it).
+    private hasLineInByContext: Map<string, boolean> = new Map();
 
     // 'mosaic' is this dial's non-effect baseline (like TrackDial's 'none'/'eq') — everything else
     // is a registered effect id.
@@ -66,8 +77,18 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         });
     }
 
-    private getFavorites(): any[] {
-        return sonosFavoritesCache.getFavorites() ?? [];
+    // Synthetic, non-persisted "favorite" appended when the configured device has a Line-In
+    // input — not a real Sonos favorite, recognized downstream purely via the isLineIn flag.
+    // Title reuses the same "Line-In" i18n key already added for MultiControlKey.
+    private lineInEntry(): { Title: string; AlbumArtUri: string; isLineIn: true } {
+        return { Title: piT('Line-In'), AlbumArtUri: '', isLineIn: true };
+    }
+
+    private getFavorites(context: string): any[] {
+        const favs = sonosFavoritesCache.getFavorites() ?? [];
+        const settings = this.settingsMap.get(context);
+        const shouldInclude = this.hasLineInByContext.get(context) && settings?.includeLineIn;
+        return shouldInclude ? [...favs, this.lineInEntry()] : favs;
     }
 
     private onVolumeInfoChanged(context: string, vol: VolumeInfo): void {
@@ -93,7 +114,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         }
         state.currentTrack = trackInfo;
 
-        const favs = this.getFavorites();
+        const favs = this.getFavorites(context);
         const match = favs.find((f: any) => f.Title === trackInfo.Title || f.Title === trackInfo.Artist);
         state.playingFav = match ? { Title: match.Title, AlbumArtUri: match.AlbumArtUri } : undefined;
 
@@ -189,6 +210,25 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
 
         this.syncPanoramaParticipation(context, settings);
 
+        // Fire-and-forget: resolves after the first render either way, re-renders once known so
+        // the synthetic Line-In entry appears a moment later rather than blocking initial paint.
+        // Also written back to settings (dedup-guarded, same pattern as MultiControlKey's
+        // hasBattery) so the PI's hidden hasLineIn checkbox can gate the "Append Line-In" field.
+        if (settings.deviceIp) {
+            void deviceHasLineIn(settings.deviceIp).then(async (hasLineIn) => {
+                if (!this.states.has(context)) return; // instance gone by the time this resolves
+                this.hasLineInByContext.set(context, hasLineIn);
+                const current = this.settingsMap.get(context);
+                if (current && current.hasLineIn !== hasLineIn) {
+                    const updated = { ...current, hasLineIn };
+                    this.settingsMap.set(context, updated);
+                    const action = streamDeck.actions.getActionById(context);
+                    if (action) await action.setSettings(updated);
+                }
+                this.queueRender(context);
+            });
+        }
+
         await this.renderDial(context);
 
         if (!settings.deviceIp) return;
@@ -220,7 +260,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
                 state.currentTrack = { albumArtDataUri: cover } as TrackInfo;
             }
 
-            const favs = this.getFavorites();
+            const favs = this.getFavorites(context);
             const trackTitle = state.currentTrack?.Title ?? '';
             const trackArtist = state.currentTrack?.Artist ?? '';
             const match = favs.find((f: any) => f.Title === trackTitle || f.Title === trackArtist);
@@ -258,12 +298,13 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         this.renderGen.delete(context);
         this.settingsMap.delete(context);
         this.states.delete(context);
+        this.hasLineInByContext.delete(context);
     }
 
     override async onDialRotate(ev: DialRotateEvent<FavoritesDialSettings>): Promise<void> {
         const context = ev.action.id;
         const state = this.states.get(context);
-        const favs = this.getFavorites();
+        const favs = this.getFavorites(context);
         if (!state || favs.length === 0) return;
 
         if (state.fadeTimer) {
@@ -293,7 +334,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         const context = ev.action.id;
         const state = this.states.get(context);
         const controller = this.controllers.get(context);
-        const favs = this.getFavorites();
+        const favs = this.getFavorites(context);
         if (!state || !controller || state.currentIndex === -1 || favs.length === 0) return;
 
         const fav = favs[state.currentIndex];
@@ -304,13 +345,15 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         if (state.browseTimeoutId) clearTimeout(state.browseTimeoutId);
         state.currentIndex = -1;
         state.browseTimeoutId = undefined;
-        state.playingFav = { Title: fav.Title, AlbumArtUri: fav.AlbumArtUri };
+        state.playingFav = { Title: fav.Title, AlbumArtUri: fav.AlbumArtUri, isLineIn: fav.isLineIn };
         marqueeAnimator.update(context, { text: fav.Title ?? '', availableWidth: 97 });
         this.queueRender(context);
 
         const fadeMs = (Number(ev.payload.settings.fadeDuration) || 0) * 1000;
         try {
-            if (fadeMs > 0) {
+            if (fav.isLineIn) {
+                await controller.switchToLineInWithFade(fadeMs);
+            } else if (fadeMs > 0) {
                 await controller.playFavoriteWithFade(fav, fadeMs);
             } else {
                 await controller.playFavorite(fav);
@@ -425,8 +468,13 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         if (!action || !action.isDial() || !state) return;
 
         const isBrowsing = state.currentIndex !== -1;
-        const favs = this.getFavorites();
+        const favs = this.getFavorites(context);
         const isPlaying = state.transportState === 'PLAYING';
+        // The synthetic Line-In entry has no cover — whichever "favorite" is currently relevant
+        // (the browsed one, or whatever's playing) gets an icon instead, in both the browsing
+        // carousel and the now-playing resting view.
+        const activeFav = isBrowsing ? favs[state.currentIndex] : state.playingFav;
+        const isLineInActive = !!activeFav?.isLineIn;
 
         // Icon mode (effect background + centered heart) replaces idle AND now-playing — browsing
         // always shows the actually-selected favorite's real cover, unaffected. Gated on a
@@ -455,17 +503,21 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             positionText = isPlaying ? '▶' : '⏸';
         }
 
-        // Full-canvas idle: not browsing and no cover available.
-        if (!isBrowsing && !cover) {
-            const svg = this.buildIdleSvg();
+        // Full-canvas idle: not browsing, no cover available, and not the Line-In icon either.
+        if (!isBrowsing && !cover && !isLineInActive) {
+            const svg = this.buildIdleSvg(context);
             const img = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
             await action.setFeedback({ 'full-canvas': img }).catch(() => {});
             return;
         }
 
-        const coverFrag = cover
-            ? `<image href="${cover}" x="4" y="6" width="88" height="88" preserveAspectRatio="xMidYMid slice" clip-path="url(#cc)"/>`
-            : `<rect x="4" y="6" width="88" height="88" fill="#2a2a2a" rx="6"/>`;
+        // Same 88×88 rounded-rect slot cover art normally occupies; icon centered within it at
+        // roughly half the box size (44px in a 24-unit MDI viewBox → scale 44/24).
+        const coverFrag = isLineInActive
+            ? `<rect x="4" y="6" width="88" height="88" fill="#2a2a2a" rx="6"/><g transform="translate(26,28) scale(1.833)"><path fill="#CCCCCC" d="${mdiAudioInputRca}"/></g>`
+            : cover
+                ? `<image href="${cover}" x="4" y="6" width="88" height="88" preserveAspectRatio="xMidYMid slice" clip-path="url(#cc)"/>`
+                : `<rect x="4" y="6" width="88" height="88" fill="#2a2a2a" rx="6"/>`;
 
         const titleFrag = marqueeAnimator.isRunning(context)
             ? marqueeAnimator.render(context, 100, 30, 97, 20)
@@ -501,8 +553,8 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         await action.setFeedback({ 'full-canvas': img }).catch(() => {});
     }
 
-    private getAvailableCovers(max: number): string[] {
-        const favs = this.getFavorites();
+    private getAvailableCovers(context: string, max: number): string[] {
+        const favs = this.getFavorites(context);
         const covers: string[] = [];
         for (const fav of favs) {
             if (covers.length >= max) break;
@@ -512,8 +564,8 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         return covers;
     }
 
-    private buildIdleSvg(): string {
-        const covers = this.getAvailableCovers(8);
+    private buildIdleSvg(context: string): string {
+        const covers = this.getAvailableCovers(context, 8);
 
         const body = covers.length === 0
             ? [

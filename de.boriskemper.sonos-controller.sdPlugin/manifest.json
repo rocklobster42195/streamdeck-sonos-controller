@@ -69,6 +69,21 @@
 			]
 		},
 		{
+			"Name": "Multi-Control",
+			"UUID": "de.boriskemper.sonos-controller.multi-control-key",
+			"Icon": "imgs/actions/multi-control-key/icon",
+			"Tooltip": "Line-In, battery status, and more SONOS device functions on one key.",
+			"PropertyInspectorPath": "ui/multi-control-key.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/multi-control-key/icon"
+				}
+			]
+		},
+		{
 			"Name": "Volume",
 			"UUID": "de.boriskemper.sonos-controller.volume-dial",
 			"Icon": "imgs/actions/volume-dial/icon",

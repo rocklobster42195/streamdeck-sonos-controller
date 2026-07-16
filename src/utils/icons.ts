@@ -41,6 +41,7 @@ import {
     mdiBatteryCharging70,
     mdiBatteryCharging80,
     mdiBatteryCharging90,
+    mdiAudioInputRca,
 } from '@mdi/js';
 
 function svgUri(path: string, color: string): string {
@@ -144,6 +145,12 @@ export function generateVolumeButtonIcon(type: 'up' | 'down' | 'preset', color =
     }
 }
 
+// --- Line-In (MultiControlKey "Line-In" function) ---
+
+export function generateLineInIcon(color = '#CCCCCC'): string {
+    return svgUri(mdiAudioInputRca, color);
+}
+
 // --- Volume level (Dial Volume icon field) ---
 
 export function generateVolumeLevelIcon(volume: number, muted: boolean, color = '#CCCCCC'): string {
@@ -177,7 +184,11 @@ function pickBatteryIcon(mode: 'warning' | 'full', battery: { percent: number; c
     if (mode === 'warning') return { path: mdiBatteryAlert, color: '#FF4D4D' };
     const bucket = Math.max(0, Math.min(100, Math.round(battery.percent / 10) * 10));
     const path = battery.charging ? BATTERY_CHARGING_PATHS[bucket] : BATTERY_LEVEL_PATHS[bucket];
-    const color = bucket <= BATTERY_LOW_THRESHOLD_PERCENT ? '#FF4D4D' : bucket <= 50 ? '#FFC24D' : '#4DDB6E';
+    // Color decision uses the raw percent, not the 10%-rounded bucket above (that bucket only
+    // exists because MDI's battery glyphs come in 10% steps) — otherwise e.g. 54% rounds to
+    // bucket 50 and reads as still-orange, one tier below where the user actually is. Plugin-wide:
+    // this is the single shared color source for both the mini-badge and the full-key display.
+    const color = battery.percent <= BATTERY_LOW_THRESHOLD_PERCENT ? '#FF4D4D' : battery.percent < 50 ? '#FFC24D' : '#4DDB6E';
     return { path, color };
 }
 
@@ -198,6 +209,28 @@ export function renderBatteryBadge(
     const scale = size / 24;
 
     return `<g transform="translate(${x},${y}) scale(${scale})"><path fill="${color}" d="${path}"/></g>`;
+}
+
+// --- Battery full-key display (MultiControlKey "Battery" function) ---
+// Dedicates the whole key face to the reading, unlike renderBatteryBadge's small corner overlay.
+// Reuses pickBatteryIcon's color/glyph decision — always 'full' mode here, since a whole key given
+// over to battery should show the real level, not just a low-battery warning glyph.
+export function generateBatteryKeyIcon(battery: { percent: number; charging: boolean } | undefined, size = 72): string {
+    if (!battery) return generateUnreachableKeyIcon();
+    const { path, color } = pickBatteryIcon('full', battery);
+    const iconSize = Math.round(size * 0.5);
+    const iconX = (size - iconSize) / 2;
+    const iconY = size * 0.12;
+    const scale = iconSize / 24;
+    const fontSize = Math.round(size * 0.19);
+    const textY = size * 0.86;
+    const svg = [
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`,
+        `<g transform="translate(${iconX},${iconY}) scale(${scale})"><path fill="${color}" d="${path}"/></g>`,
+        `<text x="${size / 2}" y="${textY}" fill="${color}" font-family="Arial,sans-serif" font-size="${fontSize}" font-weight="bold" text-anchor="middle">${Math.round(battery.percent)}%</text>`,
+        '</svg>',
+    ].join('');
+    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
 // --- "Not available" states (unconfigured / unreachable / disabled control) ---

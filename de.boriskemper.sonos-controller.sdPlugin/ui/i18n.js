@@ -64,6 +64,10 @@
             battery_mode:       'Akku-Anzeige',
             cover_position:     'Cover-Position',
             queue_hint:         'Drehen zum Blättern durch die aktuelle Warteschlange. Drücken zum Springen. Tippen oder warten, um zur aktuellen Wiedergabe zurückzukehren.<br>0 = kein automatisches Zurückspringen, nur Tippen bringt dich zurück.',
+            multi_function:     'Funktion',
+            line_in_fade_hint:  'Blendet die ganze Gruppe aus, bevor auf Line-In umgeschaltet wird, und stellt danach die Lautstärke jedes Speakers wieder her.',
+            no_battery_hint:    'Dieses Gerät meldet keine Akkudaten — für diese Funktion einen Roam oder Move wählen.',
+            append_line_in:     'Line-In anhängen',
         },
         es: {
             sonos_device:       'Dispositivo SONOS',
@@ -122,6 +126,10 @@
             battery_mode:       'Indicador de batería',
             cover_position:     'Posición de la portada',
             queue_hint:         'Gira para explorar la cola actual. Pulsa para saltar ahí. Toca o espera para volver a la reproducción actual.<br>0 = sin retorno automático, solo tocar te lleva de vuelta.',
+            multi_function:     'Función',
+            line_in_fade_hint:  'Atenúa todo el grupo antes de cambiar a Line-In y luego restaura el volumen de cada altavoz.',
+            no_battery_hint:    'Este dispositivo no informa datos de batería — elige un Roam o Move para esta función.',
+            append_line_in:     'Añadir Line-In',
         },
     };
 

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SONOS Multi-Control Settings</title>
+    <script src="i18n.js" defer></script>
+    <script src="sdpi-components.js" defer></script>
+    <script src="battery-capability.js" defer></script>
+    <style>
+      :root { color-scheme: dark; }
+      .hidden { display: none !important; }
+      .hint { font-size: 11px; color: #888; line-height: 1.4; }
+    </style>
+  </head>
+
+  <body>
+    <sdpi-item label="SONOS device" data-i18n="sonos_device">
+      <sdpi-select id="deviceSelect" setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
+        <option value="" data-i18n="choose_device">-- Choose Device --</option>
+      </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="Function" data-i18n="multi_function">
+      <sdpi-select id="functionSelect" setting="controlFunction" datasource="get-function-options" hot-reload></sdpi-select>
+    </sdpi-item>
+
+    <!-- Options come from the plugin (get-fade-options), same as Play Favorite — a static
+         <option> list left the control stuck/unopenable in the SD webview. -->
+    <sdpi-item id="fadeDurationItem" label="Fade out" data-i18n="fade_out">
+      <sdpi-select setting="fadeDuration" datasource="get-fade-options"></sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item id="fadeHintItem">
+      <sdpi-item-value class="hint" data-i18n-html="line_in_fade_hint">
+        Fades the whole group out before switching to Line-In, then restores each speaker's volume.
+      </sdpi-item-value>
+    </sdpi-item>
+
+    <!-- Shown instead of trying to remove/disable the "Battery" <option> itself — sdpi-select's
+         datasource-populated items most likely aren't real light-DOM <option> elements (rendered
+         internally instead), so manipulating them from outside doesn't reliably work; see
+         battery-capability.js's removed wireBatteryCapabilityOption for what was tried and why it
+         was abandoned. A plain warning hint only needs the proven whole-item hide/show pattern. -->
+    <sdpi-item id="noBatteryWarningItem" class="hidden">
+      <sdpi-item-value class="hint" data-i18n-html="no_battery_hint">
+        This device doesn't report battery data — pick a Roam or Move for this function.
+      </sdpi-item-value>
+    </sdpi-item>
+
+    <!-- Hidden data carrier, not a real field — the backend computes hasBattery for the currently
+         selected device on every settings sync and writes it back via setSettings() (same
+         settings-sync channel every other bound field uses), see play-pause-key.ts for the
+         original pattern. -->
+    <sdpi-checkbox id="hasBatteryCheckbox" setting="hasBattery" class="hidden"></sdpi-checkbox>
+
+    <script>
+      // No 'connected' wrapper here, deliberately — elements above already exist in the DOM by
+      // the time this inline (non-deferred) script runs, since script tags execute in document
+      // order. Wrapping in 'connected' risks attaching these listeners AFTER sdpi-components'
+      // own initial settings-sync already fired its one-time "valuechange", missing it — this is
+      // the exact same top-level, unwrapped style panorama-effects-dial.html uses for its
+      // analogous effect/device conditional-visibility logic. Listening to both "valuechange" and
+      // "change" is defensive belt-and-suspenders, not because either alone is known-broken.
+      var functionSelect = document.getElementById('functionSelect');
+      var fadeDurationItem = document.getElementById('fadeDurationItem');
+      var fadeHintItem = document.getElementById('fadeHintItem');
+      var noBatteryWarningItem = document.getElementById('noBatteryWarningItem');
+      var hasBatteryCheckbox = document.getElementById('hasBatteryCheckbox');
+
+      function updateVisibility() {
+        var isLineIn = functionSelect.value === 'line-in';
+        var isBattery = functionSelect.value === 'battery';
+        fadeDurationItem.classList.toggle('hidden', !isLineIn);
+        fadeHintItem.classList.toggle('hidden', !isLineIn);
+        noBatteryWarningItem.classList.toggle('hidden', !(isBattery && !hasBatteryCheckbox.value));
+      }
+
+      functionSelect.addEventListener('valuechange', updateVisibility);
+      functionSelect.addEventListener('change', updateVisibility);
+      hasBatteryCheckbox.addEventListener('valuechange', updateVisibility);
+      // The function list itself is populated asynchronously by the get-function-options
+      // datasource — catch the initial persisted value landing once options actually exist.
+      new MutationObserver(updateVisibility).observe(functionSelect, { childList: true });
+      updateVisibility();
+    </script>
+  </body>
+</html>
