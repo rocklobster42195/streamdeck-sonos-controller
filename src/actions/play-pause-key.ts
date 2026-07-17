@@ -23,7 +23,7 @@ import { sendDeviceList, sendBatteryModeOptions } from "./pi-options";
 /**
  * Settings for {@link PlayPauseKey}.
  */
-type SonosSettings = {
+type PlayPauseKeySettings = {
     deviceIp?: string;
     showDeviceName?: boolean;
     showCoverArt?: boolean;
@@ -46,9 +46,9 @@ type SonosSettings = {
 };
 
 @action({ UUID: "de.boriskemper.sonos-controller.play-pause-key" })
-export class PlayPauseKey extends SingletonAction<SonosSettings> {
+export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
-    private currentSettings: Map<string, SonosSettings> = new Map();
+    private currentSettings: Map<string, PlayPauseKeySettings> = new Map();
     private currentCover: Map<string, string | undefined> = new Map();
     private batteryStatuses: Map<string, SonosBatteryStatus | undefined> = new Map();
     private lastTransportState: Map<string, string> = new Map();
@@ -257,7 +257,7 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
 
     private setupRetry = new SetupRetryScheduler();
 
-    async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
+    async onInstanceUpdate(ev: WillAppearEvent<PlayPauseKeySettings> | DidReceiveSettingsEvent<PlayPauseKeySettings>): Promise<void> {
         const context = ev.action.id;
         const action = ev.action;
         let settings = ev.payload.settings;
@@ -347,18 +347,18 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
         }
     }
 
-    override async onWillAppear(ev: WillAppearEvent<SonosSettings>): Promise<void> {
+    override async onWillAppear(ev: WillAppearEvent<PlayPauseKeySettings>): Promise<void> {
         this.currentSettings.set(ev.action.id, ev.payload.settings);
         await this.onInstanceUpdate(ev);
     }
 
-    override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
+    override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<PlayPauseKeySettings>): Promise<void> {
         const context = ev.action.id;
         this.currentSettings.set(context, ev.payload.settings);
         await this.onInstanceUpdate(ev);
     }
 
-    override async onWillDisappear(ev: WillDisappearEvent<SonosSettings>): Promise<void> {
+    override async onWillDisappear(ev: WillDisappearEvent<PlayPauseKeySettings>): Promise<void> {
         const context = ev.action.id;
         this.setupRetry.cancel(context);
         titleAnimator.stop(context);
@@ -384,7 +384,7 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
         this.lastColorUri.delete(context);
     }
 
-    override async onKeyDown(ev: KeyDownEvent<SonosSettings>): Promise<void> {
+    override async onKeyDown(ev: KeyDownEvent<PlayPauseKeySettings>): Promise<void> {
         const controller = this.controllers.get(ev.action.id);
         if (!controller) return;
         try {
@@ -397,7 +397,7 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosSettings>): Promise<void> {
+    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, PlayPauseKeySettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch (ev.payload.event) {
             case 'get-devices': await sendDeviceList(); break;

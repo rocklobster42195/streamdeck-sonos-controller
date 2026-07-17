@@ -4,8 +4,8 @@ import { sonosFavoritesCache } from "./SonosFavoritesCache";
 
 export const sonosManager = new SonosManager();
 
-// Store the listener host after discovery.
-export let eventListenerHost: string | undefined;
+// Listener host after discovery — module-internal, only used for the startup log below.
+let eventListenerHost: string | undefined;
 
 // A failed SSDP discovery is retried until it succeeds. Without this, one bad round at plugin
 // start ("No players found" — seen on hardware right after a plugin restart) left the entire

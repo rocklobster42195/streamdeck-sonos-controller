@@ -26,7 +26,7 @@ import { piT } from "../utils/pi-i18n";
 import { sendDeviceList, sendVizOptions, sendBatteryModeOptions } from "./pi-options";
 import { buildUnconfiguredDialSvg, renderBatteryBadge } from "../utils/icons";
 
-type SonosSettings = PanoramaCapableSettings & {
+type TrackControlDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
     showTrackTitle?: boolean;
     fontColor?: string;
@@ -59,7 +59,7 @@ interface DialState {
 }
 
 @action({ UUID: "de.boriskemper.sonos-controller.track-control-dial" })
-export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
+export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDialSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
     private states: Map<string, DialState> = new Map();
     private animators: Map<string, CoverArtAnimator> = new Map();
@@ -141,7 +141,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         void this.renderDial(context);
     }
 
-    private marqWidth(_settings?: SonosSettings): number {
+    private marqWidth(_settings?: TrackControlDialSettings): number {
         return 97;
     }
 
@@ -164,7 +164,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         return best || text.substring(0, Math.max(0, Math.floor(availableWidth / (fontSize * 0.55)) - 1)) + '…';
     }
 
-    private async updateTitleMarquee(context: string, fullText: string, fontSize: number, availableWidth: number, settings?: SonosSettings) {
+    private async updateTitleMarquee(context: string, fullText: string, fontSize: number, availableWidth: number, settings?: TrackControlDialSettings) {
         const prev = this.marqueeTimers.get(context);
         if (prev) { clearTimeout(prev); this.marqueeTimers.delete(context); }
 
@@ -194,7 +194,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         this.marqueeTimers.set(context, t);
     }
 
-    protected override async onInstanceUpdate(ev: WillAppearEvent<SonosSettings> | DidReceiveSettingsEvent<SonosSettings>): Promise<void> {
+    protected override async onInstanceUpdate(ev: WillAppearEvent<TrackControlDialSettings> | DidReceiveSettingsEvent<TrackControlDialSettings>): Promise<void> {
         const context = ev.action.id;
         let settings = ev.payload.settings;
 
@@ -315,7 +315,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
     }
 
     // Dial press → next track so the user can browse playlists.
-    override async onDialDown(ev: DialDownEvent<SonosSettings>): Promise<void> {
+    override async onDialDown(ev: DialDownEvent<TrackControlDialSettings>): Promise<void> {
         const controller = this.controllers.get(ev.action.id);
         if (!controller) return;
         try {
@@ -329,7 +329,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
     }
 
     // Touch tap → toggle play / pause.
-    override async onTouchTap(ev: TouchTapEvent<SonosSettings>): Promise<void> {
+    override async onTouchTap(ev: TouchTapEvent<TrackControlDialSettings>): Promise<void> {
         const controller = this.controllers.get(ev.action.id);
         if (!controller) return;
         try {
@@ -340,7 +340,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
     }
 
     // Dial rotation → seek ±5 % per tick in the current track.
-    override async onDialRotate(ev: DialRotateEvent<SonosSettings>): Promise<void> {
+    override async onDialRotate(ev: DialRotateEvent<TrackControlDialSettings>): Promise<void> {
         const context = ev.action.id;
         const controller = this.controllers.get(context);
         const state = this.states.get(context);
@@ -367,7 +367,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosSettings>): Promise<void> {
+    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, TrackControlDialSettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch (ev.payload.event) {
             case 'get-devices': await sendDeviceList(); break;

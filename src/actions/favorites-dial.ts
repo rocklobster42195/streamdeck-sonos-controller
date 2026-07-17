@@ -452,7 +452,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         if (isBrowsing && favs.length > 0) {
             const fav = favs[state.currentIndex];
             cover = fav?.AlbumArtUri ? sonosFavoritesCache.getCoverArt(fav.AlbumArtUri) : undefined;
-            subtitleText = streamDeck.i18n.translate('Press to play');
+            subtitleText = piT('Press to play');
             positionText = `${state.currentIndex + 1} / ${favs.length}`;
         } else {
             cover = state.playingFav?.AlbumArtUri
@@ -529,12 +529,12 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         const body = covers.length === 0
             ? [
                 `<g transform="translate(82,14) scale(1.5)"><path fill="${INACTIVE_ICON_COLOR}" d="${mdiCog}"/></g>`,
-                `<text x="100" y="66" fill="#555555" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${escapeXml(streamDeck.i18n.translate('No device set'))}</text>`,
+                `<text x="100" y="66" fill="#555555" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${escapeXml(piT('No device set'))}</text>`,
             ].join('')
             : this.buildMosaic(covers);
 
         const hint = covers.length > 0
-            ? `<text x="100" y="96" fill="#fff" font-family="Arial,sans-serif" font-size="9" text-anchor="middle" opacity="0.4">${escapeXml(streamDeck.i18n.translate('Rotate to browse'))}</text>`
+            ? `<text x="100" y="96" fill="#fff" font-family="Arial,sans-serif" font-size="9" text-anchor="middle" opacity="0.4">${escapeXml(piT('Rotate to browse'))}</text>`
             : '';
 
         return [
