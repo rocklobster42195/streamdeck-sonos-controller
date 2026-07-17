@@ -226,7 +226,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
                     if (action) await action.setSettings(updated);
                 }
                 this.queueRender(context);
-            });
+            }).catch((e) => streamDeck.logger.warn(`[FavDial ${context}] Line-In capability check failed`, e));
         }
 
         await this.renderDial(context);

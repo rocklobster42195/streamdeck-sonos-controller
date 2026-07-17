@@ -16,7 +16,7 @@ import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { generateTransportIcon, renderBatteryBadge, renderProgressBar, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
-import { getDominantColor } from "../utils/colorExtract";
+import { getDominantColor } from "../utils/color-extract";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 
@@ -73,9 +73,12 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
         }
         const controller = this.controllers.get(context);
         if (controller) {
-            controller.getTransportState().then(state => {
-                this.handleTransportStateChange(context, state, newCover);
-            });
+            // Must not float unhandled — a rejection here (device briefly unreachable) would
+            // otherwise crash the whole plugin process, same class of bug as un-awaited
+            // next()/previous() calls (see SonosDeviceController's basic-controls comment).
+            controller.getTransportState()
+                .then(state => this.handleTransportStateChange(context, state, newCover))
+                .catch(e => streamDeck.logger.warn(`[${context}] transport state refresh failed`, e));
         }
     }
 
@@ -169,7 +172,17 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
         void this.handleTransportStateChange(context, this.lastTransportState.get(context) ?? 'STOPPED');
     }
 
+    // Never throws/rejects: every caller invokes this fire-and-forget (event callbacks, `void`),
+    // so a rejection escaping here would be an unhandled rejection that kills the plugin process.
     private async handleTransportStateChange(context: string, transportState: string, newCover?: string): Promise<void> {
+        try {
+            await this.handleTransportStateChangeUnsafe(context, transportState, newCover);
+        } catch (e) {
+            streamDeck.logger.warn(`[${context}] handleTransportStateChange failed`, e);
+        }
+    }
+
+    private async handleTransportStateChangeUnsafe(context: string, transportState: string, newCover?: string): Promise<void> {
         const action = streamDeck.actions.getActionById(context);
         if (!action) return;
 
@@ -378,9 +391,9 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
             controller.unregisterTrackInfoCallback(context);
             controller.unregisterBatteryCallback(context);
             controller.unregisterReachabilityCallback(context);
-            if (ev.payload.settings.deviceIp) {
-                sonosDeviceManager.releaseController(ev.payload.settings.deviceIp);
-            }
+            // Release by the controller's OWN IP (not the current settings' deviceIp) so the
+            // release always matches the acquisition, like every other action does.
+            sonosDeviceManager.releaseController(controller.deviceIp);
         }
         this.stopProgressTimer(context);
         this.controllers.delete(context);

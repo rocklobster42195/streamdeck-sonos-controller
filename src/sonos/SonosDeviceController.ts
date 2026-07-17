@@ -3,11 +3,11 @@ import { SonosDevice, SonosEvents, ServiceEvents, MetaDataHelper } from "@svrooi
 import { sonosFavoritesCache, sonosManager } from "./sonos-discovery";
 
 import { Track } from "@svrooij/sonos/lib/models";
-import { loadImageFromUri } from "./utils";
-import { normalizeBrowseResult } from "./queueUtils";
+import { loadImageFromUri } from "./cover-art-loader";
+import { normalizeBrowseResult } from "./queue-utils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
-import { SonosZoneGroupStates, TrackInfo, VolumeInfo } from "./SonosTypes";
-import { withTimeout } from "../utils/fetchWithTimeout";
+import { TrackInfo, VolumeInfo } from "./SonosTypes";
+import { withTimeout } from "../utils/with-timeout";
 import { computeFadeSteps } from "../utils/volume-fade";
 import { fetchBatteryStatus, SonosBatteryStatus } from "./SonosBattery";
 // Lazy/deferred use only (inside methods, never at module scope) — SonosDeviceManager itself
@@ -138,7 +138,7 @@ export class SonosDeviceController {
     streamDeck.logger.debug(`SonosDeviceController for ${this.deviceIp} created.`);
   }
 
-  // loadImageFromUri (src/sonos/utils.ts) itself dedupes concurrent fetches and caches resolved
+  // loadImageFromUri (src/sonos/cover-art-loader.ts) itself dedupes concurrent fetches and caches resolved
   // covers by URL, and bounds each fetch with a real (abort-based) timeout — shared across every
   // caller, not just this one. This wrapper just adapts its "" (no cover) return to `undefined`.
   private async resolveCoverArt(uri: string): Promise<string | undefined> {
@@ -259,6 +259,7 @@ export class SonosDeviceController {
       this.coordinatorController = undefined;
     }
     this.volumeInfoCallbacks.clear();
+    this.fadeStateCallbacks.clear();
     this.transportStateCallbacks.clear();
     this.playModeCallbacks.clear();
     this.trackInfoCallbacks.clear();
@@ -696,7 +697,7 @@ export class SonosDeviceController {
       this.sonosDevice.Events.on(SonosEvents.SubscriptionError, (err) => {
         streamDeck.logger.error("Subscribe error", err);
         if (!this.pollInterval) {
-          streamDeck.logger.warn(`[${this.deviceIp}] UPnP subscription failed — falling back to 5s polling.`);
+          streamDeck.logger.warn(`[${this.deviceIp}] UPnP subscription failed — falling back to 8s polling.`);
           this.startPolling();
         }
       });
@@ -820,8 +821,6 @@ export class SonosDeviceController {
     }, 300 * 1000);
   }
   
-  // The rest of the methods (playFavorite, helpers, etc.) are omitted for brevity but remain unchanged.
-  // ...
   // --- Helper Methods ---
   private encodeXml(str: string): string {
     if (typeof str !== 'string') return '';
@@ -895,14 +894,16 @@ export class SonosDeviceController {
               return false;
           }
 
-          interface TrackInfo {
+          // Local shape for parsed folder entries — deliberately NOT the plugin-wide TrackInfo
+          // type (which this used to shadow confusingly).
+          interface FolderTrack {
               uri: string;
               title: string;
               protocolInfo: string;
               sortKey: string;
           }
-          
-          const items: TrackInfo[] = [];
+
+          const items: FolderTrack[] = [];
           const itemRegex = /<item[\s\S]*?<\/item>/g;
           let itemMatch;
           
@@ -1316,16 +1317,6 @@ export class SonosDeviceController {
     const zoneAttributes = await this.sonosDevice.DevicePropertiesService.GetZoneAttributes();
     if (debug) streamDeck.logger.debug(zoneAttributes);
     return zoneAttributes;
-  }
-  async getZoneGroupState(debug?: boolean): Promise<SonosZoneGroupStates> {
-    const zoneGroupState = await this.sonosDevice.GetZoneGroupState();
-    if (debug) streamDeck.logger.debug(zoneGroupState);
-    return zoneGroupState as SonosZoneGroupStates;
-  }
-  async getFavorites(debug?: boolean): Promise<any> {
-    const favorites = this.sonosDevice.GetFavoriteRadioStations();
-    if (debug) streamDeck.logger.debug(favorites);
-    return favorites;
   }
 
   // Queue lives on the group coordinator, same as every other AVTransport call — use

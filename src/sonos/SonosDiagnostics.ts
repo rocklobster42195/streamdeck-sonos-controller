@@ -1,4 +1,4 @@
-import { withTimeout } from "../utils/fetchWithTimeout";
+import { withTimeout } from "../utils/with-timeout";
 
 // Sonos speakers expose an UNDOCUMENTED local diagnostic page at this path (part of the same
 // "support review" info the Sonos app itself pulls when a user submits a diagnostic report) —

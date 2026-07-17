@@ -16,7 +16,7 @@ import { SonosDevice } from "@svrooij/sonos";
 import { CoverArtAnimator } from "../utils/CoverArtAnimator";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
-import { getDominantColor } from "../utils/colorExtract";
+import { getDominantColor } from "../utils/color-extract";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
 import { TrackInfo } from "../sonos/SonosTypes";

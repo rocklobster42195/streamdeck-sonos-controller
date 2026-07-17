@@ -1,4 +1,4 @@
-import { particleEngine } from "../../utils/ParticleEngine";
+import { particleEngine } from "./ParticleEngine";
 import type { EffectDefinition, EffectInstance, PanoramaInitContext } from "../types";
 
 export interface ParticlesEffectSettings {

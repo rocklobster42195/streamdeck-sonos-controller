@@ -15,8 +15,8 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
 import { Track } from "@svrooij/sonos/lib/models";
-import { loadImageFromUri } from "../sonos/utils";
-import { wrapIndex, truncateForDisplay } from "../sonos/queueUtils";
+import { loadImageFromUri } from "../sonos/cover-art-loader";
+import { wrapIndex, truncateForDisplay } from "../sonos/queue-utils";
 import { CoverArtAnimator } from "../utils/CoverArtAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
@@ -25,7 +25,7 @@ import { QueueCoverArtCache } from "./QueueCoverArtCache";
 import { piT } from "../utils/pi-i18n";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, groupEffects } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
-import { getDominantColor } from "../utils/colorExtract";
+import { getDominantColor } from "../utils/color-extract";
 
 type QueueDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;

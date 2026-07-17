@@ -13,8 +13,8 @@ import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
-import { generateFaderSvg } from "../sonos/utils";
-import { generateVolumeButtonIcon, generateUnreachableKeyIcon } from "../utils/icons";
+
+import { generateFaderSvg, generateVolumeButtonIcon, generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 
@@ -201,26 +201,29 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
 
         await discoveryPromise;
 
+        // Always release the previous reference before reacquiring — even when deviceIp is
+        // unchanged. getController() unconditionally increments its refCount, so acquiring
+        // without a matching prior release (as this used to do whenever only some other
+        // setting changed) leaked one refCount per settings change: the underlying
+        // SonosDeviceController's polling/event timers then never got torn down even after
+        // this key was removed, since onWillDisappear only releases once. Must also run when
+        // the config was CLEARED (early return below) — otherwise the old controller stayed
+        // registered/refcounted despite the key no longer being configured.
+        const oldController = this.controllers.get(context);
+        if (oldController) {
+            oldController.unregisterVolumeCallback(context);
+            oldController.unregisterFadeStateCallback(context);
+            oldController.unregisterReachabilityCallback(context);
+            sonosDeviceManager.releaseController(oldController.deviceIp);
+            this.controllers.delete(context);
+        }
+
         if (!deviceIp || !command) {
             await action.setTitle("Config...");
             return;
         }
 
         try {
-            // Always release the previous reference before reacquiring — even when deviceIp is
-            // unchanged. getController() unconditionally increments its refCount, so acquiring
-            // without a matching prior release (as this used to do whenever only some other
-            // setting changed) leaked one refCount per settings change: the underlying
-            // SonosDeviceController's polling/event timers then never got torn down even after
-            // this key was removed, since onWillDisappear only releases once.
-            const oldController = this.controllers.get(context);
-            if (oldController) {
-                oldController.unregisterVolumeCallback(context);
-                oldController.unregisterFadeStateCallback(context);
-                oldController.unregisterReachabilityCallback(context);
-                sonosDeviceManager.releaseController(oldController.deviceIp);
-            }
-
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
 

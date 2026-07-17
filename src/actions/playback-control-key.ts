@@ -79,24 +79,27 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
 
         await discoveryPromise;
 
+        // Always release before reacquiring, even when deviceIp is unchanged — getController()
+        // below unconditionally increments refCount, so releasing only on an IP change leaked
+        // one refCount per settings change (onDidReceiveSettings wipes initializedHash above,
+        // so the early-return dedup never actually prevents this path from running). Must also
+        // run when the config was CLEARED (early return below) — otherwise the old controller's
+        // callbacks kept repainting this key with the stale command, refcount held forever.
+        const oldController = this.controllers.get(context);
+        if (oldController) {
+            oldController.unregisterPlayModeCallback(context);
+            oldController.unregisterTrackInfoCallback(context);
+            oldController.unregisterReachabilityCallback(context);
+            sonosDeviceManager.releaseController(oldController.deviceIp);
+            this.controllers.delete(context);
+        }
+
         if (!deviceIp || !command) {
             await action.setTitle("Config...");
             return;
         }
 
         try {
-            // Always release before reacquiring, even when deviceIp is unchanged — getController()
-            // below unconditionally increments refCount, so releasing only on an IP change leaked
-            // one refCount per settings change (onDidReceiveSettings wipes initializedHash above,
-            // so the early-return dedup never actually prevents this path from running).
-            const oldController = this.controllers.get(context);
-            if (oldController) {
-                oldController.unregisterPlayModeCallback(context);
-                oldController.unregisterTrackInfoCallback(context);
-                oldController.unregisterReachabilityCallback(context);
-                sonosDeviceManager.releaseController(oldController.deviceIp);
-            }
-
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
 

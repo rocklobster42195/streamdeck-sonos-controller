@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runThrottled } from './perHostThrottle';
+import { runThrottled } from './per-host-throttle';
 
 // Controllable async task: starts running immediately, but only resolves once `release()` is
 // called — lets tests observe exactly how many are concurrently "active" at a given point.

@@ -13,7 +13,7 @@ import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
-import { getDominantColor } from "../utils/colorExtract";
+import { getDominantColor } from "../utils/color-extract";
 import { panoramaOrchestrator, panoramaColumns, panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, safeEffectCall, setContextEffectSettings, DISPLAY_W, DISPLAY_H } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
 import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";

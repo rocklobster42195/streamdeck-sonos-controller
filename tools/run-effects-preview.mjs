@@ -1,4 +1,4 @@
-// Builds src/tools/effects-preview-server.ts and starts it, all in this one Node process.
+// Builds src/effects/preview-server.ts and starts it, all in this one Node process.
 //
 // Deliberately uses Rollup's JS API instead of shelling out to the `rollup` CLI (e.g. via
 // `rollup ... && node ...`). On some Windows setups, the rollup CLI process doesn't hand

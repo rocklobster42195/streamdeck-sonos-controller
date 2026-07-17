@@ -4,13 +4,13 @@ import nodeResolve from "@rollup/plugin-node-resolve";
 import typescript from "@rollup/plugin-typescript";
 import { generateEffectsRegistry } from "./tools/generate-effects-registry.mjs";
 
-// Separate, dev-only build for src/tools/effects-preview-server.ts (see CONTRIBUTING_EFFECTS.md).
+// Separate, dev-only build for src/effects/preview-server.ts (see CONTRIBUTING_EFFECTS.md).
 // Kept out of rollup.config.mjs so a normal `npm run build`/`npm run watch` of the actual plugin
 // never has to build or ship this tool.
 
 /** @type {import('rollup').RollupOptions} */
 const config = {
-    input: "src/tools/effects-preview-server.ts",
+    input: "src/effects/preview-server.ts",
     output: {
         file: "tools/effects-preview-server.bundle.mjs",
         format: "es",

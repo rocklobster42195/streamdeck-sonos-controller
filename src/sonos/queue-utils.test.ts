@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeBrowseResult, wrapIndex, truncateForDisplay } from './queueUtils';
+import { normalizeBrowseResult, wrapIndex, truncateForDisplay } from './queue-utils';
 
 describe('normalizeBrowseResult', () => {
   it('returns the array as-is when Result is a Track[]', () => {

@@ -1,7 +1,7 @@
 // Small, per-context cover art cache for Queue Dial's carousel. Deliberately NOT a shared
 // singleton like SonosFavoritesCache — each dial instance browses its own device's queue, so
 // there's no cross-instance reuse to gain, and keeping it scoped avoids unbounded growth across
-// unrelated dials. loadImageFromUri (src/sonos/utils.ts) itself has no memoization, so callers
+// unrelated dials. loadImageFromUri (src/sonos/cover-art-loader.ts) itself has no memoization, so callers
 // that re-visit the same queue item while scrolling back and forth need this.
 export class QueueCoverArtCache {
     private static readonly MAX_ENTRIES = 300;

@@ -1,5 +1,5 @@
 import { SonosDevice } from "@svrooij/sonos";
-import { withTimeout } from "../utils/fetchWithTimeout";
+import { withTimeout } from "../utils/with-timeout";
 import { sonosManager, discoveryPromise } from "./sonos-discovery";
 
 const FETCH_TIMEOUT_MS = 4000;

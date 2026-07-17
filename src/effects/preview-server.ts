@@ -10,8 +10,8 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import GIFEncoder from "gif-encoder-2";
-import { effectRegistry } from "../effects/registry.generated";
-import type { EffectInstance } from "../effects/types";
+import { effectRegistry } from "./registry.generated";
+import type { EffectInstance } from "./types";
 
 const PORT = parseInt(process.env.PORT ?? "4173", 10);
 const DISPLAY_W = 200;

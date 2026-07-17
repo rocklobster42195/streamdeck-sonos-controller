@@ -63,7 +63,7 @@ can't tell you how colors actually look on the LCD, how rotate/press feels at re
 whether touch coordinates line up on a real touchscreen. Verify on real hardware before opening a
 PR.
 
-It lives at `src/tools/effects-preview-server.ts`, built by a **separate** Rollup config
+It lives at `src/effects/preview-server.ts`, built by a **separate** Rollup config
 (`rollup.preview.config.mjs`) into `tools/effects-preview-server.bundle.mjs` — deliberately kept
 out of `rollup.config.mjs` and outside the `de.boriskemper.sonos-controller.sdPlugin/` folder, so
 it can never end up in the packaged `.streamDeckPlugin` (which only ever packs that folder — see
