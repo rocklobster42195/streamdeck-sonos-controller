@@ -142,23 +142,29 @@ export class SonosFavoritePlayer {
           let count = 0;
           for (const item of items) {
               const metadata = this.generateMetadata(
-                  item.title, 
-                  item.uri, 
-                  'object.item.audioItem.musicTrack', 
+                  item.title,
+                  item.uri,
+                  'object.item.audioItem.musicTrack',
                   item.protocolInfo
               );
 
-              if (count === 0) {
-                  streamDeck.logger.debug(`${logPrefix} First Track URI: ${item.uri}`);
+              try {
+                  await this.sonosDevice.AVTransportService.AddURIToQueue({
+                      InstanceID: 0,
+                      EnqueuedURI: item.uri,
+                      EnqueuedURIMetaData: metadata,
+                      DesiredFirstTrackNumberEnqueued: 0,
+                      EnqueueAsNext: false
+                  });
+              } catch (e) {
+                  // The debug level this used to log the URI at is filtered out in production
+                  // (plugin.ts sets "info"), so a real failure here previously surfaced only the
+                  // bare UPnPError with no way to tell which item/URI/metadata triggered it —
+                  // logging at error level, right at the point of failure, so the next occurrence
+                  // is actually diagnosable instead of a repeat "guess and retry" cycle.
+                  streamDeck.logger.error(`${logPrefix} AddURIToQueue failed for item ${count} — uri=${item.uri}, protocolInfo=${item.protocolInfo}, metadata=${metadata}`, e);
+                  throw e;
               }
-
-              await this.sonosDevice.AVTransportService.AddURIToQueue({
-                  InstanceID: 0,
-                  EnqueuedURI: item.uri, 
-                  EnqueuedURIMetaData: metadata,
-                  DesiredFirstTrackNumberEnqueued: 0,
-                  EnqueueAsNext: false
-              });
               count++;
           }
 
@@ -227,17 +233,24 @@ export class SonosFavoritePlayer {
                 '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
                 `<item id="${containerId}" parentID="${favorite.ParentId}" restricted="true">` +
                 `<dc:title>${escapeXml(favorite.Title)}</dc:title>` +
-                `<upnp:class>object.container.playlistContainer</upnp:class>` + 
+                `<upnp:class>object.container.playlistContainer</upnp:class>` +
                 `<res protocolInfo="${favorite.ProtocolInfo}">${escapeXml(favorite.TrackUri)}</res>` +
                 `</item></DIDL-Lite>`;
 
-            await this.sonosDevice.AVTransportService.AddURIToQueue({
-                InstanceID: 0,
-                EnqueuedURI: favorite.TrackUri,
-                EnqueuedURIMetaData: metadata,
-                DesiredFirstTrackNumberEnqueued: 0,
-                EnqueueAsNext: false
-            });
+            try {
+                await this.sonosDevice.AVTransportService.AddURIToQueue({
+                    InstanceID: 0,
+                    EnqueuedURI: favorite.TrackUri,
+                    EnqueuedURIMetaData: metadata,
+                    DesiredFirstTrackNumberEnqueued: 0,
+                    EnqueueAsNext: false
+                });
+            } catch (e) {
+                // Same diagnosability gap as handleLocalFolder's per-item log — surface exactly
+                // what was sent, not just the bare UPnPError, so a repeat failure is diagnosable.
+                streamDeck.logger.error(`${logPrefix} AddURIToQueue (fallback) failed — containerId=${containerId}, trackUri=${favorite.TrackUri}, protocolInfo=${favorite.ProtocolInfo}, metadata=${metadata}`, e);
+                throw e;
+            }
 
             await this.sonosDevice.SwitchToQueue();
             await this.sonosDevice.Play();
