@@ -4,6 +4,33 @@ import { sonosFavoritesCache } from "./sonos-discovery";
 import { SonosFavorite } from "./SonosTypes";
 import { escapeXml, decodeXmlEntities } from "../utils/xml";
 
+// A NAS's own media indexer can report a generic/wrong MIME type for a perfectly playable file —
+// confirmed on hardware (2026-07-17): a Synology TS451 share reported protocolInfo
+// "x-file-cifs:*:application/octet-stream:*" for a plain .mp3, which Sonos's AddURIToQueue then
+// rejected outright with UPnPError 402 (Invalid args), even though the SAME file plays fine
+// from the Sonos app itself (which apparently re-derives or ignores this field). Trust the
+// reported protocolInfo only when it actually claims an audio/* MIME type; otherwise derive one
+// from the file extension.
+const EXTENSION_TO_MIME: Record<string, string> = {
+    mp3: 'audio/mpeg',
+    m4a: 'audio/mp4',
+    mp4: 'audio/mp4',
+    aac: 'audio/aac',
+    flac: 'audio/flac',
+    wav: 'audio/wav',
+    ogg: 'audio/ogg',
+    wma: 'audio/x-ms-wma',
+};
+
+function resolveProtocolInfo(reportedProtocolInfo: string, uri: string): string {
+    if (/:audio\//i.test(reportedProtocolInfo)) return reportedProtocolInfo;
+    const cleanPath = uri.split(/[?#]/)[0];
+    const dot = cleanPath.lastIndexOf('.');
+    const ext = dot === -1 ? '' : cleanPath.slice(dot + 1).toLowerCase();
+    const mime = EXTENSION_TO_MIME[ext] ?? 'audio/mpeg';
+    return `x-file-cifs:*:${mime}:*`;
+}
+
 /**
  * Plays a Sonos favorite on one device, dispatching on the favorite's URI type (Spotify
  * playlist / music-library folder / radio-direct URI) — extracted verbatim from
@@ -111,6 +138,7 @@ export class SonosFavoritePlayer {
                           protocolInfo = protoMatch[1];
                       }
                   }
+                  protocolInfo = resolveProtocolInfo(protocolInfo, cleanUri);
 
                   // Filter M3U
                   if (cleanUri.toLowerCase().endsWith('.m3u') || cleanUri.toLowerCase().endsWith('.m3u8')) {
