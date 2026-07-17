@@ -73,7 +73,9 @@
         "Multi-Control": "Multi-Control",
         "Line-In, battery status, and more SONOS device functions on one key.": "Line-In, battery status, and more SONOS device functions on one key.",
         "-- Select Function --": "-- Select Function --",
+        "-- No function available for this device --": "-- No function available for this device --",
         "Line-In": "Line-In",
-        "Battery": "Battery"
+        "Battery": "Battery",
+        "no_function_available_hint": "No Multi-Control function is available for this device."
     }
 }

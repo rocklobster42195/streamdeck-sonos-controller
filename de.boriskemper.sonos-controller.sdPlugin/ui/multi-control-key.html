@@ -48,11 +48,23 @@
       </sdpi-item-value>
     </sdpi-item>
 
-    <!-- Hidden data carrier, not a real field — the backend computes hasBattery for the currently
-         selected device on every settings sync and writes it back via setSettings() (same
-         settings-sync channel every other bound field uses), see play-pause-key.ts for the
+    <!-- Shown when NEITHER function is valid for the selected device (e.g. a mains-powered
+         speaker with no physical Line-In port, like a Play:1 or SYMFONISK) — the function
+         dropdown itself already reflects this via its own placeholder text
+         (functionOptionItems' "-- No function available --"), this hint just makes the same fact
+         impossible to miss. -->
+    <sdpi-item id="noFunctionAvailableItem" class="hidden">
+      <sdpi-item-value class="hint" data-i18n-html="no_function_available_hint">
+        No Multi-Control function is available for this device.
+      </sdpi-item-value>
+    </sdpi-item>
+
+    <!-- Hidden data carriers, not real fields — the backend computes hasBattery/hasLineIn for the
+         currently selected device on every settings sync and writes them back via setSettings()
+         (same settings-sync channel every other bound field uses), see play-pause-key.ts for the
          original pattern. -->
     <sdpi-checkbox id="hasBatteryCheckbox" setting="hasBattery" class="hidden"></sdpi-checkbox>
+    <sdpi-checkbox id="hasLineInCheckbox" setting="hasLineIn" class="hidden"></sdpi-checkbox>
 
     <script>
       // No 'connected' wrapper here, deliberately — elements above already exist in the DOM by
@@ -62,11 +74,14 @@
       // the exact same top-level, unwrapped style panorama-effects-dial.html uses for its
       // analogous effect/device conditional-visibility logic. Listening to both "valuechange" and
       // "change" is defensive belt-and-suspenders, not because either alone is known-broken.
+      var deviceSelect = document.getElementById('deviceSelect');
       var functionSelect = document.getElementById('functionSelect');
       var fadeDurationItem = document.getElementById('fadeDurationItem');
       var fadeHintItem = document.getElementById('fadeHintItem');
       var noBatteryWarningItem = document.getElementById('noBatteryWarningItem');
+      var noFunctionAvailableItem = document.getElementById('noFunctionAvailableItem');
       var hasBatteryCheckbox = document.getElementById('hasBatteryCheckbox');
+      var hasLineInCheckbox = document.getElementById('hasLineInCheckbox');
 
       function updateVisibility() {
         var isLineIn = functionSelect.value === 'line-in';
@@ -74,11 +89,19 @@
         fadeDurationItem.classList.toggle('hidden', !isLineIn);
         fadeHintItem.classList.toggle('hidden', !isLineIn);
         noBatteryWarningItem.classList.toggle('hidden', !(isBattery && !hasBatteryCheckbox.value));
+        // Only once a device is actually selected — hasBattery/hasLineIn checkboxes start out
+        // falsy before the backend ever computes them, which would otherwise flash this hint on
+        // an empty, not-yet-configured tile.
+        var hasDevice = !!deviceSelect.value;
+        noFunctionAvailableItem.classList.toggle('hidden', !(hasDevice && !hasBatteryCheckbox.value && !hasLineInCheckbox.value));
       }
 
       functionSelect.addEventListener('valuechange', updateVisibility);
       functionSelect.addEventListener('change', updateVisibility);
+      deviceSelect.addEventListener('valuechange', updateVisibility);
+      deviceSelect.addEventListener('change', updateVisibility);
       hasBatteryCheckbox.addEventListener('valuechange', updateVisibility);
+      hasLineInCheckbox.addEventListener('valuechange', updateVisibility);
       // The function list itself is populated asynchronously by the get-function-options
       // datasource — catch the initial persisted value landing once options actually exist.
       new MutationObserver(updateVisibility).observe(functionSelect, { childList: true });

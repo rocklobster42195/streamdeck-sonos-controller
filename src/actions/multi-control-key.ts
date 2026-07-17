@@ -12,6 +12,7 @@ import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
+import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { generateLineInIcon, generateBatteryKeyIcon, generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
@@ -36,29 +37,36 @@ type MultiControlSettings = {
     // to hide the "Battery" function option for devices that don't report battery data — same
     // pattern as play-pause-key.ts's batteryDisplayMode field gating.
     hasBattery?: boolean;
+    // Same mechanism as hasBattery, but for Line-In: a real, hardware-verified positive probe
+    // (deviceHasLineIn — see SonosLineIn.ts, confirmed 2026-07-17 against 8 live devices) rather
+    // than the hasBattery-only negative proxy this used to rely on, which offered Line-In on
+    // every mains-powered device without the port (Play:1, One, SYMFONISK, ...).
+    hasLineIn?: boolean;
 };
 
-// Whether a function is valid for a device we know has a battery (Roam/Move) — reuses the
-// hasBattery signal we already compute, rather than a separate Line-In capability check (which
-// has no cheap signal at all, see docs/concept-multicontrol-key.md's capability-gating section).
-// Sonos' battery-powered speakers (Roam/Move) have no physical Line-In port, so hasBattery is a
-// reliable NEGATIVE signal for Line-In even though it says nothing positive about mains-powered
-// devices (those still default to "offered", consistent with the plugin's general MS1 policy of
-// offering a function unless there's positive evidence against it).
-function isFunctionValid(fn: MultiControlFunction, hasBattery: boolean | undefined): boolean {
-    if (fn === 'line-in') return hasBattery !== true;
+// Whether a function is valid for THIS device, based on the two hardware-probed capability
+// signals. Line-In now uses deviceHasLineIn's real positive probe directly — the previous
+// hasBattery-only negative proxy (Roam/Move have no Line-In port, but says nothing about
+// mains-powered devices without one either) offered Line-In on every non-battery device
+// regardless of whether it actually had the port.
+function isFunctionValid(fn: MultiControlFunction, hasBattery: boolean | undefined, hasLineIn: boolean | undefined): boolean {
+    if (fn === 'line-in') return hasLineIn === true;
     if (fn === 'battery') return hasBattery !== false;
     return true;
 }
 
-function functionOptionItems(hasBattery: boolean | undefined): { label: string; value: string }[] {
-    const items = [{ label: piT('-- Select Function --'), value: '' }];
-    (['line-in', 'battery'] as const).forEach((fn) => {
-        if (isFunctionValid(fn, hasBattery)) {
-            items.push({ label: piT(fn === 'line-in' ? 'Line-In' : 'Battery'), value: fn });
-        }
-    });
-    return items;
+// Empty (no function valid for this device) is surfaced via the placeholder's own text rather
+// than silently leaving a nearly-empty dropdown — see also noFunctionAvailableItem in the PI,
+// which shows a fuller explanatory hint for the same condition.
+function functionOptionItems(hasBattery: boolean | undefined, hasLineIn: boolean | undefined): { label: string; value: string }[] {
+    const validFns = (['line-in', 'battery'] as const).filter((fn) => isFunctionValid(fn, hasBattery, hasLineIn));
+    if (validFns.length === 0) {
+        return [{ label: piT('-- No function available for this device --'), value: '' }];
+    }
+    return [
+        { label: piT('-- Select Function --'), value: '' },
+        ...validFns.map((fn) => ({ label: piT(fn === 'line-in' ? 'Line-In' : 'Battery'), value: fn })),
+    ];
 }
 
 @action({ UUID: "de.boriskemper.sonos-controller.multi-control-key" })
@@ -70,6 +78,9 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
     // that request arrives without direct access to the settings object being computed in
     // onInstanceUpdate.
     private hasBatteryByContext: Map<string, boolean> = new Map();
+    // Same purpose as hasBatteryByContext, for Line-In — read by the get-function-options
+    // handler below.
+    private hasLineInByContext: Map<string, boolean> = new Map();
     // Last known deviceIp per context — lets onInstanceUpdate tell "device actually changed" apart
     // from "instance just (re)appeared with its persisted device", so the function selection only
     // resets on a real device switch, not on every plugin/PI restart.
@@ -108,34 +119,35 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         await discoveryPromise;
 
         // Computed even before a function is chosen (deviceIp alone is enough) — the PI needs
-        // this in place before the user opens the function dropdown, otherwise "Battery" would be
-        // offered for one render pass on a non-battery device. setSettings() below re-enters
-        // onDidReceiveSettings once, exactly like play-pause-key.ts's same pattern, but terminates
-        // immediately on the second pass since hasBattery then matches.
+        // this in place before the user opens the function dropdown, otherwise a function would
+        // be offered for one render pass on a device that doesn't actually support it.
+        // setSettings() below re-enters onDidReceiveSettings once, exactly like play-pause-key.ts's
+        // same pattern, but terminates immediately on the second pass since both flags then match.
         if (deviceIp) {
-            const hasBattery = await deviceHasBattery(deviceIp);
-            const changed = this.hasBatteryByContext.get(context) !== hasBattery;
+            const [hasBattery, hasLineIn] = await Promise.all([deviceHasBattery(deviceIp), deviceHasLineIn(deviceIp)]);
+            const changed = this.hasBatteryByContext.get(context) !== hasBattery || this.hasLineInByContext.get(context) !== hasLineIn;
             this.hasBatteryByContext.set(context, hasBattery);
+            this.hasLineInByContext.set(context, hasLineIn);
 
             // A real device switch (not the instance just re-appearing with its already-persisted
             // device) restarts the function choice from scratch — a function valid for the OLD
             // device (e.g. Line-In on a Play:5) is meaningless context carried over to a newly
             // picked device, even if it happens to still be technically valid there too. Also
             // covers the narrower case where the function became invalid for the SAME device
-            // (e.g. hasBattery detection changed) without a device switch.
+            // (e.g. a capability probe result changed) without a device switch.
             const deviceChanged = this.lastDeviceIpByContext.has(context) && this.lastDeviceIpByContext.get(context) !== deviceIp;
             this.lastDeviceIpByContext.set(context, deviceIp);
-            const staleFunction = !!settings.controlFunction && (deviceChanged || !isFunctionValid(settings.controlFunction, hasBattery));
+            const staleFunction = !!settings.controlFunction && (deviceChanged || !isFunctionValid(settings.controlFunction, hasBattery, hasLineIn));
 
-            if (settings.hasBattery !== hasBattery || staleFunction) {
-                settings = { ...settings, hasBattery, ...(staleFunction ? { controlFunction: undefined } : {}) };
+            if (settings.hasBattery !== hasBattery || settings.hasLineIn !== hasLineIn || staleFunction) {
+                settings = { ...settings, hasBattery, hasLineIn, ...(staleFunction ? { controlFunction: undefined } : {}) };
                 await action.setSettings(settings);
             }
             if (changed) {
                 // Re-render the actual dropdown list, not just the settings-synced warning hint —
-                // the PI may already have the (stale) list loaded from before hasBattery was known,
+                // the PI may already have the (stale) list loaded from before these were known,
                 // e.g. right after the device dropdown changed while the PI was still open.
-                sendOptions('get-function-options', functionOptionItems(hasBattery));
+                sendOptions('get-function-options', functionOptionItems(hasBattery, hasLineIn));
             }
         }
 
@@ -193,6 +205,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         this.controllers.delete(context);
         this.batteryStatuses.delete(context);
         this.hasBatteryByContext.delete(context);
+        this.hasLineInByContext.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<MultiControlSettings>): Promise<void> {
@@ -232,7 +245,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         switch ((ev.payload as any).event) {
             case 'get-devices': await sendDeviceList(); break;
             case 'get-function-options':
-                sendOptions('get-function-options', functionOptionItems(this.hasBatteryByContext.get(ev.action.id)));
+                sendOptions('get-function-options', functionOptionItems(this.hasBatteryByContext.get(ev.action.id), this.hasLineInByContext.get(ev.action.id)));
                 break;
             case 'get-fade-options': sendFadeOptions(); break;
         }

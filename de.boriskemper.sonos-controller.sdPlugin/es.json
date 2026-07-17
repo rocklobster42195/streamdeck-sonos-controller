@@ -73,6 +73,7 @@
         "Multi-Control": "Multi-Control",
         "Line-In, battery status, and more SONOS device functions on one key.": "Line-In, estado de batería y más funciones del dispositivo SONOS en una tecla.",
         "-- Select Function --": "-- Seleccionar función --",
+        "-- No function available for this device --": "-- Ninguna función disponible para este dispositivo --",
         "Line-In": "Line-In",
         "Battery": "Batería"
     }

@@ -67,6 +67,7 @@
             multi_function:     'Funktion',
             line_in_fade_hint:  'Blendet die ganze Gruppe aus, bevor auf Line-In umgeschaltet wird, und stellt danach die Lautstärke jedes Speakers wieder her.',
             no_battery_hint:    'Dieses Gerät meldet keine Akkudaten — für diese Funktion einen Roam oder Move wählen.',
+            no_function_available_hint: 'Für dieses Gerät steht keine Multi-Steuerung-Funktion zur Verfügung.',
             append_line_in:     'Line-In anhängen',
         },
         es: {
@@ -129,6 +130,7 @@
             multi_function:     'Función',
             line_in_fade_hint:  'Atenúa todo el grupo antes de cambiar a Line-In y luego restaura el volumen de cada altavoz.',
             no_battery_hint:    'Este dispositivo no informa datos de batería — elige un Roam o Move para esta función.',
+            no_function_available_hint: 'Ninguna función de Multi-Control está disponible para este dispositivo.',
             append_line_in:     'Añadir Line-In',
         },
     };
