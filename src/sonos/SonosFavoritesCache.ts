@@ -2,6 +2,7 @@
 import { SonosDevice, ServiceEvents } from '@svrooij/sonos';
 import sharp from 'sharp';
 import streamDeck from '@elgato/streamdeck';
+import { decodeXmlEntities } from '../utils/xml';
 
 /**
  * A cache for Sonos favorites and their scaled cover art.
@@ -111,8 +112,7 @@ class SonosFavoritesCache {
                     const resMatch = resRe.exec(m[0]);
                     if (resMdMatch && resMatch) {
                         // HTML-decode and URL-decode the raw URI to get the canonical TrackUri.
-                        const trackUri = resMatch[1]
-                            .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+                        const trackUri = decodeXmlEntities(resMatch[1])
                             .replace(/%3A/gi, ':').replace(/%2F/gi, '/').replace(/%20/g, ' ');
                         this.rawMetadataMap.set(trackUri, resMdMatch[1]);
                     }

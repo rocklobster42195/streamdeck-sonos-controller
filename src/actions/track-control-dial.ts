@@ -16,7 +16,10 @@ import { SonosDevice } from "@svrooij/sonos";
 import { CoverArtAnimator } from "../utils/CoverArtAnimator";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
-import { getDominantColor } from "../utils/color-extract";
+import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
+import { escapeXml } from "../utils/xml";
+import { measureArialWidth } from "../utils/text-width";
+import { parseRelTime, formatRelTime } from "../sonos/rel-time";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
 import { TrackInfo } from "../sonos/SonosTypes";
@@ -113,7 +116,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
                 const s = this.states.get(context);
                 if (!s) return;
                 s.dominantColor = color;
-                const visibleColor = this.ensureVisibleColor(color);
+                const visibleColor = ensureVisibleColor(color);
                 const pk = panoramaContextGroupKey.get(context);
                 if (isPanoramaEffectActive(pk)) {
                     groupEffects.get(pk!)?.onSettingsChange?.({ color: visibleColor });
@@ -143,10 +146,6 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         return 97;
     }
 
-    private estimateTextWidth(text: string, fontSize: number): number {
-        return Math.max(0, Math.ceil(text.length * fontSize * 0.55) + 4);
-    }
-
     private async computeTruncatedText(text: string, fontSize: number, availableWidth: number): Promise<string> {
         try {
             const fullWidth = await titleAnimator.measure(text, fontSize);
@@ -159,7 +158,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
             const candidate = text.substring(0, mid) + '…';
             let w: number;
             try { w = await titleAnimator.measure(candidate, fontSize); }
-            catch { w = this.estimateTextWidth(candidate, fontSize); }
+            catch { w = measureArialWidth(candidate, fontSize); }
             if (w <= availableWidth) { best = candidate; lo = mid + 1; }
             else { hi = mid - 1; }
         }
@@ -177,7 +176,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         let measuredFull: number | undefined;
         try { measuredFull = await titleAnimator.measure(fullText, fontSize); } catch { /* use estimate */ }
 
-        if ((measuredFull ?? this.estimateTextWidth(fullText, fontSize)) <= availableWidth) {
+        if ((measuredFull ?? measureArialWidth(fullText, fontSize)) <= availableWidth) {
             marqueeAnimator.update(context, { text: fullText, fontSize, fontColor, speed, pauseDuration, measuredWidth: measuredFull, availableWidth });
             return;
         }
@@ -185,7 +184,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         const preview = await this.computeTruncatedText(fullText, fontSize, availableWidth);
         let measuredPreview: number | undefined;
         try { measuredPreview = await titleAnimator.measure(preview, fontSize); }
-        catch { measuredPreview = this.estimateTextWidth(preview, fontSize); }
+        catch { measuredPreview = measureArialWidth(preview, fontSize); }
 
         marqueeAnimator.update(context, { text: preview, fontSize, fontColor, speed, pauseDuration, measuredWidth: measuredPreview, availableWidth });
 
@@ -276,7 +275,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
                     const s = this.states.get(context);
                     if (!s) return;
                     s.dominantColor = c;
-                    const visibleColor = this.ensureVisibleColor(c);
+                    const visibleColor = ensureVisibleColor(c);
                     const pk = panoramaContextGroupKey.get(context);
                     if (isPanoramaEffectActive(pk)) {
                         groupEffects.get(pk!)?.onSettingsChange?.({ color: visibleColor });
@@ -366,7 +365,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
             await controller.transportDevice.AVTransportService.Seek({
                 InstanceID: 0,
                 Unit: 'REL_TIME',
-                Target: this.formatRelTime(newPos),
+                Target: formatRelTime(newPos),
             });
         } catch (e) {
             streamDeck.logger.warn('Seek failed', e);
@@ -406,40 +405,15 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         }
     }
 
-    private parseRelTime(t: string): number {
-        if (!t || t === 'NOT_IMPLEMENTED') return 0;
-        const parts = t.split(':').map(Number);
-        return (parts.length === 3 && parts.every(n => !isNaN(n)))
-            ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-            : 0;
-    }
-
-    private formatRelTime(seconds: number): string {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
-        return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    }
-
     private async fetchAndStorePosition(context: string, controller: SonosDeviceController): Promise<void> {
         try {
             const pos = await controller.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
             const state = this.states.get(context);
             if (!state) return;
-            state.trackPosition = this.parseRelTime(pos.RelTime);
-            state.trackDuration = this.parseRelTime(pos.TrackDuration);
+            state.trackPosition = parseRelTime(pos.RelTime);
+            state.trackDuration = parseRelTime(pos.TrackDuration);
             state.trackPositionTime = Date.now();
         } catch { /* position stays at last known value */ }
-    }
-
-    private ensureVisibleColor(color: string): string {
-        const m = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
-        if (!m) return '#CCCCCC';
-        const [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255];
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (lum >= 0.25) return color;
-        const mix = (v: number) => Math.min(255, Math.round(v * 255 + 255 * 0.55));
-        return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
     }
 
     private renderEqualizerBars(color: string, amplitude = 1): string {
@@ -448,7 +422,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
             const full = Math.max(4, Math.min(18, h + Math.floor(Math.random() * 10 - 5)));
             const rh = Math.max(1, Math.round(full * amplitude));
             const op = (0.75 * amplitude).toFixed(2);
-            return `<rect x="${8 + i * 9}" y="${90 - rh}" width="7" height="${rh}" fill="${this.escapeXml(color)}" opacity="${op}" rx="1"/>`;
+            return `<rect x="${8 + i * 9}" y="${90 - rh}" width="7" height="${rh}" fill="${escapeXml(color)}" opacity="${op}" rx="1"/>`;
         }).join('');
     }
 
@@ -471,7 +445,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         const isPlaying = state.transportState === 'PLAYING';
         const isTransitioning = state.transportState === 'TRANSITIONING';
         const artist = state.trackInfo?.Artist ?? '';
-        const accentColor = this.ensureVisibleColor(state.dominantColor);
+        const accentColor = ensureVisibleColor(state.dominantColor);
         const textOpacity = (isPlaying || isTransitioning) ? 1 : 0.6;
         const fontSize = settings?.fontSize ?? 14;
         const fontColor = settings?.fontColor ?? '#FFFFFF';
@@ -505,7 +479,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
                 if (marqueeAnimator.isRunning(context)) {
                     titleFrag = marqueeAnimator.render(context, 8, 72, 97, 20);
                 } else {
-                    const t = this.escapeXml(state.trackInfo?.Title ?? 'Sonos');
+                    const t = escapeXml(state.trackInfo?.Title ?? 'Sonos');
                     titleFrag = `<text x="8" y="72" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
                 }
             }
@@ -519,10 +493,10 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
                 '<rect width="200" height="100" fill="black"/>',
                 `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                 titleFrag,
-                `  <text x="8" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
+                `  <text x="8" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${escapeXml(artist)}</text>`,
                 '</g>',
                 `<rect x="8" y="95" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                progressPct > 0 ? `<rect x="8" y="95" width="${Math.round(97 * progress)}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
+                progressPct > 0 ? `<rect x="8" y="95" width="${Math.round(97 * progress)}" height="5" fill="${escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
                 `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
                 batteryBadge,
                 '</svg>',
@@ -539,7 +513,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
                 if (marqueeAnimator.isRunning(context)) {
                     titleFrag = marqueeAnimator.render(context, 8, 22, 97, 20);
                 } else {
-                    const t = this.escapeXml(state.trackInfo?.Title ?? 'Sonos');
+                    const t = escapeXml(state.trackInfo?.Title ?? 'Sonos');
                     titleFrag = `<text x="8" y="22" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
                 }
             }
@@ -557,7 +531,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
                     if (marqueeAnimator.isRunning(context)) {
                         panoTitleFrag = marqueeAnimator.render(context, 8, 72, 97, 20);
                     } else {
-                        const t = this.escapeXml(state.trackInfo?.Title ?? 'Sonos');
+                        const t = escapeXml(state.trackInfo?.Title ?? 'Sonos');
                         panoTitleFrag = `<text x="8" y="72" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
                     }
                 }
@@ -565,9 +539,9 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
                 // Text background pills — only as wide as the respective text.
                 const titleText = state.trackInfo?.Title ?? '';
                 const titlePillW = settings?.showTrackTitle !== false && titleText
-                    ? Math.min(99, this.estimateTextWidth(titleText, fontSize) + 8) : 0;
+                    ? Math.min(99, measureArialWidth(titleText, fontSize) + 8) : 0;
                 const artistPillW = artist
-                    ? Math.min(99, this.estimateTextWidth(artist, 11) + 8) : 0;
+                    ? Math.min(99, measureArialWidth(artist, 11) + 8) : 0;
                 const titlePillY = Math.round(72 - fontSize * 0.8);
                 const titlePillH = Math.round(fontSize * 1.1);
 
@@ -584,10 +558,10 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
                     artistPillW > 0 ? `<rect x="5" y="77" width="${artistPillW}" height="13" fill="black" opacity="0.55" rx="3"/>` : '',
                     `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                     panoTitleFrag,
-                    `  <text x="8" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
+                    `  <text x="8" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${escapeXml(artist)}</text>`,
                     '</g>',
                     `<rect x="8" y="95" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                    progressPct > 0 ? `<rect x="8" y="95" width="${Math.round(97 * progress)}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
+                    progressPct > 0 ? `<rect x="8" y="95" width="${Math.round(97 * progress)}" height="5" fill="${escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
                     `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
                     batteryBadge,
                     '</svg>',
@@ -606,10 +580,10 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
                     '<rect width="200" height="100" fill="black"/>',
                     `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                     titleFrag,
-                    `  <text x="8" y="38" fill="#999999" font-family="Arial,sans-serif" font-size="12">${this.escapeXml(artist)}</text>`,
+                    `  <text x="8" y="38" fill="#999999" font-family="Arial,sans-serif" font-size="12">${escapeXml(artist)}</text>`,
                     '</g>',
                     `<rect x="8" y="48" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                    progressPct > 0 ? `<rect x="8" y="48" width="${Math.round(97 * progress)}" height="5" fill="${this.escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
+                    progressPct > 0 ? `<rect x="8" y="48" width="${Math.round(97 * progress)}" height="5" fill="${escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
                     visualizer,
                     `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
                     batteryBadge,
@@ -628,13 +602,4 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
         }).catch(() => {});
     }
 
-    private escapeXml(unsafe: string): string {
-        return unsafe.replace(/[<>&"']/g, (c) => {
-            switch (c) {
-                case '<': return '&lt;'; case '>': return '&gt;';
-                case '&': return '&amp;'; case '"': return '&quot;';
-                case "'": return '&apos;'; default: return c;
-            }
-        });
-    }
 }

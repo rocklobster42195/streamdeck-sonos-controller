@@ -13,7 +13,8 @@ import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosDevice } from "@svrooij/sonos";
-import { getDominantColor } from "../utils/color-extract";
+import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
+import { escapeXml } from "../utils/xml";
 import { panoramaOrchestrator, panoramaColumns, panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, safeEffectCall, setContextEffectSettings, DISPLAY_W, DISPLAY_H } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
 import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
@@ -128,16 +129,6 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
 
     private getSliceOffset(context: string): number {
         return getPanoramaSliceOffset(context);
-    }
-
-    private ensureVisibleColor(color: string): string {
-        const m = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
-        if (!m) return DEFAULT_COLOR;
-        const [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255];
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (lum >= 0.25) return color;
-        const mix = (v: number) => Math.min(255, Math.round(v * 255 + 255 * 0.55));
-        return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
     }
 
     // Updates a group's displayed title/artist, starting a crossfade from whatever was showing
@@ -411,7 +402,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
             controller.getCurrentTrackCover().then(cover => {
                 if (!cover) return;
                 getDominantColor(cover).then(color => {
-                    this.groupEffects.get(key)?.onSettingsChange?.({ color: this.ensureVisibleColor(color) });
+                    this.groupEffects.get(key)?.onSettingsChange?.({ color: ensureVisibleColor(color, DEFAULT_COLOR) });
                 }).catch(() => {});
             }).catch(() => {});
 
@@ -423,7 +414,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
                 const art = trackInfo.albumArtDataUri;
                 if (!art) return;
                 getDominantColor(art).then(color => {
-                    this.groupEffects.get(key)?.onSettingsChange?.({ color: this.ensureVisibleColor(color) });
+                    this.groupEffects.get(key)?.onSettingsChange?.({ color: ensureVisibleColor(color, DEFAULT_COLOR) });
                 }).catch(() => {});
             });
 
@@ -631,11 +622,11 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
     private renderFadeableText(x: number, y: number, fontSize: number, color: string, fontWeight: string | undefined, current: string, old: string, fadeOpacity?: number): string {
         const attrs = `fill="${color}" font-family="Arial,sans-serif" font-size="${fontSize}"${fontWeight ? ` font-weight="${fontWeight}"` : ''} text-anchor="end" clip-path="url(#c)"`;
         if (fadeOpacity === undefined) {
-            return current ? `<text x="${x}" y="${y}" ${attrs}>${this.escapeXml(current)}</text>` : '';
+            return current ? `<text x="${x}" y="${y}" ${attrs}>${escapeXml(current)}</text>` : '';
         }
         const parts: string[] = [];
-        if (old) parts.push(`<text x="${x}" y="${y}" ${attrs} opacity="${(1 - fadeOpacity).toFixed(2)}">${this.escapeXml(old)}</text>`);
-        if (current) parts.push(`<text x="${x}" y="${y}" ${attrs} opacity="${fadeOpacity.toFixed(2)}">${this.escapeXml(current)}</text>`);
+        if (old) parts.push(`<text x="${x}" y="${y}" ${attrs} opacity="${(1 - fadeOpacity).toFixed(2)}">${escapeXml(old)}</text>`);
+        if (current) parts.push(`<text x="${x}" y="${y}" ${attrs} opacity="${fadeOpacity.toFixed(2)}">${escapeXml(current)}</text>`);
         return parts.join('');
     }
 
@@ -717,8 +708,4 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
         }).catch(() => {});
     }
 
-    private escapeXml(s: string): string {
-        return s.replace(/[<>&"']/g, c =>
-            ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' }[c] ?? c));
-    }
 }

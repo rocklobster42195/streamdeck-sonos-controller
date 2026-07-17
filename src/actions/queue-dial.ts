@@ -25,7 +25,9 @@ import { QueueCoverArtCache } from "./QueueCoverArtCache";
 import { piT } from "../utils/pi-i18n";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, groupEffects } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
-import { getDominantColor } from "../utils/color-extract";
+import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
+import { escapeXml } from "../utils/xml";
+import { measureArialWidth } from "../utils/text-width";
 
 type QueueDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
@@ -610,7 +612,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         if (marqueeAnimator.isRunning(context)) {
             titleFrag = marqueeAnimator.render(context, resolvedTextX, 22, TEXT_WIDTH, 20);
         } else {
-            const t = this.escapeXml(state.trackInfo?.Title ?? 'Sonos');
+            const t = escapeXml(state.trackInfo?.Title ?? 'Sonos');
             titleFrag = `<text x="${resolvedTextX}" y="22" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="14" clip-path="url(#textClip)">${t}</text>`;
         }
 
@@ -624,7 +626,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
             const fraction = position / total;
             indicatorValue = Math.round(fraction * 100);
             indicatorEnabled = true;
-            const barColor = this.ensureVisibleColor(state.dominantColor);
+            const barColor = ensureVisibleColor(state.dominantColor);
             statusFrag = [
                 `<rect x="${resolvedTextX}" y="86" width="${TEXT_WIDTH}" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
                 `<rect x="${resolvedTextX}" y="86" width="${Math.round(TEXT_WIDTH * fraction)}" height="5" fill="${barColor}" opacity="0.9" rx="2.5"/>`,
@@ -647,7 +649,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         // only right when extractDominantColor's async callback resolves — see colorPushedFor's
         // doc comment for the race this closes.
         if (panoramaKey && state.colorPushedFor !== state.dominantColor) {
-            groupEffects.get(panoramaKey)?.onSettingsChange?.({ color: this.ensureVisibleColor(state.dominantColor) });
+            groupEffects.get(panoramaKey)?.onSettingsChange?.({ color: ensureVisibleColor(state.dominantColor) });
             state.colorPushedFor = state.dominantColor;
         }
 
@@ -660,8 +662,8 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
             // Text pills for legibility against a moving background — same technique Track Dial
             // uses in its own panorama branch.
             const titleText = state.trackInfo?.Title ?? '';
-            const titlePillW = titleText ? Math.min(TEXT_WIDTH + 6, this.estimateTextWidth(titleText, 14) + 8) : 0;
-            const artistPillW = artist ? Math.min(TEXT_WIDTH + 6, this.estimateTextWidth(artist, 11) + 8) : 0;
+            const titlePillW = titleText ? Math.min(TEXT_WIDTH + 6, measureArialWidth(titleText, 14) + 8) : 0;
+            const artistPillW = artist ? Math.min(TEXT_WIDTH + 6, measureArialWidth(artist, 11) + 8) : 0;
             pillFrags = [
                 titlePillW > 0 ? `<rect x="${resolvedTextX - 3}" y="11" width="${titlePillW}" height="15" fill="black" opacity="0.55" rx="3"/>` : '',
                 artistPillW > 0 ? `<rect x="${resolvedTextX - 3}" y="31" width="${artistPillW}" height="13" fill="black" opacity="0.55" rx="3"/>` : '',
@@ -679,7 +681,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
             pillFrags,
             `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
             titleFrag,
-            `  <text x="${resolvedTextX}" y="40" fill="#999999" font-family="Arial,sans-serif" font-size="11">${this.escapeXml(artist)}</text>`,
+            `  <text x="${resolvedTextX}" y="40" fill="#999999" font-family="Arial,sans-serif" font-size="11">${escapeXml(artist)}</text>`,
             '</g>',
             statusFrag,
             `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
@@ -723,13 +725,13 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         if (marqueeAnimator.isRunning(cursorKey)) {
             cursorTitleFrag = marqueeAnimator.render(cursorKey, resolvedTextX, 46, TEXT_WIDTH, 20);
         } else {
-            const t = this.escapeXml(cursorItem?.Title ?? '');
+            const t = escapeXml(cursorItem?.Title ?? '');
             cursorTitleFrag = `<text x="${resolvedTextX}" y="46" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="15" clip-path="url(#carouselTextClip)">${t}</text>`;
         }
 
-        const prevText = this.escapeXml(truncateForDisplay(prevItem?.Title ?? '', 22));
-        const nextText = this.escapeXml(truncateForDisplay(nextItem?.Title ?? '', 22));
-        const cursorArtist = this.escapeXml(cursorItem?.Artist ?? '');
+        const prevText = escapeXml(truncateForDisplay(prevItem?.Title ?? '', 22));
+        const nextText = escapeXml(truncateForDisplay(nextItem?.Title ?? '', 22));
+        const cursorArtist = escapeXml(cursorItem?.Artist ?? '');
 
         // Same square-plus-clip technique as CoverArtAnimator.render (the hardware renderer
         // ignores preserveAspectRatio, stretching non-square boxes): a 100x100 square anchored to
@@ -768,10 +770,6 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         }).catch(() => {});
     }
 
-    private estimateTextWidth(text: string, fontSize: number): number {
-        return Math.max(0, Math.ceil(text.length * fontSize * 0.55) + 4);
-    }
-
     // Extracts the cover's dominant color (async — cheap re-render once it resolves) and stores
     // it; renderDial's own retry (see colorPushedFor) is what actually feeds it into a live
     // panorama effect's settings, so this doesn't need to (and reliably would've missed the
@@ -788,23 +786,4 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         }).catch(() => {});
     }
 
-    private ensureVisibleColor(color: string): string {
-        const m = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
-        if (!m) return '#CCCCCC';
-        const [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255];
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (lum >= 0.25) return color;
-        const mix = (v: number) => Math.min(255, Math.round(v * 255 + 255 * 0.55));
-        return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
-    }
-
-    private escapeXml(unsafe: string): string {
-        return unsafe.replace(/[<>&"']/g, (c) => {
-            switch (c) {
-                case '<': return '&lt;'; case '>': return '&gt;';
-                case '&': return '&amp;'; case '"': return '&quot;';
-                case "'": return '&apos;'; default: return c;
-            }
-        });
-    }
 }

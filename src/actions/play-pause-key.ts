@@ -16,7 +16,8 @@ import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { generateTransportIcon, renderBatteryBadge, renderProgressBar, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
-import { getDominantColor } from "../utils/color-extract";
+import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
+import { parseRelTime } from "../sonos/rel-time";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 
@@ -84,29 +85,11 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
 
     // --- Progress bar helpers (all independent of showTrackTitle) ---
 
-    private parseRelTime(t: string): number {
-        if (!t || t === 'NOT_IMPLEMENTED') return 0;
-        const parts = t.split(':').map(Number);
-        return (parts.length === 3 && parts.every(n => !isNaN(n)))
-            ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-            : 0;
-    }
-
-    private ensureVisibleColor(color: string): string {
-        const m = color.match(/rgb\((\d+),(\d+),(\d+)\)/);
-        if (!m) return '#CCCCCC';
-        const [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255];
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (lum >= 0.25) return color;
-        const mix = (v: number) => Math.min(255, Math.round(v * 255 + 255 * 0.55));
-        return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
-    }
-
     private updateDominantColor(context: string, cover: string): void {
         if (this.lastColorUri.get(context) === cover) return;
         this.lastColorUri.set(context, cover);
         getDominantColor(cover).then(color => {
-            this.dominantColors.set(context, this.ensureVisibleColor(color));
+            this.dominantColors.set(context, ensureVisibleColor(color));
         }).catch(() => {});
     }
 
@@ -114,8 +97,8 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
         try {
             const pos = await controller.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
             this.trackPositions.set(context, {
-                pos: this.parseRelTime(pos.RelTime),
-                dur: this.parseRelTime(pos.TrackDuration),
+                pos: parseRelTime(pos.RelTime),
+                dur: parseRelTime(pos.TrackDuration),
                 time: Date.now(),
             });
         } catch { /* keep last known position */ }

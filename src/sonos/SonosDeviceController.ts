@@ -9,6 +9,8 @@ import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
 import { TrackInfo, VolumeInfo } from "./SonosTypes";
 import { withTimeout } from "../utils/with-timeout";
 import { computeFadeSteps } from "../utils/volume-fade";
+import { escapeXml, decodeXmlEntities } from "../utils/xml";
+import { parseRelTime } from "./rel-time";
 import { fetchBatteryStatus, SonosBatteryStatus } from "./SonosBattery";
 // Lazy/deferred use only (inside methods, never at module scope) — SonosDeviceManager itself
 // imports SonosDeviceController, so this is a circular import; safe here because sonosDeviceManager
@@ -406,21 +408,13 @@ export class SonosDeviceController {
   async previous(): Promise<void> {
     try {
       const positionInfo = await this.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
-      const elapsedSeconds = this.parseRelTime(positionInfo.RelTime);
+      const elapsedSeconds = parseRelTime(positionInfo.RelTime);
       if (elapsedSeconds > PREVIOUS_RESTART_THRESHOLD_SECONDS) {
         await this.transportDevice.AVTransportService.Seek({ InstanceID: 0, Unit: 'REL_TIME', Target: '0:00:00' });
         return;
       }
     } catch { /* fall through to native previous */ }
     await this.transportDevice.Previous();
-  }
-
-  private parseRelTime(t: string): number {
-    if (!t || t === 'NOT_IMPLEMENTED') return 0;
-    const parts = t.split(':').map(Number);
-    return (parts.length === 3 && parts.every(n => !isNaN(n)))
-      ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-      : 0;
   }
 
   async setVolume(volume: number): Promise<void> {
@@ -822,23 +816,13 @@ export class SonosDeviceController {
   }
   
   // --- Helper Methods ---
-  private encodeXml(str: string): string {
-    if (typeof str !== 'string') return '';
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-  }
-  
-  private decodeXmlEntities(str: string): string {
-    if (typeof str !== 'string') return '';
-    return str.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
-  }
-
   private generateMetadata(title: string, uri: string, upnpClass: string, protocolInfo: string): string {
     // ID -1 signals Sonos that this is a new item to add to the queue.
     return '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
         `<item id="-1" parentID="-1" restricted="true">` +
-        `<dc:title>${this.encodeXml(title)}</dc:title>` +
+        `<dc:title>${escapeXml(title)}</dc:title>` +
         `<upnp:class>${upnpClass}</upnp:class>` +
-        `<res protocolInfo="${protocolInfo}">${this.encodeXml(uri)}</res>` +
+        `<res protocolInfo="${protocolInfo}">${escapeXml(uri)}</res>` +
         `</item></DIDL-Lite>`;
   }
 
@@ -916,9 +900,9 @@ export class SonosDeviceController {
                   const rawUriFromXml = resMatch[1];
                   
                   // Decode XML entities (e.g. &amp; → &). Do NOT percent-encode '#' — the URI must remain exactly as it was in the XML.
-                  const cleanUri = this.decodeXmlEntities(rawUriFromXml);
+                  const cleanUri = decodeXmlEntities(rawUriFromXml);
                   
-                  const title = titleMatch ? this.decodeXmlEntities(titleMatch[1]) : "Track";
+                  const title = titleMatch ? decodeXmlEntities(titleMatch[1]) : "Track";
                   
                   let protocolInfo = "x-file-cifs:*:audio/mpeg:*";
                   const resTagFull = itemXml.match(/<res([^>]*)>/);
@@ -1200,9 +1184,9 @@ export class SonosDeviceController {
             const metadata =
                 '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
                 `<item id="${containerId}" parentID="${favorite.ParentId}" restricted="true">` +
-                `<dc:title>${this.encodeXml(favorite.Title)}</dc:title>` +
+                `<dc:title>${escapeXml(favorite.Title)}</dc:title>` +
                 `<upnp:class>object.container.playlistContainer</upnp:class>` + 
-                `<res protocolInfo="${favorite.ProtocolInfo}">${this.encodeXml(favorite.TrackUri)}</res>` +
+                `<res protocolInfo="${favorite.ProtocolInfo}">${escapeXml(favorite.TrackUri)}</res>` +
                 `</item></DIDL-Lite>`;
 
             await this.sonosDevice.AVTransportService.AddURIToQueue({

@@ -18,6 +18,7 @@ import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { mdiCog, mdiHeartCircle, mdiHeartCircleOutline, mdiAudioInputRca } from "@mdi/js";
 import { INACTIVE_ICON_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
+import { escapeXml } from "../utils/xml";
 import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
@@ -525,7 +526,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
                 const fallback = isBrowsing
                     ? (favs[state.currentIndex]?.Title ?? '')
                     : (state.playingFav?.Title ?? '');
-                return `<text x="100" y="30" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="14" clip-path="url(#tc)">${this.escapeXml(fallback)}</text>`;
+                return `<text x="100" y="30" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="14" clip-path="url(#tc)">${escapeXml(fallback)}</text>`;
             })();
 
         const fadeOverlay = state.fadeOpacity !== undefined
@@ -541,8 +542,8 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             '<rect width="200" height="100" fill="#1c1c1c"/>',
             coverFrag,
             titleFrag,
-            `<text x="100" y="48" fill="#999999" font-family="Arial,sans-serif" font-size="11" clip-path="url(#tc)">${this.escapeXml(subtitleText)}</text>`,
-            `<text x="197" y="62" fill="#999999" font-family="Arial,sans-serif" font-size="10" text-anchor="end">${this.escapeXml(positionText)}</text>`,
+            `<text x="100" y="48" fill="#999999" font-family="Arial,sans-serif" font-size="11" clip-path="url(#tc)">${escapeXml(subtitleText)}</text>`,
+            `<text x="197" y="62" fill="#999999" font-family="Arial,sans-serif" font-size="10" text-anchor="end">${escapeXml(positionText)}</text>`,
             isBrowsing ? this.renderDots(state.currentIndex, favs.length) : '',
             isBrowsing ? '<rect x="0.5" y="0.5" width="199" height="99" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.15" rx="2"/>' : '',
             fadeOverlay,
@@ -570,12 +571,12 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         const body = covers.length === 0
             ? [
                 `<g transform="translate(82,14) scale(1.5)"><path fill="${INACTIVE_ICON_COLOR}" d="${mdiCog}"/></g>`,
-                `<text x="100" y="66" fill="#555555" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${this.escapeXml(streamDeck.i18n.translate('No device set'))}</text>`,
+                `<text x="100" y="66" fill="#555555" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${escapeXml(streamDeck.i18n.translate('No device set'))}</text>`,
             ].join('')
             : this.buildMosaic(covers);
 
         const hint = covers.length > 0
-            ? `<text x="100" y="96" fill="#fff" font-family="Arial,sans-serif" font-size="9" text-anchor="middle" opacity="0.4">${this.escapeXml(streamDeck.i18n.translate('Rotate to browse'))}</text>`
+            ? `<text x="100" y="96" fill="#fff" font-family="Arial,sans-serif" font-size="9" text-anchor="middle" opacity="0.4">${escapeXml(streamDeck.i18n.translate('Rotate to browse'))}</text>`
             : '';
 
         return [
@@ -625,9 +626,4 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         }).join('');
     }
 
-    private escapeXml(s: string): string {
-        return String(s).replace(/[<>&"']/g, (c) =>
-            ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' } as any)[c] || c
-        );
-    }
 }
