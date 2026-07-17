@@ -7,7 +7,7 @@
 // PI — exactly what the inline versions did.
 
 import streamDeck from "@elgato/streamdeck";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
+import { safeDevices, discoveryPromise } from "../sonos/sonos-discovery";
 import { effectRegistry } from "../effects/registry.generated";
 import { piT } from "../utils/pi-i18n";
 
@@ -17,10 +17,11 @@ export function sendOptions(event: string, items: PiOptionItem[]): void {
     streamDeck.ui.sendToPropertyInspector({ event, items });
 }
 
-/** Device dropdown ('get-devices'). Waits for discovery so the list is never empty-by-race. */
+/** Device dropdown ('get-devices'). Waits for discovery so the list is never empty-by-race.
+ *  Resolves to an empty list (not a crash) if discovery never succeeded — see safeDevices(). */
 export async function sendDeviceList(placeholderKey = '-- Choose device --'): Promise<void> {
     await discoveryPromise;
-    const items = sonosManager.Devices.map((d) => ({ label: d.Name, value: d.Host }));
+    const items = safeDevices().map((d) => ({ label: d.Name, value: d.Host }));
     sendOptions('get-devices', [{ label: piT(placeholderKey), value: '' }, ...items]);
 }
 
@@ -29,7 +30,7 @@ export async function sendGroupList(): Promise<void> {
     await discoveryPromise;
     const seen = new Set<string>();
     const items: PiOptionItem[] = [];
-    for (const d of sonosManager.Devices) {
+    for (const d of safeDevices()) {
         const coordinator = d.Coordinator ?? d;
         if (seen.has(coordinator.Host)) continue;
         seen.add(coordinator.Host);

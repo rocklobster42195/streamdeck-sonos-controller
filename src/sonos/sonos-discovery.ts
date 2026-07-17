@@ -1,8 +1,28 @@
 import streamDeck from "@elgato/streamdeck";
-import { SonosManager, SonosEventListener } from "@svrooij/sonos";
+import { SonosManager, SonosEventListener, SonosDevice } from "@svrooij/sonos";
 import { sonosFavoritesCache } from "./SonosFavoritesCache";
 
 export const sonosManager = new SonosManager();
+
+// SonosManager's own `.Devices` getter THROWS ("No Devices available!") whenever its internal
+// list is empty — not just before discovery has ever run, but for the entire lifetime of any
+// session where discovery keeps failing (e.g. SSDP multicast blocked by a VPN adapter taking
+// over the default route — confirmed as the trigger 2026-07-17: WireGuard was active). Every
+// PI-facing caller used to read `sonosManager.Devices` directly; a couple of call sites
+// (pi-options.ts's sendDeviceList/sendGroupList, SonosGroupController's resolveCoordinator) had
+// no try/catch around that read at all. The @elgato/streamdeck SDK only installs a ONE-SHOT
+// `process.once('uncaughtException', ...)` handler (logs and survives the first escape, but is
+// then gone) — so the first uncaught throw from this getter was survivable, but ANY second one
+// crashed the entire plugin process with no further logging, hanging every action's PI
+// simultaneously (not just the one that happened to trigger it) until a manual restart. This
+// safe wrapper is now the only sanctioned way to read the device list.
+export function safeDevices(): SonosDevice[] {
+    try {
+        return sonosManager.Devices;
+    } catch {
+        return [];
+    }
+}
 
 // Listener host after discovery — module-internal, only used for the startup log below.
 let eventListenerHost: string | undefined;

@@ -1,5 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
-import { sonosManager, discoveryPromise } from "./sonos-discovery";
+import { safeDevices, discoveryPromise } from "./sonos-discovery";
 import { sonosDeviceManager } from "./SonosDeviceManager";
 import { SonosDeviceController } from "./SonosDeviceController";
 import { VolumeInfo } from "./SonosTypes";
@@ -104,7 +104,7 @@ export class SonosGroupController {
 
   // Returns true if the coordinator changed (caller may want to log it).
   private resolveCoordinator(): boolean {
-    const anchor = sonosManager.Devices.find(d => d.Host === this.anchorIp);
+    const anchor = safeDevices().find(d => d.Host === this.anchorIp);
     if (!anchor) return false;
 
     const coordinator = anchor.Coordinator ?? anchor;
@@ -120,7 +120,7 @@ export class SonosGroupController {
   private async resolveMembers(): Promise<void> {
     if (!this.coordinatorHost) return;
     const currentHosts = new Set(
-      sonosManager.Devices
+      safeDevices()
         .filter(d => (d.Coordinator ?? d).Host === this.coordinatorHost)
         .map(d => d.Host)
     );
