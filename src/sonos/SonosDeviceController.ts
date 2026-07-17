@@ -727,9 +727,17 @@ export class SonosDeviceController {
                 ? isRadioAlbumArtUri(track.AlbumArtUri)
                 : (previousTrack?.isRadio ?? false));
 
+        // A fresh track gets a fresh set of heal attempts (see the poll loop's stale-cover check)
+        // — gated on the track actually changing, NOT on this event merely firing again: Sonos
+        // can (and, confirmed on hardware, does) fire 'currentTrack' repeatedly for the SAME
+        // track (see the resolveCoverArt call below's own "two overlapping events" comment).
+        // Resetting unconditionally on every fire meant a track whose cover genuinely 404s (e.g.
+        // no logo) never actually reached MAX_COVER_FETCH_ATTEMPTS — a repeat fire arrived every
+        // few seconds and zeroed the counter first, so the poll loop retried the failing fetch
+        // forever, once per 8s tick, confirmed via the plugin log (14 identical "Failed to fetch
+        // image" errors over 43s with no sign of stopping).
+        if (track.Title !== previousTrack?.Title) this.coverFetchAttempts = 0;
         this.currentTrack = newTrackInfo;
-        // A fresh track gets a fresh set of heal attempts (see the poll loop's stale-cover check).
-        this.coverFetchAttempts = 0;
         this.trackInfoCallbacks.forEach(cb => cb(newTrackInfo));
 
         if (!track.AlbumArtUri) {
