@@ -17,13 +17,17 @@ body:
       label: Which area does this affect?
       options:
         - Play / Pause Key
-        - Track Dial
-        - Volume Dial
-        - Favorites Dial
-        - Panorama Particles Dial
-        - Volume Key
-        - Playback Control Key
         - Play Favorite Key
+        - Playback Control Key
+        - Volume Control Key
+        - Multi-Control Key
+        - Volume Dial
+        - Group Volume Dial
+        - Favorites Dial
+        - Panorama Effects Dial
+        - Track Control Dial
+        - Queue Dial
+        - Diagnostics Dial
         - New action
         - Other / General
     validations:
