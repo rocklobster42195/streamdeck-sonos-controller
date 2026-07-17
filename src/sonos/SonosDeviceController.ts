@@ -37,6 +37,24 @@ const BATTERY_POLL_MS = 15000;
 // to the previous track regardless of playback position.
 const PREVIOUS_RESTART_THRESHOLD_SECONDS = 3;
 
+// CONFIRMED on hardware (2026-07-17, via tools/diagnose-lag.mjs): up to 7 of 8-9 devices' poll
+// ticks landed within the same 300ms window, every ~8s, entirely independent of any user
+// action — every controller's setInterval(POLL_INTERVAL_MS) starts whenever ITS OWN action's
+// onWillAppear happens to fire, and most Stream Deck tiles get set up within a few seconds of
+// each other at plugin startup, so their 8s timers stay in lock-step indefinitely. That means
+// several devices' worth of SOAP round trips (3 calls each) go out simultaneously and their
+// responses' callback dispatch lands back-to-back, every single cycle — a periodic, cross-device
+// hiccup matching a reproducible "dial input feels stuck for a moment, unrelated to what I'm
+// doing" report. Spread new controllers' FIRST poll tick across the interval instead of starting
+// them all at offset 0, so their recurring cadence stays out of phase with each other from then on.
+const POLL_INTERVAL_MS = 8000;
+const POLL_STAGGER_SLOTS = 8;
+let pollStaggerCounter = 0;
+function nextPollStaggerMs(): number {
+    const slot = pollStaggerCounter++ % POLL_STAGGER_SLOTS;
+    return Math.round((slot / POLL_STAGGER_SLOTS) * POLL_INTERVAL_MS);
+}
+
 export class SonosDeviceController {
   public readonly deviceIp: string;
   public sonosDevice: SonosDevice; 
@@ -64,6 +82,11 @@ export class SonosDeviceController {
 
   private refreshInterval?: NodeJS.Timeout;
   private pollInterval?: NodeJS.Timeout;
+  // Holds the staggered first-tick setTimeout between startPolling() being called and the
+  // recurring pollInterval actually starting — see startPolling's own comment for why the guard
+  // against a double start (SubscriptionError's fallback call) and destroy()'s cleanup both need
+  // to know about this PENDING state too, not just the interval that exists once it fires.
+  private pollStartTimer?: NodeJS.Timeout;
   private batteryPollInterval?: NodeJS.Timeout;
   private lastBatteryStatus: SonosBatteryStatus | undefined;
   private hasBatteryStatus = false;
@@ -198,9 +221,18 @@ export class SonosDeviceController {
       });
       controller.registerTrackInfoCallback(this.coordinatorCallbackId, (ti) => {
         if (!this.reachable) return;
+        // Playing a favorite issues several sequential transport-mutating SOAP calls
+        // (RemoveAllTracksFromQueue, AddURIToQueue, SwitchToQueue, Play) — confirmed on hardware
+        // that Sonos can emit a LastChange/currentTrack notification after EACH one, so a single
+        // favorite selection fired this forward 4 times within ~1.2s for the exact same track,
+        // fanning out to every dial/key on every grouped member 4x for no reason. Skip re-firing
+        // when nothing actually changed (Title + cover) — a genuinely new value (e.g. the second
+        // of two overlapping events resolving the real cover where the first had none) still
+        // updates normally.
+        if (ti?.Title === this.currentTrack?.Title && ti?.albumArtDataUri === this.currentTrack?.albumArtDataUri) return;
         streamDeck.logger.info(`[${this.deviceIp}] Forwarded track info from coordinator ${coordinatorHost}: Title="${ti?.Title}", hasArt=${!!ti?.albumArtDataUri}`);
         this.currentTrack = ti;
-        this.trackInfoCallbacks.forEach(cb => cb(ti));
+        this.fireTrackInfoCallbacks(ti);
       });
     } catch (e) {
       streamDeck.logger.warn(`[${this.deviceIp}] Failed to subscribe to coordinator ${coordinatorHost}`, e);
@@ -221,6 +253,7 @@ export class SonosDeviceController {
   }
   public destroy(): void {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
+    if (this.pollStartTimer) clearTimeout(this.pollStartTimer);
     if (this.pollInterval) clearInterval(this.pollInterval);
     if (this.batteryPollInterval) clearInterval(this.batteryPollInterval);
     this.cancelSubscriptions();
@@ -240,9 +273,9 @@ export class SonosDeviceController {
   }
 
   private startPolling(): void {
-    if (this.pollInterval) return;
+    if (this.pollInterval || this.pollStartTimer) return;
     let trackPollTick = 0;
-    this.pollInterval = setInterval(async () => {
+    const tick = async (): Promise<void> => {
       try {
         await this.syncCoordinatorSubscription();
 
@@ -289,7 +322,7 @@ export class SonosDeviceController {
             this.coverFetchAttempts = 0;
             if (!this.currentTrack) this.currentTrack = { albumArtDataUri: cover } as TrackInfo;
             else this.currentTrack.albumArtDataUri = cover;
-            this.trackInfoCallbacks.forEach(cb => cb(this.currentTrack!));
+            this.fireTrackInfoCallbacks(this.currentTrack!);
           }
         }
 
@@ -313,14 +346,24 @@ export class SonosDeviceController {
                 ? isRadioAlbumArtUri(track.AlbumArtUri)
                 : (this.currentTrack?.isRadio ?? false));
             this.currentTrack = newTrackInfo;
-            this.trackInfoCallbacks.forEach(cb => cb(this.currentTrack!));
+            this.fireTrackInfoCallbacks(this.currentTrack!);
           }
         }
       } catch (e) {
         streamDeck.logger.debug(`[${this.deviceIp}] Polling error:`, e);
         this.notePollFailure();
       }
-    }, 8000);
+    };
+
+    // Stagger this controller's first tick (see nextPollStaggerMs's doc comment) so its recurring
+    // 8s cadence stays out of phase with every other controller's, instead of all starting at
+    // offset 0 and clustering together forever.
+    const staggerMs = nextPollStaggerMs();
+    this.pollStartTimer = setTimeout(() => {
+      this.pollStartTimer = undefined;
+      void tick();
+      this.pollInterval = setInterval(() => void tick(), POLL_INTERVAL_MS);
+    }, staggerMs);
   }
 
   private async updateInitialState(): Promise<void> {
@@ -579,6 +622,10 @@ export class SonosDeviceController {
     if (this.currentTrack) callback(this.currentTrack);
   }
   unregisterTrackInfoCallback(id: string): void { this.trackInfoCallbacks.delete(id); }
+
+  private fireTrackInfoCallbacks(ti: TrackInfo): void {
+    this.trackInfoCallbacks.forEach(cb => cb(ti));
+  }
   registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void { this.reachabilityCallbacks.set(id, callback); }
   unregisterReachabilityCallback(id: string): void { this.reachabilityCallbacks.delete(id); }
 
@@ -738,7 +785,7 @@ export class SonosDeviceController {
         // image" errors over 43s with no sign of stopping).
         if (track.Title !== previousTrack?.Title) this.coverFetchAttempts = 0;
         this.currentTrack = newTrackInfo;
-        this.trackInfoCallbacks.forEach(cb => cb(newTrackInfo));
+        this.fireTrackInfoCallbacks(newTrackInfo);
 
         if (!track.AlbumArtUri) {
             this.currentAlbumArtUri = '';
@@ -768,7 +815,7 @@ export class SonosDeviceController {
             current!.albumArtDataUri = cover;
             this.lastKnownCover = cover;
             this.currentAlbumArtUri = track.AlbumArtUri!;
-            this.trackInfoCallbacks.forEach(cb => cb(current!));
+            this.fireTrackInfoCallbacks(current!);
         }).catch(err => streamDeck.logger.error("Error loading cover art", err));
       });
 
