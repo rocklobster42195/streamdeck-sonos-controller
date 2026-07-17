@@ -32,7 +32,17 @@ let eventListenerHost: string | undefined;
 // session with an empty sonosManager: no PI device lists, and — much worse — no group topology,
 // so a grouped member's transportDevice fell back to the member itself and every cover fetch for
 // it 404'd against the member's own /getaa (observed as "grouped Roam never gets a cover").
-const DISCOVERY_RETRY_MS = 20_000;
+//
+// 5s, not the original 20s: each retry's own InitializeWithDiscovery(10) already spends up to 10s
+// waiting for a response before giving up (SearchOne's default timeout — left untouched here,
+// since it resolves near-instantly once ANY device answers, and shortening it would risk giving
+// up on a genuinely-just-slow-to-respond network before it gets a chance). Confirmed via the
+// plugin's own log (2026-07-17): a real run needed 3 attempts — 10s fail, 20s wait, 10s fail, 20s
+// wait, ~6s success — 66s total before ANY PI device dropdown could populate. The 20s gap between
+// attempts had no empirical basis (SSDP M-SEARCH retries are cheap, lightweight UDP broadcasts,
+// not worth throttling this conservatively on a home LAN) — 5s cuts the same 3-attempt worst case
+// to roughly 30s.
+const DISCOVERY_RETRY_MS = 5_000;
 
 // Fired every time discovery actually succeeds — including a LATER retry after the first attempt
 // failed. discoveryPromise only ever waits for that first attempt (see its own comment below), so
