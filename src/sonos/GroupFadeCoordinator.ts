@@ -3,6 +3,7 @@
 // only delegates. Cross-controller access goes through the narrow FadeMemberController
 // interface below instead of reaching into another controller's privates.
 
+import streamDeck from "@elgato/streamdeck";
 import { sonosManager } from "./sonos-discovery";
 import { withTimeout } from "../utils/with-timeout";
 import { computeFadeSteps } from "../utils/volume-fade";
@@ -48,14 +49,23 @@ export class GroupFadeCoordinator {
   async fadeGroupThenRun(action: () => Promise<void>, fadeOutMs: number): Promise<void> {
     const generation = ++this.fadeGeneration;
     const cancelled = () => this.fadeGeneration !== generation;
+    // End-to-end phase timing — the ramp itself now self-corrects for slow SetVolume calls (see
+    // ramp()'s own comment), but a "fade feels too slow" report can equally come from the OTHER
+    // phases around it: resolving the transport state, collecting fade members (a live GetVolume
+    // per non-pooled member), the favorite-switch action itself, and restoring every member's
+    // volume afterward. Logging each phase separately shows exactly which one is actually the
+    // slow part, instead of attributing everything to the ramp by default.
+    const overallStart = Date.now();
 
     let isPlaying = false;
     try {
       isPlaying = (await this.getTransportState()) === 'PLAYING';
     } catch { /* device didn't answer — treat as not playing and run without fade */ }
+    const afterTransportState = Date.now();
 
     const members = (fadeOutMs > 0 && isPlaying) ? await this.collectFadeMembers() : [];
     const audible = members.filter((m) => m.preVolume > 0);
+    const afterCollectMembers = Date.now();
 
     if (fadeOutMs <= 0 || !isPlaying || audible.length === 0) {
       await action();
@@ -69,10 +79,14 @@ export class GroupFadeCoordinator {
     // Told up front, before the first actual SetVolume goes out — see notifyFadeState's doc
     // comment for why this is a pure UI signal to whichever dial is watching each member.
     audible.forEach((m) => m.notifyFading(true, fadeOutMs));
+    let afterRamp = 0;
+    let afterAction = 0;
     try {
       await Promise.allSettled(audible.map((m) => this.ramp(m.setVolume, m.liveVolume, 0, fadeOutMs, cancelled)));
+      afterRamp = Date.now();
       if (cancelled()) return; // a newer fade took over mid-ramp
       await action();
+      afterAction = Date.now();
     } finally {
       if (!cancelled()) {
         this.preFadeVolumes.clear();
@@ -84,6 +98,18 @@ export class GroupFadeCoordinator {
         // must NOT do this, or its own delayed cleanup could race a newer fade's notifyFading(true)
         // and turn the fake animation off while that newer fade is still actually running.
         audible.forEach((m) => m.notifyFading(false, 0));
+
+        const afterRestore = Date.now();
+        const total = afterRestore - overallStart;
+        // Only logged when the WHOLE operation ran noticeably longer than just the configured
+        // fade duration — the breakdown pinpoints which phase actually ate the extra time.
+        if (total > fadeOutMs + 500) {
+          streamDeck.logger.warn(
+            `[GroupFadeCoordinator] Fade+switch+restore took ${total}ms total (configured fade: ${fadeOutMs}ms, ${audible.length} member(s)) — ` +
+            `transportState=${afterTransportState - overallStart}ms, collectMembers=${afterCollectMembers - afterTransportState}ms, ` +
+            `ramp=${afterRamp - afterCollectMembers}ms, action=${afterAction - afterRamp}ms, restore=${afterRestore - afterAction}ms.`
+          );
+        }
       }
     }
   }
@@ -146,11 +172,31 @@ export class GroupFadeCoordinator {
     return members;
   }
 
+  // Schedules each step against the ramp's OWN wall-clock start time (rampStart + cumulative
+  // intended delay), not a fixed per-step sleep — confirmed on hardware (2026-07-17): a "2s"
+  // configured fade was taking noticeably longer, because the naive version (sleep(delayMs) THEN
+  // await setVolume(...)) adds each step's real network round-trip ON TOP of its interval, with
+  // nothing correcting for it — 13 steps at even 50-100ms of real SetVolume latency each adds up
+  // to roughly another full second on top of a 2s fade. Computing each step's wait against an
+  // absolute target time means a slow step's overrun shortens the NEXT step's wait instead of
+  // compounding, keeping the total close to durationMs regardless of individual call latency.
   private async ramp(setVolume: (v: number) => Promise<void>, from: number, to: number, durationMs: number, isCancelled: () => boolean): Promise<void> {
-    for (const step of computeFadeSteps(from, to, durationMs)) {
-      await new Promise((resolve) => setTimeout(resolve, step.delayMs));
+    const steps = computeFadeSteps(from, to, durationMs);
+    if (steps.length === 0) return;
+    const rampStart = Date.now();
+    let cumulativeTargetMs = 0;
+    for (const step of steps) {
+      cumulativeTargetMs += step.delayMs;
+      const waitMs = rampStart + cumulativeTargetMs - Date.now();
+      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
       if (isCancelled()) return;
       await setVolume(step.volume);
+    }
+    const actualMs = Date.now() - rampStart;
+    // Logged only when it still overshoots noticeably despite the self-correction above — e.g.
+    // if EVERY step's SetVolume is slow enough that there's never any slack left to reclaim.
+    if (actualMs > durationMs + 300) {
+      streamDeck.logger.warn(`[GroupFadeCoordinator] Ramp took ${actualMs}ms, configured for ${durationMs}ms (${steps.length} steps) — individual SetVolume calls are running slow.`);
     }
   }
 }
