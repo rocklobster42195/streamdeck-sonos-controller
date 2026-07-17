@@ -19,6 +19,7 @@ import { INACTIVE_ICON_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
 import { escapeXml } from "../utils/xml";
 import { deviceHasLineIn } from "../sonos/SonosLineIn";
+import { syncCapabilityFlag } from "./capability-flag";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { sendDeviceList, sendFadeOptions, sendVizOptions, sendAlignOptions } from "./pi-options";
 
@@ -219,11 +220,9 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
                 if (!this.states.has(context)) return; // instance gone by the time this resolves
                 this.hasLineInByContext.set(context, hasLineIn);
                 const current = this.settingsMap.get(context);
-                if (current && current.hasLineIn !== hasLineIn) {
-                    const updated = { ...current, hasLineIn };
-                    this.settingsMap.set(context, updated);
-                    const action = streamDeck.actions.getActionById(context);
-                    if (action) await action.setSettings(updated);
+                const action = streamDeck.actions.getActionById(context);
+                if (current && action) {
+                    this.settingsMap.set(context, await syncCapabilityFlag(action, current, 'hasLineIn', hasLineIn));
                 }
                 this.queueRender(context);
             }).catch((e) => streamDeck.logger.warn(`[FavDial ${context}] Line-In capability check failed`, e));

@@ -21,6 +21,7 @@ import { parseRelTime, formatRelTime } from "../sonos/rel-time";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
+import { syncCapabilityFlag } from "./capability-flag";
 import { piT } from "../utils/pi-i18n";
 import { sendDeviceList, sendVizOptions, sendBatteryModeOptions } from "./pi-options";
 import { buildUnconfiguredDialSvg, renderBatteryBadge } from "../utils/icons";
@@ -235,12 +236,8 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
 
-            const hasBattery = await deviceHasBattery(deviceIp);
-            if (settings.hasBattery !== hasBattery) {
-                settings = { ...settings, hasBattery };
-                this.settingsMap.set(context, settings);
-                await ev.action.setSettings(settings);
-            }
+            settings = await syncCapabilityFlag(ev.action, settings, 'hasBattery', await deviceHasBattery(deviceIp));
+            this.settingsMap.set(context, settings);
 
             this.registerReachabilityHandling(controller, ev, 'TRACK');
             controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));

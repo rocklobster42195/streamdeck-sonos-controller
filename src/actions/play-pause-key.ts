@@ -17,6 +17,7 @@ import { generateTransportIcon, renderBatteryBadge, renderProgressBar, wrapImage
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { parseRelTime } from "../sonos/rel-time";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
+import { syncCapabilityFlag } from "./capability-flag";
 import { sendDeviceList, sendBatteryModeOptions } from "./pi-options";
 
 /**
@@ -289,12 +290,8 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
             const controller = await sonosDeviceManager.getController(settings.deviceIp);
             this.controllers.set(context, controller);
 
-            const hasBattery = await deviceHasBattery(settings.deviceIp);
-            if (settings.hasBattery !== hasBattery) {
-                settings = { ...settings, hasBattery };
-                this.currentSettings.set(context, settings);
-                await action.setSettings(settings);
-            }
+            settings = await syncCapabilityFlag(action, settings, 'hasBattery', await deviceHasBattery(settings.deviceIp));
+            this.currentSettings.set(context, settings);
 
             // Mid-session reachability: speaker-off placeholder while the device is down (e.g. a
             // battery Roam powered off), full re-setup once it's back.
