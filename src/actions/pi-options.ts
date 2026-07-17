@@ -7,7 +7,7 @@
 // PI — exactly what the inline versions did.
 
 import streamDeck from "@elgato/streamdeck";
-import { safeDevices, discoveryPromise } from "../sonos/sonos-discovery";
+import { safeDevices, discoveryPromise, onDevicesChanged } from "../sonos/sonos-discovery";
 import { effectRegistry } from "../effects/registry.generated";
 import { piT } from "../utils/pi-i18n";
 
@@ -38,6 +38,20 @@ export async function sendGroupList(): Promise<void> {
     }
     sendOptions('get-groups', [{ label: piT('-- Choose group --'), value: '' }, ...items]);
 }
+
+// Re-push both dropdowns to whichever PI is currently open once a delayed discovery succeeds —
+// see onDevicesChanged's own comment in sonos-discovery.ts for the "device list doesn't load
+// cleanly after a restart" symptom this fixes: a PI opened right at plugin startup can race
+// against a still-failing/in-flight first discovery attempt and get sent an empty list, with
+// nothing ever re-populating it once discovery actually lands a few seconds/retries later.
+// Always uses the default placeholder text — the one action with a different placeholder
+// (Panorama Effects' "-- No device (static color) --") would only show the generic one for the
+// rare case where ITS PI happens to be open at that exact moment, a cosmetic edge case not worth
+// threading a placeholder override through this generic hook.
+onDevicesChanged(() => {
+    void sendDeviceList();
+    void sendGroupList();
+});
 
 export function sendFadeOptions(): void {
     sendOptions('get-fade-options', [

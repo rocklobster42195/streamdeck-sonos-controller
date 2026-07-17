@@ -34,6 +34,20 @@ let eventListenerHost: string | undefined;
 // it 404'd against the member's own /getaa (observed as "grouped Roam never gets a cover").
 const DISCOVERY_RETRY_MS = 20_000;
 
+// Fired every time discovery actually succeeds — including a LATER retry after the first attempt
+// failed. discoveryPromise only ever waits for that first attempt (see its own comment below), so
+// any PI that requested its device/group dropdown right at plugin startup and raced against a
+// failed or still-in-flight first attempt was sent an empty list and never got another one —
+// observed as "devices don't load cleanly after a restart" (the dropdown just shows the
+// placeholder forever, even though sonosManager fills in correctly a few seconds later). Letting
+// pi-options.ts re-push both lists once discovery actually lands repairs that dropdown without
+// the user having to close and reopen the PI.
+const devicesChangedListeners = new Set<() => void>();
+
+export function onDevicesChanged(cb: () => void): void {
+    devicesChangedListeners.add(cb);
+}
+
 async function runDiscovery(): Promise<void> {
     try {
         await sonosManager.InitializeWithDiscovery();
@@ -49,6 +63,7 @@ async function runDiscovery(): Promise<void> {
             streamDeck.logger.info(`- ${d.Name} (${d.Host})`);
         });
         await sonosFavoritesCache.start(sonosManager.Devices[0]);
+        devicesChangedListeners.forEach(cb => cb());
     } catch (err) {
         streamDeck.logger.error(`Sonos discovery failed — retrying in ${DISCOVERY_RETRY_MS / 1000}s:`, err);
         setTimeout(() => void runDiscovery(), DISCOVERY_RETRY_MS);
