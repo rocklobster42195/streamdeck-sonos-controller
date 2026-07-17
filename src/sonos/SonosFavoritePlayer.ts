@@ -4,31 +4,37 @@ import { sonosFavoritesCache } from "./sonos-discovery";
 import { SonosFavorite } from "./SonosTypes";
 import { escapeXml, decodeXmlEntities } from "../utils/xml";
 
-// A NAS's own media indexer can report a generic/wrong MIME type for a perfectly playable file —
-// confirmed on hardware (2026-07-17): a Synology TS451 share reported protocolInfo
-// "x-file-cifs:*:application/octet-stream:*" for a plain .mp3, which Sonos's AddURIToQueue then
-// rejected outright with UPnPError 402 (Invalid args), even though the SAME file plays fine
-// from the Sonos app itself (which apparently re-derives or ignores this field). Trust the
-// reported protocolInfo only when it actually claims an audio/* MIME type; otherwise derive one
-// from the file extension.
-const EXTENSION_TO_MIME: Record<string, string> = {
-    mp3: 'audio/mpeg',
-    m4a: 'audio/mp4',
-    mp4: 'audio/mp4',
-    aac: 'audio/aac',
-    flac: 'audio/flac',
-    wav: 'audio/wav',
-    ogg: 'audio/ogg',
-    wma: 'audio/x-ms-wma',
-};
+// Sonos's own ContentDirectoryService.Browse can return a URI that is only PARTIALLY
+// percent-encoded — a NAS folder with a space in its name (e.g. "ABBA - Gold Greatest Hits",
+// "NuDisco 2") came back with the filename segment properly escaped (%20) but the containing
+// folder segment left as raw, literal spaces. Re-encodes any character outside the RFC 3986
+// unreserved/reserved set, while leaving already-valid %XX escapes alone (so an already-encoded
+// filename segment isn't double-encoded into %2520) and URI-structural characters untouched.
+const URI_SAFE_CHAR = /[A-Za-z0-9\-_.!~*'();/?:@&=+$,#]/;
+function normalizeUri(uri: string): string {
+    return uri.replace(/%[0-9A-Fa-f]{2}|./gs, (match) => {
+        if (/^%[0-9A-Fa-f]{2}$/.test(match)) return match;
+        if (URI_SAFE_CHAR.test(match)) return match;
+        return encodeURIComponent(match);
+    });
+}
 
-function resolveProtocolInfo(reportedProtocolInfo: string, uri: string): string {
-    if (/:audio\//i.test(reportedProtocolInfo)) return reportedProtocolInfo;
-    const cleanPath = uri.split(/[?#]/)[0];
-    const dot = cleanPath.lastIndexOf('.');
-    const ext = dot === -1 ? '' : cleanPath.slice(dot + 1).toLowerCase();
-    const mime = EXTENSION_TO_MIME[ext] ?? 'audio/mpeg';
-    return `x-file-cifs:*:${mime}:*`;
+// The item's own id/parentID reference the same NAS share path as its <res> URI (just without a
+// scheme) and carry the identical raw-space problem.
+function patchItemIds(itemXml: string): string {
+    return itemXml.replace(/ (id|parentID)="([^"]*)"/g, (_m, attr: string, val: string) => ` ${attr}="${escapeXml(normalizeUri(decodeXmlEntities(val)))}"`);
+}
+
+// MetadataHelper.TrackToMetaData — the SDK's OWN metadata builder, used by the Spotify path a
+// few lines below — never includes a <res> element, only id/parentID/title/class(/desc).
+// AddURIToQueue already receives the resource location via the separate top-level EnqueuedURI
+// field, so a <res> duplicating that same URI inside EnqueuedURIMetaData is redundant. Kept out
+// for consistency with the working paths, alongside the actual root cause fixed at the
+// AddURIToQueue call sites below (see the escapeXml comment there — a raw, unescaped metadata
+// string was the real reason every NAS/CIFS AddURIToQueue attempt got UPnPError 402, confirmed
+// on hardware 2026-07-17, regardless of what the metadata content said).
+function stripResTag(itemXml: string): string {
+    return itemXml.replace(/<res[^>]*>[\s\S]*?<\/res>/, '');
 }
 
 /**
@@ -40,17 +46,6 @@ function resolveProtocolInfo(reportedProtocolInfo: string, uri: string): string 
  */
 export class SonosFavoritePlayer {
   constructor(private readonly sonosDevice: SonosDevice) {}
-
-  // --- Helper Methods ---
-  private generateMetadata(title: string, uri: string, upnpClass: string, protocolInfo: string): string {
-    // ID -1 signals Sonos that this is a new item to add to the queue.
-    return '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
-        `<item id="-1" parentID="-1" restricted="true">` +
-        `<dc:title>${escapeXml(title)}</dc:title>` +
-        `<upnp:class>${upnpClass}</upnp:class>` +
-        `<res protocolInfo="${protocolInfo}">${escapeXml(uri)}</res>` +
-        `</item></DIDL-Lite>`;
-  }
 
   private async handleLocalFolder(favorite: SonosFavorite): Promise<boolean> {
       const logPrefix = `[LocalFolder]`;
@@ -108,51 +103,41 @@ export class SonosFavoritePlayer {
           // type (which this used to shadow confusingly).
           interface FolderTrack {
               uri: string;
-              title: string;
-              protocolInfo: string;
+              metadata: string;
               sortKey: string;
           }
 
           const items: FolderTrack[] = [];
           const itemRegex = /<item[\s\S]*?<\/item>/g;
           let itemMatch;
-          
+
           while ((itemMatch = itemRegex.exec(result.Result)) !== null) {
               const itemXml = itemMatch[0];
               const resMatch = itemXml.match(/<res[^>]*>(.*?)<\/res>/);
-              const titleMatch = itemXml.match(/<dc:title>(.*?)<\/dc:title>/);
-              
+
               if (resMatch && resMatch[1]) {
-                  const rawUriFromXml = resMatch[1];
-                  
                   // Decode XML entities (e.g. &amp; → &). Do NOT percent-encode '#' — the URI must remain exactly as it was in the XML.
-                  const cleanUri = decodeXmlEntities(rawUriFromXml);
-                  
-                  const title = titleMatch ? decodeXmlEntities(titleMatch[1]) : "Track";
-                  
-                  let protocolInfo = "x-file-cifs:*:audio/mpeg:*";
-                  const resTagFull = itemXml.match(/<res([^>]*)>/);
-                  if (resTagFull && resTagFull[1]) {
-                      const protoMatch = resTagFull[1].match(/protocolInfo="([^"]*)"/);
-                      if (protoMatch && protoMatch[1]) {
-                          protocolInfo = protoMatch[1];
-                      }
-                  }
-                  protocolInfo = resolveProtocolInfo(protocolInfo, cleanUri);
+                  const cleanUri = decodeXmlEntities(resMatch[1]);
 
                   // Filter M3U
                   if (cleanUri.toLowerCase().endsWith('.m3u') || cleanUri.toLowerCase().endsWith('.m3u8')) {
                       continue;
                   }
-                  
-                  if (!itemXml.includes('object.container')) {
-                      items.push({ 
-                          uri: cleanUri, 
-                          title: title,
-                          protocolInfo: protocolInfo,
-                          sortKey: cleanUri 
-                      });
-                  }
+                  if (itemXml.includes('object.container')) continue;
+
+                  // Re-encode any raw/unsafe characters Browse left un-escaped (see
+                  // normalizeUri's doc comment).
+                  const uri = normalizeUri(cleanUri);
+
+                  // Reuse the item Browse itself returned (real id/parentID/upnp:class/etc.)
+                  // rather than rebuilding a synthetic id="-1" fragment — more faithful to what
+                  // the device's own index actually has for this track — but drop its <res>
+                  // element (see stripResTag's doc comment for why).
+                  const patchedItemXml = stripResTag(patchItemIds(itemXml));
+                  const metadata = '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
+                      patchedItemXml + '</DIDL-Lite>';
+
+                  items.push({ uri, metadata, sortKey: uri });
               }
           }
 
@@ -169,18 +154,17 @@ export class SonosFavoritePlayer {
 
           let count = 0;
           for (const item of items) {
-              const metadata = this.generateMetadata(
-                  item.title,
-                  item.uri,
-                  'object.item.audioItem.musicTrack',
-                  item.protocolInfo
-              );
-
               try {
                   await this.sonosDevice.AVTransportService.AddURIToQueue({
                       InstanceID: 0,
                       EnqueuedURI: item.uri,
-                      EnqueuedURIMetaData: metadata,
+                      // The SDK only XML-escapes *MetaData fields that are passed as an OBJECT
+                      // (via TrackToMetaData) — a string is inserted into the SOAP body verbatim.
+                      // Escape it ourselves so it lands as EnqueuedURIMetaData's escaped TEXT
+                      // content, not as literal unescaped child elements (see escapeXml's call
+                      // site doc comment on why the un-escaped form got UPnPError 402 regardless
+                      // of what the DIDL content itself said).
+                      EnqueuedURIMetaData: escapeXml(item.metadata),
                       DesiredFirstTrackNumberEnqueued: 0,
                       EnqueueAsNext: false
                   });
@@ -190,7 +174,7 @@ export class SonosFavoritePlayer {
                   // bare UPnPError with no way to tell which item/URI/metadata triggered it —
                   // logging at error level, right at the point of failure, so the next occurrence
                   // is actually diagnosable instead of a repeat "guess and retry" cycle.
-                  streamDeck.logger.error(`${logPrefix} AddURIToQueue failed for item ${count} — uri=${item.uri}, protocolInfo=${item.protocolInfo}, metadata=${metadata}`, e);
+                  streamDeck.logger.error(`${logPrefix} AddURIToQueue failed for item ${count} — uri=${item.uri}, metadata=${item.metadata}`, e);
                   throw e;
               }
               count++;
@@ -251,32 +235,38 @@ export class SonosFavoritePlayer {
             streamDeck.logger.warn(`${logPrefix} Custom expansion failed. Fallback to native Container Queueing.`);
             await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
 
-            let containerId = favorite.ItemId;
+            // Same raw-space issue as handleLocalFolder's tracks (see normalizeUri) can appear in
+            // the folder-container reference itself — normalize only the part after '#' (the
+            // share/object path), leaving the "x-rincon-playlist:RINCON_..." prefix untouched.
             const hashIndex = favorite.TrackUri.indexOf('#');
-            if (hashIndex > -1) {
-                containerId = favorite.TrackUri.substring(hashIndex + 1);
-            }
+            const trackUri = hashIndex > -1
+                ? favorite.TrackUri.slice(0, hashIndex + 1) + normalizeUri(favorite.TrackUri.slice(hashIndex + 1))
+                : normalizeUri(favorite.TrackUri);
+            const containerId = hashIndex > -1 ? normalizeUri(favorite.TrackUri.slice(hashIndex + 1)) : favorite.ItemId;
 
+            // No <res> element — see stripResTag's doc comment; EnqueuedURI already carries the
+            // resource location as a separate top-level SOAP field.
             const metadata =
                 '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
-                `<item id="${containerId}" parentID="${favorite.ParentId}" restricted="true">` +
+                `<item id="${escapeXml(containerId ?? '')}" parentID="${escapeXml(favorite.ParentId ?? '')}" restricted="true">` +
                 `<dc:title>${escapeXml(favorite.Title)}</dc:title>` +
                 `<upnp:class>object.container.playlistContainer</upnp:class>` +
-                `<res protocolInfo="${favorite.ProtocolInfo}">${escapeXml(favorite.TrackUri)}</res>` +
                 `</item></DIDL-Lite>`;
 
             try {
                 await this.sonosDevice.AVTransportService.AddURIToQueue({
                     InstanceID: 0,
-                    EnqueuedURI: favorite.TrackUri,
-                    EnqueuedURIMetaData: metadata,
+                    EnqueuedURI: trackUri,
+                    // See handleLocalFolder's identical escapeXml call for why a string
+                    // EnqueuedURIMetaData must be escaped ourselves before it goes out.
+                    EnqueuedURIMetaData: escapeXml(metadata),
                     DesiredFirstTrackNumberEnqueued: 0,
                     EnqueueAsNext: false
                 });
             } catch (e) {
                 // Same diagnosability gap as handleLocalFolder's per-item log — surface exactly
                 // what was sent, not just the bare UPnPError, so a repeat failure is diagnosable.
-                streamDeck.logger.error(`${logPrefix} AddURIToQueue (fallback) failed — containerId=${containerId}, trackUri=${favorite.TrackUri}, protocolInfo=${favorite.ProtocolInfo}, metadata=${metadata}`, e);
+                streamDeck.logger.error(`${logPrefix} AddURIToQueue (fallback) failed — containerId=${containerId}, trackUri=${trackUri}, protocolInfo=${favorite.ProtocolInfo}, metadata=${metadata}`, e);
                 throw e;
             }
 
