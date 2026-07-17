@@ -2,6 +2,7 @@
 import { SonosDevice, ServiceEvents } from '@svrooij/sonos';
 import sharp from 'sharp';
 import streamDeck from '@elgato/streamdeck';
+import { SonosFavorite } from './SonosTypes';
 import { decodeXmlEntities } from '../utils/xml';
 
 /**
@@ -9,10 +10,8 @@ import { decodeXmlEntities } from '../utils/xml';
  * This class is designed as a singleton to be shared across the plugin.
  */
 class SonosFavoritesCache {
-    private static instance: SonosFavoritesCache;
-
     // Cache for the system-wide list of favorites.
-    private favorites: any[] | null = null;
+    private favorites: SonosFavorite[] | null = null;
     private hasFetchedFavorites = false;
 
     // Pre-encoded DIDL-Lite metadata per favorite ItemId for use in SetAVTransportURI.
@@ -32,19 +31,6 @@ class SonosFavoritesCache {
             this.refreshFavorites();
         }
     };
-
-    // Private constructor to enforce singleton pattern.
-    private constructor() {}
-
-    /**
-     * Gets the singleton instance of the cache.
-     */
-    public static getInstance(): SonosFavoritesCache {
-        if (!SonosFavoritesCache.instance) {
-            SonosFavoritesCache.instance = new SonosFavoritesCache();
-        }
-        return SonosFavoritesCache.instance;
-    }
 
     /**
      * Starts the automatic refresh mechanism.
@@ -122,7 +108,8 @@ class SonosFavoritesCache {
 
             const favoritesResponse = await this.deviceForFetching.GetFavorites();
             if (Array.isArray(favoritesResponse.Result)) {
-                this.favorites = favoritesResponse.Result;
+                // The lib types Result as Track[]; a favorite carries the same fields we read.
+                this.favorites = favoritesResponse.Result as unknown as SonosFavorite[];
                 this.hasFetchedFavorites = true;
                 streamDeck.logger.info(`Successfully cached ${this.favorites.length} favorites.`);
 
@@ -140,7 +127,7 @@ class SonosFavoritesCache {
         }
     }
 
-    public getFavorites(): any[] | null {
+    public getFavorites(): SonosFavorite[] | null {
         return this.favorites;
     }
 
@@ -159,7 +146,7 @@ class SonosFavoritesCache {
 /**
  * Processes a list of favorites to download and scale their cover art.
  */
-private async processCoverArts(favorites: any[]): Promise<void> {
+private async processCoverArts(favorites: SonosFavorite[]): Promise<void> {
     streamDeck.logger.debug(`Processing cover art for ${favorites.length} favorites.`);
     
     const coverArtPromises = favorites.map(async (fav) => {
@@ -222,5 +209,6 @@ private async fetchAndScaleCoverArt(imageUrl: string, title: string): Promise<vo
 }
 }
 
-// Export the singleton instance.
-export const sonosFavoritesCache = SonosFavoritesCache.getInstance();
+// Shared module-level instance — same pattern as sonosDeviceManager/sonosGroupManager
+// (the getInstance() singleton boilerplate this replaced added nothing over a plain const).
+export const sonosFavoritesCache = new SonosFavoritesCache();

@@ -14,13 +14,8 @@ import { discoveryPromise, sonosFavoritesCache } from "../sonos/sonos-discovery"
 import { titleAnimator } from "../utils/TitleAnimator";
 import { generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
+import { SonosFavorite } from "../sonos/SonosTypes";
 import { sendDeviceList, sendFadeOptions, sendOptions } from "./pi-options";
-
-type Favorite = {
-    Title: string;
-    AlbumArtUri: string;
-    [key: string]: any;
-};
 
 type SonosFavoriteSettings = {
     deviceIp?: string;
@@ -69,8 +64,8 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
                 }
             });
 
-            const favObject = JSON.parse(favorite) as Favorite;
-            const coverArt = sonosFavoritesCache.getCoverArt(favObject.AlbumArtUri);
+            const favObject = JSON.parse(favorite) as SonosFavorite;
+            const coverArt = favObject.AlbumArtUri ? sonosFavoritesCache.getCoverArt(favObject.AlbumArtUri) : undefined;
 
             await action.setTitle("");
 
@@ -129,7 +124,7 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
 
         const fadeMs = (Number(fadeDuration) || 0) * 1000;
         try {
-            const favObject = JSON.parse(favorite);
+            const favObject = JSON.parse(favorite) as SonosFavorite;
             if (fadeMs > 0) {
                 // A multi-second fade shouldn't leave the key without feedback — confirm the
                 // press immediately; the audible fade itself signals the switch is underway.
@@ -156,7 +151,7 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
                     return;
                 }
                 const favorites = sonosFavoritesCache.getFavorites() || [];
-                const favoriteItems = favorites.map((fav: Favorite) => ({
+                const favoriteItems = favorites.map((fav) => ({
                     label: fav.Title,
                     value: JSON.stringify(fav)
                 }));

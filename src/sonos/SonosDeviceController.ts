@@ -1,16 +1,17 @@
 import streamDeck from "@elgato/streamdeck";
 import { SonosDevice, SonosEvents, ServiceEvents, MetaDataHelper } from "@svrooij/sonos";
-import { sonosFavoritesCache, sonosManager } from "./sonos-discovery";
+import { sonosManager } from "./sonos-discovery";
 
 import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "./cover-art-loader";
 import { normalizeBrowseResult } from "./queue-utils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
-import { TrackInfo, VolumeInfo } from "./SonosTypes";
+import { SonosFavorite, TrackInfo, VolumeInfo } from "./SonosTypes";
 import { withTimeout } from "../utils/with-timeout";
-import { computeFadeSteps } from "../utils/volume-fade";
-import { escapeXml, decodeXmlEntities } from "../utils/xml";
 import { parseRelTime } from "./rel-time";
+import { isRadioAlbumArtUri, upsizeSonosImageProxyUrl, looksLikeRawStreamFilename } from "./track-metadata";
+import { SonosFavoritePlayer } from "./SonosFavoritePlayer";
+import { GroupFadeCoordinator } from "./GroupFadeCoordinator";
 import { fetchBatteryStatus, SonosBatteryStatus } from "./SonosBattery";
 // Lazy/deferred use only (inside methods, never at module scope) — SonosDeviceManager itself
 // imports SonosDeviceController, so this is a circular import; safe here because sonosDeviceManager
@@ -72,12 +73,6 @@ export class SonosDeviceController {
   // Internal state
   private currentVolume: number = 0;
   private currentMute: boolean = false;
-  // Fade-before-favorite coordination: a newer playFavoriteWithFade call bumps the generation,
-  // which aborts any ramp still in flight. preFadeVolumes remembers each group member's volume
-  // from BEFORE the first fade started, so rapidly switching favorites mid-fade never adopts a
-  // half-faded volume as the level to restore to.
-  private fadeGeneration = 0;
-  private preFadeVolumes: Map<string, number> = new Map();
   private currentAlbumArtUri: string = '';
   private currentTrack: TrackInfo | undefined;
   // Only ever set when a cover is successfully loaded; never cleared by track events with no art.
@@ -98,45 +93,20 @@ export class SonosDeviceController {
   private subscribedCoordinatorHost?: string;
   private get coordinatorCallbackId(): string { return `member-${this.deviceIp}`; }
 
-  private static isRadioAlbumArtUri(albumArtUri: string | undefined): boolean {
-    if (!albumArtUri) return false;
-    // Sonos Radio (Deezer-powered) serves cover art from sonosradio.imgix.net — no u= parameter.
-    if (albumArtUri.includes('sonosradio.imgix.net')) return true;
-    const match = albumArtUri.match(/[?&]u=([^&]+)/);
-    if (!match) return false;
-    return MetaDataHelper.IsRadioStream(decodeURIComponent(match[1]));
-  }
 
-  // Sonos' own TuneIn-logo resize proxy (e.g. https://sali.sonos.superhi.fi/image?w=60&image=
-  // <original-logo-url>&partnerId=tunein, surfaced via GetMediaInfo's CurrentURIMetaData for
-  // stations with no useful GetPositionInfo metadata) defaults to a tiny width — 60px, meant for
-  // a small list-row icon — which looks visibly pixelated stretched across the much larger Track
-  // Dial cover area. Bump the requested width up via the same proxy rather than fetching the
-  // (potentially much larger/wrong-format) original directly.
-  private static upsizeSonosImageProxyUrl(url: string): string {
-    try {
-      const u = new URL(url);
-      if (!u.hostname.endsWith('sonos.superhi.fi') || !u.searchParams.has('w')) return url;
-      u.searchParams.set('w', '300');
-      return u.toString();
-    } catch {
-      return url;
-    }
-  }
-
-  // Detects a "Title" that's actually just the trailing filename/query segment of a raw stream
-  // URL — Sonos' own fallback when a station provides no real metadata in GetPositionInfo (e.g.
-  // "stream.mp3?aggregator=tunein&cid=..."). Confirmed on hardware for a WDR2/TuneIn stream; used
-  // to prefer GetMediaInfo's CurrentURIMetaData (the real station name) instead — see
-  // getCurrentTrack().
-  private static looksLikeRawStreamFilename(title: string | undefined): boolean {
-    if (!title) return false;
-    return /\.(mp3|aac|m4a|ogg|flac|wav|m3u8?|pls)(\?|$)/i.test(title);
-  }
+  private readonly favoritePlayer: SonosFavoritePlayer;
+  private readonly fadeCoordinator: GroupFadeCoordinator;
 
   constructor(deviceIp: string) {
     this.deviceIp = deviceIp;
     this.sonosDevice = new SonosDevice(deviceIp);
+    this.favoritePlayer = new SonosFavoritePlayer(this.sonosDevice);
+    this.fadeCoordinator = new GroupFadeCoordinator(
+      this,
+      () => this.getTransportState(),
+      // Deferred access — sonosDeviceManager is a circular import, safe only after module init.
+      (host) => sonosDeviceManager.peekController(host),
+    );
     streamDeck.logger.debug(`SonosDeviceController for ${this.deviceIp} created.`);
   }
 
@@ -340,7 +310,7 @@ export class SonosDeviceController {
             newTrackInfo.isRadio =
               MetaDataHelper.IsRadioStream(track.TrackUri) ||
               (track.AlbumArtUri
-                ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri)
+                ? isRadioAlbumArtUri(track.AlbumArtUri)
                 : (this.currentTrack?.isRadio ?? false));
             this.currentTrack = newTrackInfo;
             this.trackInfoCallbacks.forEach(cb => cb(this.currentTrack!));
@@ -365,7 +335,7 @@ export class SonosDeviceController {
         this.currentTrack = track;
         this.currentTrack.isRadio =
             MetaDataHelper.IsRadioStream(track.TrackUri) ||
-            (track.AlbumArtUri ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri) : false);
+            (track.AlbumArtUri ? isRadioAlbumArtUri(track.AlbumArtUri) : false);
         if (track.AlbumArtUri) {
             const cover = await loadImageFromUri(track.AlbumArtUri, this.transportDevice);
             if (cover) {
@@ -754,7 +724,7 @@ export class SonosDeviceController {
         newTrackInfo.isRadio =
             MetaDataHelper.IsRadioStream(track.TrackUri) ||
             (track.AlbumArtUri
-                ? SonosDeviceController.isRadioAlbumArtUri(track.AlbumArtUri)
+                ? isRadioAlbumArtUri(track.AlbumArtUri)
                 : (previousTrack?.isRadio ?? false));
 
         this.currentTrack = newTrackInfo;
@@ -815,214 +785,15 @@ export class SonosDeviceController {
     }, 300 * 1000);
   }
   
-  // --- Helper Methods ---
-  private generateMetadata(title: string, uri: string, upnpClass: string, protocolInfo: string): string {
-    // ID -1 signals Sonos that this is a new item to add to the queue.
-    return '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
-        `<item id="-1" parentID="-1" restricted="true">` +
-        `<dc:title>${escapeXml(title)}</dc:title>` +
-        `<upnp:class>${upnpClass}</upnp:class>` +
-        `<res protocolInfo="${protocolInfo}">${escapeXml(uri)}</res>` +
-        `</item></DIDL-Lite>`;
-  }
 
-  private async handleLocalFolder(favorite: any): Promise<boolean> {
-      const logPrefix = `[LocalFolder]`;
-      streamDeck.logger.info(`${logPrefix} Browsing folder content...`);
-
-      try {
-          let result: any = null;
-          
-          try {
-             result = await this.sonosDevice.ContentDirectoryService.Browse({
-                ObjectID: favorite.ItemId,
-                BrowseFlag: 'BrowseDirectChildren',
-                Filter: '*',
-                StartingIndex: 0,
-                RequestedCount: 1000, 
-                SortCriteria: ''
-             });
-          } catch { /* ignore */ }
-
-          if (!result || !result.Result || !result.Result.includes('<item')) {
-               const hashIndex = favorite.TrackUri.indexOf('#');
-               if (hashIndex > -1) {
-                   const realObjectId = favorite.TrackUri.substring(hashIndex + 1);
-                   try {
-                       result = await this.sonosDevice.ContentDirectoryService.Browse({
-                          ObjectID: realObjectId,
-                          BrowseFlag: 'BrowseDirectChildren',
-                          Filter: '*',
-                          StartingIndex: 0,
-                          RequestedCount: 1000, 
-                          SortCriteria: ''
-                       });
-                   } catch {
-                       try {
-                           const encodedId = encodeURIComponent(realObjectId).replace(/%2F/g, '/').replace(/%3A/g, ':');
-                           result = await this.sonosDevice.ContentDirectoryService.Browse({
-                              ObjectID: encodedId,
-                              BrowseFlag: 'BrowseDirectChildren',
-                              Filter: '*',
-                              StartingIndex: 0,
-                              RequestedCount: 1000, 
-                              SortCriteria: ''
-                           });
-                       } catch { /* ignore */ }
-                   }
-               }
-          }
-
-          if (!result || typeof result.Result !== 'string') {
-              streamDeck.logger.warn(`${logPrefix} No XML result.`);
-              return false;
-          }
-
-          // Local shape for parsed folder entries — deliberately NOT the plugin-wide TrackInfo
-          // type (which this used to shadow confusingly).
-          interface FolderTrack {
-              uri: string;
-              title: string;
-              protocolInfo: string;
-              sortKey: string;
-          }
-
-          const items: FolderTrack[] = [];
-          const itemRegex = /<item[\s\S]*?<\/item>/g;
-          let itemMatch;
-          
-          while ((itemMatch = itemRegex.exec(result.Result)) !== null) {
-              const itemXml = itemMatch[0];
-              const resMatch = itemXml.match(/<res[^>]*>(.*?)<\/res>/);
-              const titleMatch = itemXml.match(/<dc:title>(.*?)<\/dc:title>/);
-              
-              if (resMatch && resMatch[1]) {
-                  const rawUriFromXml = resMatch[1];
-                  
-                  // Decode XML entities (e.g. &amp; → &). Do NOT percent-encode '#' — the URI must remain exactly as it was in the XML.
-                  const cleanUri = decodeXmlEntities(rawUriFromXml);
-                  
-                  const title = titleMatch ? decodeXmlEntities(titleMatch[1]) : "Track";
-                  
-                  let protocolInfo = "x-file-cifs:*:audio/mpeg:*";
-                  const resTagFull = itemXml.match(/<res([^>]*)>/);
-                  if (resTagFull && resTagFull[1]) {
-                      const protoMatch = resTagFull[1].match(/protocolInfo="([^"]*)"/);
-                      if (protoMatch && protoMatch[1]) {
-                          protocolInfo = protoMatch[1];
-                      }
-                  }
-
-                  // Filter M3U
-                  if (cleanUri.toLowerCase().endsWith('.m3u') || cleanUri.toLowerCase().endsWith('.m3u8')) {
-                      continue;
-                  }
-                  
-                  if (!itemXml.includes('object.container')) {
-                      items.push({ 
-                          uri: cleanUri, 
-                          title: title,
-                          protocolInfo: protocolInfo,
-                          sortKey: cleanUri 
-                      });
-                  }
-              }
-          }
-
-          if (items.length === 0) {
-              streamDeck.logger.warn(`${logPrefix} No tracks found.`);
-              return false;
-          }
-
-          items.sort((a, b) => a.sortKey.localeCompare(b.sortKey, undefined, { numeric: true, sensitivity: 'base' }));
-
-          streamDeck.logger.info(`${logPrefix} Found ${items.length} sorted tracks. Enqueuing...`);
-
-          await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
-
-          let count = 0;
-          for (const item of items) {
-              const metadata = this.generateMetadata(
-                  item.title, 
-                  item.uri, 
-                  'object.item.audioItem.musicTrack', 
-                  item.protocolInfo
-              );
-
-              if (count === 0) {
-                  streamDeck.logger.debug(`${logPrefix} First Track URI: ${item.uri}`);
-              }
-
-              await this.sonosDevice.AVTransportService.AddURIToQueue({
-                  InstanceID: 0,
-                  EnqueuedURI: item.uri, 
-                  EnqueuedURIMetaData: metadata,
-                  DesiredFirstTrackNumberEnqueued: 0,
-                  EnqueueAsNext: false
-              });
-              count++;
-          }
-
-          await this.sonosDevice.SwitchToQueue();
-          await this.sonosDevice.Play();
-          return true;
-
-      } catch (e) {
-          streamDeck.logger.error(`${logPrefix} Error processing folder: ${e}`);
-          return false;
-      }
-  }
 
   // --- Main Logic: Play Favorite ---
 
-  /**
-   * Fades the WHOLE group's volume to 0 in parallel, runs `action`, then restores every member to
-   * ITS OWN pre-fade volume immediately afterward (no fade-in — see each caller for why that's the
-   * right call for it). Falls back to running `action` directly, no fade, when nothing is audibly
-   * playing (paused, or every member at volume 0) or `fadeOutMs <= 0`. Shared by `playFavoriteWithFade`
-   * (below), MultiControlKey's Line-In switch, and PlayPauseToggle's fade (see feature memory).
-   */
+  /** Fades the whole group out, runs `action`, restores every member — see
+   *  GroupFadeCoordinator for the full mechanics. Shared by playFavoriteWithFade,
+   *  switchToLineInWithFade and MultiControlKey's Line-In switch. */
   async fadeGroupThenRun(action: () => Promise<void>, fadeOutMs: number): Promise<void> {
-    const generation = ++this.fadeGeneration;
-    const cancelled = () => this.fadeGeneration !== generation;
-
-    let isPlaying = false;
-    try {
-      isPlaying = (await this.getTransportState()) === 'PLAYING';
-    } catch { /* device didn't answer — treat as not playing and run without fade */ }
-
-    const members = (fadeOutMs > 0 && isPlaying) ? await this.collectFadeMembers() : [];
-    const audible = members.filter((m) => m.preVolume > 0);
-
-    if (fadeOutMs <= 0 || !isPlaying || audible.length === 0) {
-      await action();
-      return;
-    }
-
-    // Remembered per host so a rapid follow-up press mid-fade restores each member to its
-    // ORIGINAL volume, not the half-faded one it happens to be at (collectFadeMembers reads
-    // this map before we replace it).
-    this.preFadeVolumes = new Map(audible.map((m) => [m.host, m.preVolume]));
-    // Told up front, before the first actual SetVolume goes out — see notifyFadeState's doc
-    // comment for why this is a pure UI signal to whichever dial is watching each member.
-    audible.forEach((m) => m.notifyFading(true, fadeOutMs));
-    try {
-      await Promise.allSettled(audible.map((m) => this.ramp(m.setVolume, m.liveVolume, 0, fadeOutMs, cancelled)));
-      if (cancelled()) return; // a newer fade took over mid-ramp
-      await action();
-    } finally {
-      if (!cancelled()) {
-        this.preFadeVolumes.clear();
-        // Restore every member to its own pre-fade volume right away — radio streams buffer for
-        // a couple of seconds after Play() returns, so this lands while the group is still
-        // silent and the audio then comes in at the correct level. Doubles as the error rescue.
-        await Promise.allSettled(audible.map((m) => m.setVolume(m.preVolume).catch(() => {})));
-        // Only the winning (non-cancelled) fade ever turns fading back off — a superseded fade
-        // must NOT do this, or its own delayed cleanup could race a newer fade's notifyFading(true)
-        // and turn the fake animation off while that newer fade is still actually running.
-        audible.forEach((m) => m.notifyFading(false, 0));
-      }
-    }
+    return this.fadeCoordinator.fadeGroupThenRun(action, fadeOutMs);
   }
 
   /**
@@ -1034,7 +805,7 @@ export class SonosDeviceController {
    * Falls back to a plain playFavorite when nothing is audibly playing (paused, or every member
    * at volume 0).
    */
-  async playFavoriteWithFade(favorite: any, fadeOutMs: number): Promise<void> {
+  async playFavoriteWithFade(favorite: SonosFavorite, fadeOutMs: number): Promise<void> {
     return this.fadeGroupThenRun(() => this.playFavorite(favorite), fadeOutMs);
   }
 
@@ -1051,70 +822,16 @@ export class SonosDeviceController {
     return this.fadeGroupThenRun(async () => { await this.sonosDevice.SwitchToLineIn(); }, fadeOutMs);
   }
 
-  // One entry per group member taking part in a fade. Volume goes through the member's pooled
-  // controller when one exists — that keeps its dials animating via its volume callbacks — and
-  // straight to the manager-owned device otherwise (no watchers to notify, and deliberately NOT
-  // sonosDeviceManager.getController(): spinning up a full controller with poll loops and GENA
-  // subscriptions per fade for a device no action is watching would be far too heavy).
-  private async collectFadeMembers(): Promise<Array<{ host: string; preVolume: number; liveVolume: number; setVolume: (v: number) => Promise<void>; notifyFading: (fading: boolean, durationMs: number) => void }>> {
-    let hosts: string[];
-    try {
-      const managed = sonosManager.Devices.find((d) => d.Host === this.deviceIp);
-      const myCoordinatorHost = managed?.Coordinator?.Host ?? managed?.Host ?? this.deviceIp;
-      hosts = sonosManager.Devices
-        .filter((d) => (d.Coordinator?.Host ?? d.Host) === myCoordinatorHost)
-        .map((d) => d.Host);
-      if (!hosts.includes(this.deviceIp)) hosts.push(this.deviceIp);
-    } catch {
-      hosts = [this.deviceIp]; // discovery not ready — fade at least this device
-    }
 
-    const members: Array<{ host: string; preVolume: number; liveVolume: number; setVolume: (v: number) => Promise<void>; notifyFading: (fading: boolean, durationMs: number) => void }> = [];
-    await Promise.all(hosts.map(async (host) => {
-      const controller = host === this.deviceIp ? this : sonosDeviceManager.peekController(host);
-      if (controller) {
-        members.push({
-          host,
-          preVolume: this.preFadeVolumes.get(host) ?? controller.currentVolume,
-          liveVolume: controller.currentVolume,
-          setVolume: (v) => controller.applyFadeVolume(v),
-          notifyFading: (fading, durationMs) => controller.notifyFadeState(fading, durationMs),
-        });
-        return;
-      }
-      const device = sonosManager.Devices.find((d) => d.Host === host);
-      if (!device) return;
-      try {
-        const vol = await withTimeout(
-          device.RenderingControlService.GetVolume({ InstanceID: 0, Channel: 'Master' }),
-          3000,
-          `fade GetVolume (${host})`,
-        );
-        members.push({
-          host,
-          preVolume: this.preFadeVolumes.get(host) ?? vol.CurrentVolume,
-          liveVolume: vol.CurrentVolume,
-          setVolume: async (v) => {
-            await withTimeout(
-              device.RenderingControlService.SetVolume({ InstanceID: 0, Channel: 'Master', DesiredVolume: v }),
-              SET_VOLUME_TIMEOUT_MS,
-              `fade SetVolume (${host})`,
-            );
-          },
-          // No pooled controller ⇒ no dial is watching this device, nothing to signal.
-          notifyFading: () => {},
-        });
-      } catch { /* member unreachable — leave it out of the fade entirely */ }
-    }));
-    return members;
-  }
+  /** Live cached volume — read by GroupFadeCoordinator when enumerating fade members. */
+  get liveVolume(): number { return this.currentVolume; }
 
   // Sets this device's volume AND keeps currentVolume + volume callbacks in sync, exactly like a
   // device event would. Silently poking currentVolume instead made the event/poll dedup treat the
   // device's own echo of every fade step as "no change", so watching Volume dials froze mid-fade
   // and stayed stale afterwards (hardware-observed: the pie chart simply stopped updating). The
   // later echo events dedup away correctly because currentVolume already matches.
-  private async applyFadeVolume(volume: number): Promise<void> {
+  async applyFadeVolume(volume: number): Promise<void> {
     await this.setVolume(volume);
     if (volume !== this.currentVolume) {
       this.currentVolume = volume;
@@ -1122,108 +839,10 @@ export class SonosDeviceController {
     }
   }
 
-  private async ramp(setVolume: (v: number) => Promise<void>, from: number, to: number, durationMs: number, isCancelled: () => boolean): Promise<void> {
-    for (const step of computeFadeSteps(from, to, durationMs)) {
-      await new Promise((resolve) => setTimeout(resolve, step.delayMs));
-      if (isCancelled()) return;
-      await setVolume(step.volume);
-    }
-  }
 
-  async playFavorite(favorite: any): Promise<void> {
-    const logPrefix = `[PlayFavorite] [${favorite.Title}]`;
-    streamDeck.logger.info(`${logPrefix} START.`);
-    
-    try {
-        // --- 1. SPOTIFY PLAYLIST ---
-        if (favorite.TrackUri.includes('spotify:playlist:')) {
-            streamDeck.logger.info(`${logPrefix} Spotify Playlist. Using MetadataHelper.`);
-            const match = favorite.TrackUri.match(/spotify:playlist:([a-zA-Z0-9]+)/);
-            if (match && match[1]) {
-                const cleanUri = `spotify:playlist:${match[1]}`;
-                const guessedData = MetaDataHelper.GuessMetaDataAndTrackUri(cleanUri);
-                
-                if (guessedData && guessedData.metadata && guessedData.trackUri) {
-                    await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
-                    await this.sonosDevice.AVTransportService.AddURIToQueue({
-                        InstanceID: 0,
-                        EnqueuedURI: guessedData.trackUri,
-                        EnqueuedURIMetaData: guessedData.metadata,
-                        DesiredFirstTrackNumberEnqueued: 0,
-                        EnqueueAsNext: false
-                    });
-                    await this.sonosDevice.SwitchToQueue();
-                    await this.sonosDevice.Play();
-                    streamDeck.logger.info(`${logPrefix} SUCCESS (Spotify).`);
-                    return;
-                }
-            }
-        }
-
-        // --- 2. MUSIC LIBRARY / NAS FOLDER ---
-        if (favorite.TrackUri.startsWith('x-rincon-playlist') || favorite.TrackUri.startsWith('x-file-cifs')) {
-            streamDeck.logger.info(`${logPrefix} Music Library/Folder detected. Trying custom expansion.`);
-            
-            const success = await this.handleLocalFolder(favorite);
-            
-            if (success) {
-                streamDeck.logger.info(`${logPrefix} SUCCESS (Music Library Custom).`);
-                return;
-            }
-
-            // FALLBACK
-            streamDeck.logger.warn(`${logPrefix} Custom expansion failed. Fallback to native Container Queueing.`);
-            await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
-
-            let containerId = favorite.ItemId;
-            const hashIndex = favorite.TrackUri.indexOf('#');
-            if (hashIndex > -1) {
-                containerId = favorite.TrackUri.substring(hashIndex + 1);
-            }
-
-            const metadata =
-                '<DIDL-Lite xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/" xmlns:r="urn:schemas-rinconnetworks-com:metadata-1-0/" xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/">' +
-                `<item id="${containerId}" parentID="${favorite.ParentId}" restricted="true">` +
-                `<dc:title>${escapeXml(favorite.Title)}</dc:title>` +
-                `<upnp:class>object.container.playlistContainer</upnp:class>` + 
-                `<res protocolInfo="${favorite.ProtocolInfo}">${escapeXml(favorite.TrackUri)}</res>` +
-                `</item></DIDL-Lite>`;
-
-            await this.sonosDevice.AVTransportService.AddURIToQueue({
-                InstanceID: 0,
-                EnqueuedURI: favorite.TrackUri,
-                EnqueuedURIMetaData: metadata,
-                DesiredFirstTrackNumberEnqueued: 0,
-                EnqueueAsNext: false
-            });
-
-            await this.sonosDevice.SwitchToQueue();
-            await this.sonosDevice.Play();
-            streamDeck.logger.info(`${logPrefix} SUCCESS (Music Library Fallback).`);
-            return;
-        }
-
-        // --- 3. RADIO / DIRECT URI ---
-        // Use the r:resMD field from the raw Browse response as CurrentURIMetaData.
-        // r:resMD is pre-HTML-encoded DIDL-Lite with the correct id, upnp:class, and cdudn.
-        // Passing it as a string bypasses TrackToMetaData, which corrupts UpnpClass when the
-        // SDK parses two <upnp:class> elements and concatenates them (causing UPnP 402).
-        const resMd = sonosFavoritesCache.getResMd(favorite.TrackUri);
-        streamDeck.logger.info(`${logPrefix} Standard/Radio detected. URI="${favorite.TrackUri}"`);
-
-        await this.sonosDevice.AVTransportService.SetAVTransportURI({
-            InstanceID: 0,
-            CurrentURI: favorite.TrackUri,
-            CurrentURIMetaData: resMd ?? { ...favorite },
-        });
-
-        await this.sonosDevice.Play();
-        streamDeck.logger.info(`${logPrefix} SUCCESS (Radio).`);
-
-    } catch (error: any) {
-        streamDeck.logger.error(`${logPrefix} ERROR: ${error}`);
-        throw error;
-    }
+  /** Plays a favorite on this device — full URI-type dispatch lives in SonosFavoritePlayer. */
+  async playFavorite(favorite: SonosFavorite): Promise<void> {
+    return this.favoritePlayer.playFavorite(favorite);
   }
 
 
@@ -1247,7 +866,7 @@ export class SonosDeviceController {
           const mediaInfo = await this.transportDevice.AVTransportService.GetMediaInfo({ InstanceID: 0 });
           const mediaMeta = mediaInfo.CurrentURIMetaData;
           if (typeof mediaMeta !== 'string' && mediaMeta.AlbumArtUri) {
-              const artUrl = SonosDeviceController.upsizeSonosImageProxyUrl(mediaMeta.AlbumArtUri);
+              const artUrl = upsizeSonosImageProxyUrl(mediaMeta.AlbumArtUri);
               const cover = await loadImageFromUri(artUrl, this.transportDevice);
               if (cover) return cover;
           }
@@ -1280,16 +899,16 @@ export class SonosDeviceController {
     // (confirmed on hardware: WDR2 via TuneIn gave Title "stream.mp3?aggregator=..." here, but
     // "WDR 2 Rhein und Ruhr" via GetMediaInfo). Only overlay the fields that are actually missing/
     // bad — don't clobber good metadata queue playback already has.
-    if (!track || SonosDeviceController.looksLikeRawStreamFilename(track.Title) || !track.AlbumArtUri) {
+    if (!track || looksLikeRawStreamFilename(track.Title) || !track.AlbumArtUri) {
         try {
             const mediaInfo = await this.transportDevice.AVTransportService.GetMediaInfo({ InstanceID: 0 });
             const mediaMeta = mediaInfo.CurrentURIMetaData;
             if (typeof mediaMeta !== 'string') {
-                const needsTitle = !track?.Title || SonosDeviceController.looksLikeRawStreamFilename(track.Title);
+                const needsTitle = !track?.Title || looksLikeRawStreamFilename(track.Title);
                 track = {
                     ...(track ?? {} as Track),
                     Title: needsTitle && mediaMeta.Title ? mediaMeta.Title : track?.Title,
-                    AlbumArtUri: track?.AlbumArtUri || (mediaMeta.AlbumArtUri ? SonosDeviceController.upsizeSonosImageProxyUrl(mediaMeta.AlbumArtUri) : undefined),
+                    AlbumArtUri: track?.AlbumArtUri || (mediaMeta.AlbumArtUri ? upsizeSonosImageProxyUrl(mediaMeta.AlbumArtUri) : undefined),
                 } as Track;
             }
         } catch { /* keep whatever GetPositionInfo already gave us */ }

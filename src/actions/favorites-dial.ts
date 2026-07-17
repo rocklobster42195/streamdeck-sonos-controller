@@ -12,7 +12,7 @@ import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCa
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosFavoritesCache } from "../sonos/sonos-discovery";
-import { TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
+import { SonosFavorite, TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { mdiCog, mdiHeartCircle, mdiHeartCircleOutline, mdiAudioInputRca } from "@mdi/js";
 import { INACTIVE_ICON_COLOR } from "../utils/icons";
@@ -81,11 +81,11 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
     // Synthetic, non-persisted "favorite" appended when the configured device has a Line-In
     // input — not a real Sonos favorite, recognized downstream purely via the isLineIn flag.
     // Title reuses the same "Line-In" i18n key already added for MultiControlKey.
-    private lineInEntry(): { Title: string; AlbumArtUri: string; isLineIn: true } {
-        return { Title: piT('Line-In'), AlbumArtUri: '', isLineIn: true };
+    private lineInEntry(): SonosFavorite {
+        return { Title: piT('Line-In'), TrackUri: '', AlbumArtUri: '', isLineIn: true };
     }
 
-    private getFavorites(context: string): any[] {
+    private getFavorites(context: string): SonosFavorite[] {
         const favs = sonosFavoritesCache.getFavorites() ?? [];
         const settings = this.settingsMap.get(context);
         const shouldInclude = this.hasLineInByContext.get(context) && settings?.includeLineIn;
@@ -116,7 +116,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         state.currentTrack = trackInfo;
 
         const favs = this.getFavorites(context);
-        const match = favs.find((f: any) => f.Title === trackInfo.Title || f.Title === trackInfo.Artist);
+        const match = favs.find((f) => f.Title === trackInfo.Title || f.Title === trackInfo.Artist);
         state.playingFav = match ? { Title: match.Title, AlbumArtUri: match.AlbumArtUri } : undefined;
 
         if (state.currentIndex === -1) {
@@ -262,7 +262,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             const favs = this.getFavorites(context);
             const trackTitle = state.currentTrack?.Title ?? '';
             const trackArtist = state.currentTrack?.Artist ?? '';
-            const match = favs.find((f: any) => f.Title === trackTitle || f.Title === trackArtist);
+            const match = favs.find((f) => f.Title === trackTitle || f.Title === trackArtist);
             state.playingFav = match ? { Title: match.Title, AlbumArtUri: match.AlbumArtUri } : undefined;
 
             if (state.currentIndex === -1) {
@@ -316,7 +316,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         if (state.currentIndex === -1) {
             // First rotation: find currently playing favorite or start at 0.
             const title = state.currentTrack?.Title ?? '';
-            const matchIdx = favs.findIndex((f: any) => f.Title === title);
+            const matchIdx = favs.findIndex((f) => f.Title === title);
             state.currentIndex = matchIdx !== -1 ? matchIdx : 0;
         } else {
             state.currentIndex = ((state.currentIndex + ev.payload.ticks) % n + n) % n;
