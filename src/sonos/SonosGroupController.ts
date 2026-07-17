@@ -3,6 +3,7 @@ import { safeDevices, discoveryPromise } from "./sonos-discovery";
 import { sonosDeviceManager } from "./SonosDeviceManager";
 import { SonosDeviceController } from "./SonosDeviceController";
 import { VolumeInfo } from "./SonosTypes";
+import { withTimeout } from "../utils/with-timeout";
 
 // How often we re-check which devices belong to the group. Sonos groups are ephemeral —
 // grouping/ungrouping via the app or a coordinator reboot can change membership/coordinator at
@@ -14,6 +15,15 @@ const TOPOLOGY_RECHECK_MS = 20000;
 // this long — it can arrive late/out-of-order relative to a follow-up write and otherwise
 // clobbers the value we just set (same race as the per-device VolumeDial, fixed the same way).
 const MEMBER_FEEDBACK_SUPPRESS_MS = 800;
+// An unreachable/flaky member's raw GetVolume can otherwise hang for the OS-level TCP connect
+// timeout (20-30s+ on Windows — see SonosDeviceController's identical rationale for
+// SET_VOLUME_TIMEOUT_MS) before rejecting. getBaselineVolume() runs on every throttled rotation
+// flush (~every 120ms during continuous dial rotation), serialized by GroupVolumeDial — one flush
+// must resolve before the next is sent — so an unbounded call here froze EVERY subsequent
+// rotation input for the whole duration of the hang, felt as "quickly changing the volume lags"
+// (confirmed via the plugin log: a ~9min ENETUNREACH/EHOSTUNREACH window for one group member).
+// Same bound already used for the analogous fade-context read in GroupFadeCoordinator.
+const BASELINE_VOLUME_TIMEOUT_MS = 3000;
 
 /**
  * Controls the volume of an entire Sonos zone group (all speakers grouped together), following
@@ -241,7 +251,11 @@ export class SonosGroupController {
       return this.memberVolumes.get(host) ?? 0;
     }
     try {
-      const live = await controller.sonosDevice.RenderingControlService.GetVolume({ InstanceID: 0, Channel: 'Master' });
+      const live = await withTimeout(
+        controller.sonosDevice.RenderingControlService.GetVolume({ InstanceID: 0, Channel: 'Master' }),
+        BASELINE_VOLUME_TIMEOUT_MS,
+        `baseline GetVolume (${host})`,
+      );
       this.memberVolumes.set(host, live.CurrentVolume);
       return live.CurrentVolume;
     } catch (e) {
