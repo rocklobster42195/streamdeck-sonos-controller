@@ -45,13 +45,18 @@ type MultiControlSettings = {
 };
 
 // Whether a function is valid for THIS device, based on the two hardware-probed capability
-// signals. Line-In now uses deviceHasLineIn's real positive probe directly — the previous
-// hasBattery-only negative proxy (Roam/Move have no Line-In port, but says nothing about
-// mains-powered devices without one either) offered Line-In on every non-battery device
-// regardless of whether it actually had the port.
+// signals. Both now require a POSITIVE confirmation before being offered — battery used to accept
+// "not yet known" (hasBattery !== false) as good enough, which raced against the PI's own initial
+// 'get-function-options' request: that request can arrive before onInstanceUpdate's probe
+// resolves, when both flags are still undefined, and an asymmetric default (Line-In excluded
+// while unknown, Battery included while unknown) meant the dropdown briefly offered "Battery" on
+// devices that turned out not to have one — confirmed on hardware (Küche/SYMFONISK: dropdown
+// showed "Battery" at the same time the noFunctionAvailableItem hint said no function was
+// available). Both probes are cheap and already run on every settings sync regardless, so there's
+// no reason left to default-permissive for either.
 function isFunctionValid(fn: MultiControlFunction, hasBattery: boolean | undefined, hasLineIn: boolean | undefined): boolean {
     if (fn === 'line-in') return hasLineIn === true;
-    if (fn === 'battery') return hasBattery !== false;
+    if (fn === 'battery') return hasBattery === true;
     return true;
 }
 
