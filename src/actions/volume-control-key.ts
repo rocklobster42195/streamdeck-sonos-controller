@@ -29,6 +29,13 @@ type SonosKeyVolumeSettings = {
 
 type VolumeCommand = SonosKeyVolumeSettings['command'];
 
+// What the icon/title updaters actually need from an action — structural, so `ev.action` fits
+// without fighting the SDK's KeyAction/DialAction union generics.
+type KeySurface = {
+    setImage(image?: string): Promise<void>;
+    setTitle(title?: string): Promise<void>;
+};
+
 interface KeyState {
     // Eases/fakes the fader icon's displayed volume — only the 'mute' command's icon actually
     // visualizes the level, so the animation paths are gated on that command below.
@@ -43,7 +50,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     private initializedHash: Map<string, string> = new Map();
     private timers: Map<string, NodeJS.Timeout> = new Map();
     private longPressExecuted: Map<string, boolean> = new Map();
-    private actionRefs: Map<string, any> = new Map();
+    private actionRefs: Map<string, KeySurface> = new Map();
     private keyStates: Map<string, KeyState> = new Map();
 
     private newKeyState(context: string, volume: number, isMuted: boolean, command: VolumeCommand): KeyState {
@@ -66,7 +73,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         this.keyStates.delete(context);
     }
 
-    private async updateIcon(action: any, volume: number, isMuted: boolean, command?: VolumeCommand) {
+    private async updateIcon(action: KeySurface | undefined, volume: number, isMuted: boolean, command?: VolumeCommand) {
         if (!action) return;
 
         let iconFile = '';
@@ -93,7 +100,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         await action.setImage(iconFile);
     }
 
-    private async updateTitle(action: any, settings: SonosKeyVolumeSettings, volume: { volume: number, mute: boolean }) {
+    private async updateTitle(action: KeySurface, settings: SonosKeyVolumeSettings, volume: { volume: number, mute: boolean }) {
         const { command, showVolume, showPreset, presetVolume, volume: legacyVolume } = settings;
         const preset = presetVolume ?? legacyVolume;
 

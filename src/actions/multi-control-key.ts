@@ -22,6 +22,10 @@ import { sendDeviceList, sendFadeOptions, sendOptions } from "./pi-options";
 // Timer are planned but not yet built — see docs/concept-multicontrol-key.md.
 type MultiControlFunction = 'line-in' | 'battery';
 
+// What renderIcon actually needs from an action — structural, so both `ev.action` and
+// streamDeck.actions.getActionById() results fit without fighting the SDK's generics.
+type ImageTarget = { setImage(image?: string): Promise<void> };
+
 type MultiControlSettings = {
     deviceIp?: string;
     controlFunction?: MultiControlFunction;
@@ -71,7 +75,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
     // resets on a real device switch, not on every plugin/PI restart.
     private lastDeviceIpByContext: Map<string, string> = new Map();
 
-    private renderIcon(action: any, context: string, controlFunction: MultiControlFunction | undefined): void {
+    private renderIcon(action: ImageTarget | undefined, context: string, controlFunction: MultiControlFunction | undefined): void {
         if (!action) return;
         if (controlFunction === 'battery') {
             void action.setImage(generateBatteryKeyIcon(this.batteryStatuses.get(context)));
