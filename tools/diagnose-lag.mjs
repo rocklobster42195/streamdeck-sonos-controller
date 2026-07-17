@@ -126,19 +126,37 @@ if (topRepeated.length > 0) {
 // Bursts: the same normalized message firing >=3 times within a 500ms window — this is what
 // catches a render/event storm (e.g. one track-info fire fanning out to every grouped member
 // repeatedly) that a plain total count could hide inside a long, otherwise-quiet session.
+//
+// A sliding window that pushes one entry per qualifying INDEX (rather than per burst EPISODE)
+// hugely inflates the apparent occurrence count: a single clean N-line burst (all within the
+// window) crosses the >=3 threshold at index 2 and stays above it through index N-1, so it was
+// being reported as (N-2) separate "occurrences" of one real event — confirmed by hand against a
+// real log where a single 8-member startup-subscribe burst and later single 8-member track-change
+// forwards were reported as "seen 6x"/"seen 18x", when the raw log showed exactly one clean burst
+// per real event. Track episode boundaries instead: a burst starts when the window first reaches
+// BURST_MIN_COUNT and ends when it drops back below it (or the group's timestamps run out) —
+// exactly one reported occurrence per real event, sized by its peak concurrent count.
 const BURST_WINDOW_MS = 500;
 const BURST_MIN_COUNT = 3;
 const bursts = [];
 for (const [key, g] of groups) {
     if (g.count < BURST_MIN_COUNT) continue;
     let windowStart = 0;
+    let inBurst = false;
+    let burstPeak = 0;
     for (let i = 0; i < g.times.length; i++) {
         while (g.times[i] - g.times[windowStart] > BURST_WINDOW_MS) windowStart++;
         const countInWindow = i - windowStart + 1;
         if (countInWindow >= BURST_MIN_COUNT) {
-            bursts.push({ key, count: countInWindow, at: g.times[i] });
+            inBurst = true;
+            burstPeak = Math.max(burstPeak, countInWindow);
+        } else if (inBurst) {
+            bursts.push({ key, count: burstPeak });
+            inBurst = false;
+            burstPeak = 0;
         }
     }
+    if (inBurst) bursts.push({ key, count: burstPeak }); // trailing burst at end of log
 }
 if (bursts.length > 0) {
     // Collapse to one entry per key with the max burst size seen, plus how many separate bursts.
