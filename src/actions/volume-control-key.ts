@@ -1,18 +1,18 @@
 import { type JsonValue } from "@elgato/utils";
-import streamDeck, { 
-    action, 
-    KeyDownEvent, 
+import streamDeck, {
+    action,
+    KeyDownEvent,
     KeyUpEvent,
-    SingletonAction, 
-    WillAppearEvent, 
-    SendToPluginEvent, 
-    DidReceiveSettingsEvent, 
-    WillDisappearEvent 
+    SingletonAction,
+    WillAppearEvent,
+    SendToPluginEvent,
+    DidReceiveSettingsEvent,
+    WillDisappearEvent
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { discoveryPromise } from "../sonos/sonos-discovery";
-
+import { FadeDisplayAnimator } from "../utils/FadeDisplayAnimator";
 import { generateFaderSvg, generateVolumeButtonIcon, generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
@@ -27,6 +27,16 @@ type SonosKeyVolumeSettings = {
     showPreset?: boolean;
 };
 
+type VolumeCommand = SonosKeyVolumeSettings['command'];
+
+interface KeyState {
+    // Eases/fakes the fader icon's displayed volume — only the 'mute' command's icon actually
+    // visualizes the level, so the animation paths are gated on that command below.
+    anim: FadeDisplayAnimator;
+    isMuted: boolean;
+    command?: VolumeCommand;
+}
+
 @action({ UUID: "de.boriskemper.sonos-controller.volume-control-key" })
 export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     private controllers: Map<string, SonosDeviceController> = new Map();
@@ -34,103 +44,29 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     private timers: Map<string, NodeJS.Timeout> = new Map();
     private longPressExecuted: Map<string, boolean> = new Map();
     private actionRefs: Map<string, any> = new Map();
-    private volumeAnimState: Map<string, {
-        volume: number; displayVolume: number; isMuted: boolean; command?: 'mute' | 'vol-up' | 'vol-down' | 'vol-preset';
-        // Fade-out fake-animation fields — see onFadeStateChanged/currentDisplayVolume.
-        fading?: boolean; fadeStartVolume?: number; fadeStartTime?: number; fadeDurationMs?: number;
-    }> = new Map();
-    private volumeAnimTimers: Map<string, NodeJS.Timeout> = new Map();
-    private fadeAnimTimers: Map<string, NodeJS.Timeout> = new Map();
+    private keyStates: Map<string, KeyState> = new Map();
 
-    // Eases the fader icon toward the actual volume instead of snapping to it,
-    // matching the VolumeDial behavior. Only relevant for the 'mute' command,
-    // whose icon is the only one that visualizes the volume level.
-    private startVolumeAnim(context: string): void {
-        if (this.volumeAnimTimers.has(context)) return;
-        const timer = setInterval(() => {
-            const state = this.volumeAnimState.get(context);
-            const action = this.actionRefs.get(context);
-            if (!state || !action) { this.stopVolumeAnim(context); return; }
-            const diff = state.volume - state.displayVolume;
-            if (Math.abs(diff) < 0.3) {
-                state.displayVolume = state.volume;
-                this.stopVolumeAnim(context);
-            } else {
-                state.displayVolume += diff * 0.4;
-            }
-            void this.updateIcon(action, state.displayVolume, state.isMuted, state.command);
-        }, 25);
-        this.volumeAnimTimers.set(context, timer);
+    private newKeyState(context: string, volume: number, isMuted: boolean, command: VolumeCommand): KeyState {
+        const state: KeyState = {
+            anim: new FadeDisplayAnimator(() => {
+                const s = this.keyStates.get(context);
+                const a = this.actionRefs.get(context);
+                if (!s || !a) return;
+                void this.updateIcon(a, s.anim.current(), s.isMuted, s.command);
+            }),
+            isMuted,
+            command,
+        };
+        state.anim.initialize(volume);
+        return state;
     }
 
-    private stopVolumeAnim(context: string): void {
-        const timer = this.volumeAnimTimers.get(context);
-        if (timer) { clearInterval(timer); this.volumeAnimTimers.delete(context); }
+    private clearKeyState(context: string): void {
+        this.keyStates.get(context)?.anim.stop();
+        this.keyStates.delete(context);
     }
 
-    // Called (via SonosDeviceController.registerFadeStateCallback) right as a group fade-out
-    // starts/ends. Fakes a continuous descent to 0 over the fade's own known duration instead of
-    // showing the real, coarsely-stepped SetVolume echoes — then glides back to the real, restored
-    // volume once the fade actually ends. Only the 'mute' command's fader icon visualizes volume.
-    private onFadeStateChanged(context: string, fading: boolean, durationMs: number): void {
-        const state = this.volumeAnimState.get(context);
-        if (!state || state.command !== 'mute') return;
-        if (fading) {
-            this.stopVolumeAnim(context);
-            // Read the cached (already-real, not fade-live) value BEFORE flipping state.fading —
-            // calling currentDisplayVolume() after would see fading=true plus stale
-            // fadeStartTime/fadeDurationMs left over from a PREVIOUS fade and compute a bogus
-            // "already fully faded" progress off of them, starting every fade after the first
-            // one from 0 instead of the real current volume (confirmed on hardware).
-            state.fadeStartVolume = state.displayVolume;
-            state.fading = true;
-            state.fadeStartTime = Date.now();
-            state.fadeDurationMs = Math.max(1, durationMs);
-            this.startFadeAnim(context);
-        } else {
-            // Freeze wherever the live-computed descent currently reads as displayVolume's real
-            // value — state.fading flips false right after, so currentDisplayVolume's fade branch
-            // won't be consulted again, and the glide-up below needs a definite starting point.
-            state.displayVolume = this.currentDisplayVolume(state);
-            state.fading = false;
-            this.stopFadeAnim(context);
-            this.startVolumeAnim(context);
-        }
-    }
-
-    // Computes the fader icon's current value on demand from elapsed real time rather than caching
-    // it in a timer-written field — see the identical comment on VolumeDial.currentDisplayVolume
-    // for why (two independently-paced timers stomping on a shared cached value stutters).
-    private currentDisplayVolume(state: { displayVolume: number; fading?: boolean; fadeStartVolume?: number; fadeStartTime?: number; fadeDurationMs?: number }): number {
-        if (state.fading && state.fadeStartTime !== undefined && state.fadeDurationMs !== undefined) {
-            const progress = Math.min(1, (Date.now() - state.fadeStartTime) / state.fadeDurationMs);
-            return (state.fadeStartVolume ?? 0) * (1 - progress);
-        }
-        return state.displayVolume;
-    }
-
-    private startFadeAnim(context: string): void {
-        if (this.fadeAnimTimers.has(context)) return;
-        const timer = setInterval(() => {
-            const state = this.volumeAnimState.get(context);
-            const action = this.actionRefs.get(context);
-            if (!state?.fading || !action || state.fadeStartTime === undefined || state.fadeDurationMs === undefined) {
-                this.stopFadeAnim(context);
-                return;
-            }
-            void this.updateIcon(action, this.currentDisplayVolume(state), state.isMuted, state.command);
-            const progress = (Date.now() - state.fadeStartTime) / state.fadeDurationMs;
-            if (progress >= 1) this.stopFadeAnim(context);
-        }, 25);
-        this.fadeAnimTimers.set(context, timer);
-    }
-
-    private stopFadeAnim(context: string): void {
-        const timer = this.fadeAnimTimers.get(context);
-        if (timer) { clearInterval(timer); this.fadeAnimTimers.delete(context); }
-    }
-
-    private async updateIcon(action: any, volume: number, isMuted: boolean, command?: 'mute' | 'vol-up' | 'vol-down' | 'vol-preset') {
+    private async updateIcon(action: any, volume: number, isMuted: boolean, command?: VolumeCommand) {
         if (!action) return;
 
         let iconFile = '';
@@ -153,7 +89,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
                 iconFile = `${basePath}volume-high-cccccc.png`;
                 break;
         }
-        
+
         await action.setImage(iconFile);
     }
 
@@ -235,25 +171,31 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
                     void action.setTitle("");
                 }
             });
-            controller.registerFadeStateCallback(context, (fading, durationMs) => this.onFadeStateChanged(context, fading, durationMs));
+            // Only the 'mute' command's fader icon visualizes volume — other commands ignore
+            // fade-state signals entirely.
+            controller.registerFadeStateCallback(context, (fading, durationMs) => {
+                const state = this.keyStates.get(context);
+                if (!state || state.command !== 'mute') return;
+                state.anim.onFadeState(fading, durationMs);
+            });
 
             // Register callback for live mute/volume updates
             controller.unregisterVolumeCallback(context);
             controller.registerVolumeCallback(context, (volume) => {
-                let state = this.volumeAnimState.get(context);
-                if (state) {
-                    state.volume = volume.volume;
-                    state.isMuted = volume.mute;
-                    state.command = command;
-                } else {
-                    state = { volume: volume.volume, displayVolume: volume.volume, isMuted: volume.mute, command };
-                    this.volumeAnimState.set(context, state);
+                let state = this.keyStates.get(context);
+                if (!state) {
+                    state = this.newKeyState(context, volume.volume, volume.mute, command);
+                    this.keyStates.set(context, state);
                 }
+                state.isMuted = volume.mute;
+                state.command = command;
                 if (command === 'mute') {
-                    // The fake-fade animation owns the icon right now — this real echo is one of
-                    // the actual coarse steps the whole mechanism exists to hide.
-                    if (!state.fading) this.startVolumeAnim(context);
+                    // onEcho eases the fader toward the new value — and ignores echoes while a
+                    // fade is running (those are the coarse steps the fake descent hides).
+                    state.anim.onEcho(volume.volume);
                 } else {
+                    // Static icons — keep the target in sync (no animation) and repaint directly.
+                    state.anim.initialize(volume.volume);
                     this.updateIcon(action, volume.volume, volume.mute, command);
                 }
                 this.updateTitle(action, settings, volume);
@@ -261,12 +203,11 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
 
             // Set initial icon (snap, no animation on first render)
             const currentVolume = await controller.getVolume();
-            this.volumeAnimState.set(context, {
-                volume: currentVolume.volume, displayVolume: currentVolume.volume, isMuted: currentVolume.mute, command,
-            });
+            this.clearKeyState(context);
+            this.keyStates.set(context, this.newKeyState(context, currentVolume.volume, currentVolume.mute, command));
             await this.updateIcon(action, currentVolume.volume, currentVolume.mute, command);
             await this.updateTitle(action, settings, currentVolume);
-            
+
             this.initializedHash.set(context, currentHash);
             streamDeck.logger.debug(`[${context}] Initialized: IP=${deviceIp}, Cmd=${command}`);
 
@@ -283,10 +224,10 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     override async onWillAppear(ev: WillAppearEvent<SonosKeyVolumeSettings>): Promise<void> {
         await this.onInstanceUpdate(ev);
     }
-    
+
     override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SonosKeyVolumeSettings>): Promise<void> {
         const context = ev.action.id;
-        
+
         // Immediately unregister the callback to prevent race conditions with stale settings.
         const controller = this.controllers.get(context);
         if (controller) {
@@ -295,9 +236,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         }
 
         this.initializedHash.delete(context);
-        this.stopVolumeAnim(context);
-        this.stopFadeAnim(context);
-        this.volumeAnimState.delete(context);
+        this.clearKeyState(context);
         await this.onInstanceUpdate(ev);
     }
 
@@ -321,9 +260,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         }
         this.longPressExecuted.delete(context);
 
-        this.stopVolumeAnim(context);
-        this.stopFadeAnim(context);
-        this.volumeAnimState.delete(context);
+        this.clearKeyState(context);
         this.actionRefs.delete(context);
     }
 
@@ -342,7 +279,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         if (command === 'vol-preset') {
             try {
                 if (typeof preset === 'number') {
-                    await controller.setVolume(preset); 
+                    await controller.setVolume(preset);
                 } else {
                     action.showAlert();
                 }
@@ -396,11 +333,11 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
                     // device's own echo (UPnP event or next poll tick) to update the icon —
                     // that echo can lag by several seconds.
                     const newMute = await controller.toggleMute();
-                    const animState = this.volumeAnimState.get(action.id);
-                    if (animState) {
-                        animState.isMuted = newMute;
-                        void this.updateIcon(action, animState.displayVolume, newMute, command);
-                        void this.updateTitle(action, payload.settings, { volume: animState.volume, mute: newMute });
+                    const state = this.keyStates.get(action.id);
+                    if (state) {
+                        state.isMuted = newMute;
+                        void this.updateIcon(action, state.anim.current(), newMute, command);
+                        void this.updateTitle(action, payload.settings, { volume: Math.round(state.anim.targetVolume ?? 0), mute: newMute });
                     }
                     break;
                 }
