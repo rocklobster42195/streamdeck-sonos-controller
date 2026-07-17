@@ -26,6 +26,7 @@ Normal entry point: `npm run ship:patch` / `ship:minor` / `ship:major` / `ship:b
 | Script | npm script | What it does |
 | --- | --- | --- |
 | `run-effects-preview.mjs` | `effects:preview` | Builds `src/effects/preview-server.ts` (via `rollup.preview.config.mjs`) into `effects-preview-server.bundle.mjs` (gitignored) and starts it — live effect preview in the browser, see CONTRIBUTING_EFFECTS.md. |
+| `diagnose-lag.mjs` | `diagnose` | Analyzes a plugin log (`de.boriskemper.sonos-controller.sdPlugin/logs/*.log`) for lag-causing anomalies: discovery timing, repeated/bursty log lines, and suspiciously large gaps between consecutive lines. Run whenever a lag/slowness report comes in — `npm run diagnose` (newest log) or `npm run diagnose -- 3` (a specific rotation). Every historical "feels slow" bug in this project was root-caused by reading the logs by hand first; this automates that first pass. |
 
 ## Asset generators (run manually, on demand)
 
