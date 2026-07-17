@@ -62,8 +62,20 @@ export class FadeDisplayAnimator {
     /**
      * User rotation: `ease` for a fast spin (Stream Deck coalesced several detents into one
      * event — glide toward it), snap for a normal single-detent turn (no catch-up lag).
+     *
+     * Unlike onEcho, this ALWAYS interrupts an in-progress fade — confirmed on hardware
+     * (2026-07-17): current() unconditionally shows the fade's own computed descent/restore
+     * curve while `fading` is true, so rotating mid-fade silently updated target/display with
+     * no visible effect until the fade ended a couple of seconds later, then jumped to wherever
+     * the accumulated turning had left it — read as "input stuck, then catches up all at once".
+     * A user actively grabbing the dial is a clear override of intent, unlike a passive device
+     * echo (which must NOT cut the fade short — see the echo test).
      */
     setTarget(volume: number, ease: boolean): void {
+        if (this.fading) {
+            this.fading = false;
+            this.stopFadeAnim();
+        }
         this.target = volume;
         if (ease) {
             this.startVolumeAnim();

@@ -99,4 +99,22 @@ describe('FadeDisplayAnimator', () => {
     vi.advanceTimersByTime(500);
     expect(anim.current()).toBeCloseTo(40, 0);
   });
+
+  it('a user rotation mid-fade interrupts the fade and shows live input immediately', () => {
+    anim.initialize(80);
+    anim.onFadeState(true, 2000);
+    vi.advanceTimersByTime(500); // partway down the descent
+    expect(anim.current()).toBeCloseTo(60, 0);
+
+    // Historical bug: this silently updated target/display but current() kept returning the
+    // fade curve until onFadeState(false) arrived, seconds later — read as "stuck input".
+    anim.setTarget(35, false);
+    expect(anim.isFading).toBe(false);
+    expect(anim.current()).toBe(35); // visible right away, not after the fade ends
+
+    // The real fade+restore was still running in the background — its eventual end signal
+    // must not resurrect the fade or fight the value the user already set.
+    anim.onFadeState(false, 0);
+    expect(anim.current()).toBe(35);
+  });
 });
