@@ -10,12 +10,12 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
+import { discoveryPromise } from "../sonos/sonos-discovery";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { generatePlaybackIcon, generateUnreachableKeyIcon, INACTIVE_ICON_COLOR, OFF_ICON_COLOR } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
+import { sendDeviceList, sendOptions } from "./pi-options";
 
 type SonosPlaybackSettings = {
     deviceIp?: string;
@@ -193,32 +193,18 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosPlaybackSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            if (ev.payload.event === 'get-devices') {
-                await discoveryPromise;
-
-                const deviceItems = sonosManager.Devices.map((device: SonosDevice) => ({
-                    label: device.Name,
-                    value: device.Host
-                }));
-
-                await streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-devices',
-                    items: [{ label: piT("-- Choose device --"), value: "" }, ...deviceItems]
-                });
-            }
-            if (ev.payload.event === 'get-command-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-command-options',
-                    items: [
-                        { label: piT('-- Select Command --'), value: '' },
-                        { label: piT('Next Track'), value: 'next' },
-                        { label: piT('Previous Track'), value: 'previous' },
-                        { label: piT('Toggle Shuffle'), value: 'shuffle' },
-                        { label: piT('Toggle Repeat'), value: 'repeat' },
-                    ],
-                });
-            }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch (ev.payload.event) {
+            case 'get-devices': await sendDeviceList(); break;
+            case 'get-command-options':
+                sendOptions('get-command-options', [
+                    { label: piT('-- Select Command --'), value: '' },
+                    { label: piT('Next Track'), value: 'next' },
+                    { label: piT('Previous Track'), value: 'previous' },
+                    { label: piT('Toggle Shuffle'), value: 'shuffle' },
+                    { label: piT('Toggle Repeat'), value: 'repeat' },
+                ]);
+                break;
         }
     }
 }

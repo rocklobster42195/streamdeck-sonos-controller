@@ -11,8 +11,6 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
 import { panoramaOrchestrator, panoramaColumns, panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, safeEffectCall, setContextEffectSettings, DISPLAY_W, DISPLAY_H } from "../effects/PanoramaOrchestrator";
@@ -21,6 +19,7 @@ import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
 import type { EffectInstance } from "../effects/types";
 import type { ParticlesEffectSettings } from "../effects/particles";
 import { piT } from "../utils/pi-i18n";
+import { sendDeviceList, sendOptions } from "./pi-options";
 import { measureArialWidth, truncateToWidth } from "../utils/text-width";
 
 type ParticlesSettings = {
@@ -598,19 +597,12 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, ParticlesSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            if (ev.payload.event === 'get-devices') {
-                await discoveryPromise;
-                const deviceItems = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-devices',
-                    items: [{ label: piT('-- No device (static color) --'), value: '' }, ...deviceItems]
-                });
-            }
-            if (ev.payload.event === 'get-effects') {
-                const items = [...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id }));
-                streamDeck.ui.sendToPropertyInspector({ event: 'get-effects', items });
-            }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch (ev.payload.event) {
+            case 'get-devices': await sendDeviceList('-- No device (static color) --'); break;
+            case 'get-effects':
+                sendOptions('get-effects', [...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })));
+                break;
         }
     }
 

@@ -11,8 +11,7 @@ import streamDeck, {
 import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCapableDialAction";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { sonosManager, discoveryPromise, sonosFavoritesCache } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
+import { sonosFavoritesCache } from "../sonos/sonos-discovery";
 import { TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { mdiCog, mdiHeartCircle, mdiHeartCircleOutline, mdiAudioInputRca } from "@mdi/js";
@@ -21,7 +20,7 @@ import { piT } from "../utils/pi-i18n";
 import { escapeXml } from "../utils/xml";
 import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
-import { effectRegistry } from "../effects/registry.generated";
+import { sendDeviceList, sendFadeOptions, sendVizOptions, sendAlignOptions } from "./pi-options";
 
 type FavoritesDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
@@ -380,51 +379,11 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, FavoritesDialSettings>): Promise<void> {
         const payload = ev.payload;
         if (typeof payload !== 'object' || payload === null || !('event' in payload)) return;
-
         switch ((payload as any).event) {
-            case 'get-devices': {
-                await discoveryPromise;
-                const items = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-devices',
-                    items: [{ label: piT('-- Choose device --'), value: '' }, ...items]
-                });
-                break;
-            }
-            case 'get-fade-options': {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-fade-options',
-                    items: [
-                        { label: piT('Off'), value: '0' },
-                        { label: '2 s', value: '2' },
-                        { label: '3 s', value: '3' },
-                        { label: '5 s', value: '5' },
-                        { label: '8 s', value: '8' },
-                    ],
-                });
-                break;
-            }
-            case 'get-viz-options': {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-viz-options',
-                    items: [
-                        { label: piT('Cover mosaic'), value: 'mosaic' },
-                        ...[...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })),
-                    ],
-                });
-                break;
-            }
-            case 'get-align-options': {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-align-options',
-                    items: [
-                        { label: piT('Left'), value: 'left' },
-                        { label: piT('Center'), value: 'center' },
-                        { label: piT('Right'), value: 'right' },
-                    ],
-                });
-                break;
-            }
+            case 'get-devices': await sendDeviceList(); break;
+            case 'get-fade-options': sendFadeOptions(); break;
+            case 'get-viz-options': sendVizOptions({ label: piT('Cover mosaic'), value: 'mosaic' }); break;
+            case 'get-align-options': sendAlignOptions(); break;
         }
     }
 

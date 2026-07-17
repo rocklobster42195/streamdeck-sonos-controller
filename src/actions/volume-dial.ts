@@ -12,12 +12,10 @@ import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCa
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { VolumeInfo } from "../sonos/SonosTypes";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
-import { effectRegistry } from "../effects/registry.generated";
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { piT } from "../utils/pi-i18n";
+import { sendDeviceList, sendAlignOptions, sendVizOptions } from "./pi-options";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
 
 type VolumeDialSettings = PanoramaCapableSettings & {
@@ -358,34 +356,11 @@ export class VolumeDial extends PanoramaCapableDialAction<VolumeDialSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, VolumeDialSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            if (ev.payload.event === 'get-devices') {
-                await discoveryPromise;
-                const items = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-devices',
-                    items: [{ label: piT('-- Choose device --'), value: '' }, ...items],
-                });
-            }
-            if (ev.payload.event === 'get-align-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-align-options',
-                    items: [
-                        { label: piT('Left'), value: 'left' },
-                        { label: piT('Center'), value: 'center' },
-                        { label: piT('Right'), value: 'right' },
-                    ],
-                });
-            }
-            if (ev.payload.event === 'get-viz-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-viz-options',
-                    items: [
-                        { label: piT('None'), value: 'none' },
-                        ...[...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })),
-                    ],
-                });
-            }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch (ev.payload.event) {
+            case 'get-devices': await sendDeviceList(); break;
+            case 'get-align-options': sendAlignOptions(); break;
+            case 'get-viz-options': sendVizOptions({ label: piT('None'), value: 'none' }); break;
         }
     }
 

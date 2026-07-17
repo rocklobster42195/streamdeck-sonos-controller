@@ -10,8 +10,6 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
@@ -19,7 +17,7 @@ import { generateTransportIcon, renderBatteryBadge, renderProgressBar, wrapImage
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { parseRelTime } from "../sonos/rel-time";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
-import { piT } from "../utils/pi-i18n";
+import { sendDeviceList, sendBatteryModeOptions } from "./pi-options";
 
 /**
  * Settings for {@link PlayPauseKey}.
@@ -403,32 +401,10 @@ export class PlayPauseKey extends SingletonAction<SonosSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            switch (ev.payload.event) {
-                case 'get-devices': {
-                    await discoveryPromise;
-                    const items = sonosManager.Devices.map((device: SonosDevice) => ({
-                        label: device.Name,
-                        value: device.Host
-                    }));
-                    streamDeck.ui.sendToPropertyInspector({
-                        event: 'get-devices',
-                        items: [{ label: piT('-- Choose device --'), value: '' }, ...items]
-                    });
-                    break;
-                }
-                case 'get-battery-mode-options': {
-                    streamDeck.ui.sendToPropertyInspector({
-                        event: 'get-battery-mode-options',
-                        items: [
-                            { label: piT('Off'), value: 'off' },
-                            { label: piT('Warning (low battery only)'), value: 'warning' },
-                            { label: piT('Always'), value: 'full' },
-                        ],
-                    });
-                    break;
-                }
-            }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch (ev.payload.event) {
+            case 'get-devices': await sendDeviceList(); break;
+            case 'get-battery-mode-options': sendBatteryModeOptions(); break;
         }
     }
 }

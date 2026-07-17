@@ -11,12 +11,12 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
+import { discoveryPromise } from "../sonos/sonos-discovery";
 
 import { generateFaderSvg, generateVolumeButtonIcon, generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
+import { sendDeviceList, sendOptions } from "./pi-options";
 
 type SonosKeyVolumeSettings = {
     deviceIp?: string;
@@ -413,37 +413,18 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosKeyVolumeSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            if (ev.payload.event === 'get-devices') {
-                await discoveryPromise;
-
-                const deviceItems = sonosManager.Devices.map((device: SonosDevice) => ({
-                    label: device.Name,
-                    value: device.Host
-                }));
-
-                const itemsWithPlaceholder = [
-                    { label: piT("-- Choose device --"), value: "" },
-                    ...deviceItems
-                ];
-
-                await streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-devices',
-                    items: itemsWithPlaceholder
-                });
-            }
-            if (ev.payload.event === 'get-command-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-command-options',
-                    items: [
-                        { label: piT('-- Select Command --'), value: '' },
-                        { label: piT('Mute / Preset'), value: 'mute' },
-                        { label: piT('Volume Up'), value: 'vol-up' },
-                        { label: piT('Volume Down'), value: 'vol-down' },
-                        { label: piT('Volume Preset'), value: 'vol-preset' },
-                    ],
-                });
-            }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch (ev.payload.event) {
+            case 'get-devices': await sendDeviceList(); break;
+            case 'get-command-options':
+                sendOptions('get-command-options', [
+                    { label: piT('-- Select Command --'), value: '' },
+                    { label: piT('Mute / Preset'), value: 'mute' },
+                    { label: piT('Volume Up'), value: 'vol-up' },
+                    { label: piT('Volume Down'), value: 'vol-down' },
+                    { label: piT('Volume Preset'), value: 'vol-preset' },
+                ]);
+                break;
         }
     }
 }

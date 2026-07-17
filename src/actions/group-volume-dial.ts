@@ -12,11 +12,10 @@ import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCa
 import { sonosGroupManager } from "../sonos/SonosGroupManager";
 import { SonosGroupController } from "../sonos/SonosGroupController";
 import { VolumeInfo } from "../sonos/SonosTypes";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
-import { effectRegistry } from "../effects/registry.generated";
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { piT } from "../utils/pi-i18n";
+import { sendGroupList, sendAlignOptions, sendVizOptions } from "./pi-options";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
 
 type GroupVolumeDialSettings = PanoramaCapableSettings & {
@@ -368,41 +367,11 @@ export class GroupVolumeDial extends PanoramaCapableDialAction<GroupVolumeDialSe
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, GroupVolumeDialSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            if (ev.payload.event === 'get-groups') {
-                await discoveryPromise;
-                const seen = new Set<string>();
-                const items: { label: string; value: string }[] = [];
-                for (const d of sonosManager.Devices) {
-                    const coordinator = d.Coordinator ?? d;
-                    if (seen.has(coordinator.Host)) continue;
-                    seen.add(coordinator.Host);
-                    items.push({ label: d.GroupName ?? coordinator.Name, value: coordinator.Host });
-                }
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-groups',
-                    items: [{ label: piT('-- Choose group --'), value: '' }, ...items],
-                });
-            }
-            if (ev.payload.event === 'get-align-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-align-options',
-                    items: [
-                        { label: piT('Left'), value: 'left' },
-                        { label: piT('Center'), value: 'center' },
-                        { label: piT('Right'), value: 'right' },
-                    ],
-                });
-            }
-            if (ev.payload.event === 'get-viz-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-viz-options',
-                    items: [
-                        { label: piT('None'), value: 'none' },
-                        ...[...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })),
-                    ],
-                });
-            }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch (ev.payload.event) {
+            case 'get-groups': await sendGroupList(); break;
+            case 'get-align-options': sendAlignOptions(); break;
+            case 'get-viz-options': sendVizOptions({ label: piT('None'), value: 'none' }); break;
         }
     }
 

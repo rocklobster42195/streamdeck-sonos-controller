@@ -11,8 +11,6 @@ import streamDeck, {
 import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCapableDialAction";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
 import { CoverArtAnimator } from "../utils/CoverArtAnimator";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
@@ -21,10 +19,10 @@ import { escapeXml } from "../utils/xml";
 import { measureArialWidth } from "../utils/text-width";
 import { parseRelTime, formatRelTime } from "../sonos/rel-time";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
-import { effectRegistry } from "../effects/registry.generated";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { piT } from "../utils/pi-i18n";
+import { sendDeviceList, sendVizOptions, sendBatteryModeOptions } from "./pi-options";
 import { buildUnconfiguredDialSvg, renderBatteryBadge } from "../utils/icons";
 
 type SonosSettings = PanoramaCapableSettings & {
@@ -373,35 +371,16 @@ export class TrackControlDial extends PanoramaCapableDialAction<SonosSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            if (ev.payload.event === 'get-devices') {
-                await discoveryPromise;
-                const deviceItems = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-devices',
-                    items: [{ label: piT('-- Choose device --'), value: '' }, ...deviceItems]
-                });
-            }
-            if (ev.payload.event === 'get-viz-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-viz-options',
-                    items: [
-                        { label: piT('None (track info only)'), value: 'none' },
-                        { label: piT('EQ Effect'), value: 'eq' },
-                        ...[...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })),
-                    ],
-                });
-            }
-            if (ev.payload.event === 'get-battery-mode-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-battery-mode-options',
-                    items: [
-                        { label: piT('Off'), value: 'off' },
-                        { label: piT('Warning (low battery only)'), value: 'warning' },
-                        { label: piT('Always'), value: 'full' },
-                    ],
-                });
-            }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch (ev.payload.event) {
+            case 'get-devices': await sendDeviceList(); break;
+            case 'get-viz-options':
+                sendVizOptions(
+                    { label: piT('None (track info only)'), value: 'none' },
+                    { label: piT('EQ Effect'), value: 'eq' },
+                );
+                break;
+            case 'get-battery-mode-options': sendBatteryModeOptions(); break;
         }
     }
 

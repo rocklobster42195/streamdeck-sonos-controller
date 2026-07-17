@@ -10,12 +10,11 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { sonosManager, discoveryPromise, sonosFavoritesCache } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
+import { discoveryPromise, sonosFavoritesCache } from "../sonos/sonos-discovery";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
-import { piT } from "../utils/pi-i18n";
+import { sendDeviceList, sendFadeOptions, sendOptions } from "./pi-options";
 
 type Favorite = {
     Title: string;
@@ -147,53 +146,22 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosFavoriteSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            const payload = ev.payload as any;
-            switch (payload.event) {
-                case 'get-devices': {
-                    await discoveryPromise;
-                    const deviceItems = sonosManager.Devices.map((device: SonosDevice) => ({
-                        label: device.Name,
-                        value: device.Host
-                    }));
-                    streamDeck.ui.sendToPropertyInspector({
-                        event: 'get-devices',
-                        items: [{ label: piT("-- Choose device --"), value: "" }, ...deviceItems]
-                    });
-                    break;
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch ((ev.payload as any).event) {
+            case 'get-devices': await sendDeviceList(); break;
+            case 'get-fade-options': sendFadeOptions(); break;
+            case 'get-favorites': {
+                if (!sonosFavoritesCache.areFavoritesLoaded()) {
+                    sendOptions('get-favorites', [{ label: "Loading...", value: "" }]);
+                    return;
                 }
-                case 'get-fade-options': {
-                    streamDeck.ui.sendToPropertyInspector({
-                        event: 'get-fade-options',
-                        items: [
-                            { label: piT('Off'), value: '0' },
-                            { label: '2 s', value: '2' },
-                            { label: '3 s', value: '3' },
-                            { label: '5 s', value: '5' },
-                            { label: '8 s', value: '8' },
-                        ],
-                    });
-                    break;
-                }
-                case 'get-favorites': {
-                    if (!sonosFavoritesCache.areFavoritesLoaded()) {
-                        streamDeck.ui.sendToPropertyInspector({
-                            event: 'get-favorites',
-                            items: [{ label: "Loading...", value: "" }]
-                        });
-                        return;
-                    }
-                    const favorites = sonosFavoritesCache.getFavorites() || [];
-                    const favoriteItems = favorites.map((fav: Favorite) => ({
-                        label: fav.Title,
-                        value: JSON.stringify(fav)
-                    }));
-                    streamDeck.ui.sendToPropertyInspector({
-                        event: 'get-favorites',
-                        items: [{ label: "-- Select Favorite --", value: "" }, ...favoriteItems]
-                    });
-                    break;
-                }
+                const favorites = sonosFavoritesCache.getFavorites() || [];
+                const favoriteItems = favorites.map((fav: Favorite) => ({
+                    label: fav.Title,
+                    value: JSON.stringify(fav)
+                }));
+                sendOptions('get-favorites', [{ label: "-- Select Favorite --", value: "" }, ...favoriteItems]);
+                break;
             }
         }
     }

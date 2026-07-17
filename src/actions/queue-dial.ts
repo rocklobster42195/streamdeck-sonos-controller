@@ -12,8 +12,6 @@ import streamDeck, {
 import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCapableDialAction";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
 import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "../sonos/cover-art-loader";
 import { wrapIndex, truncateForDisplay } from "../sonos/queue-utils";
@@ -24,7 +22,7 @@ import { buildUnconfiguredDialSvg } from "../utils/icons";
 import { QueueCoverArtCache } from "./QueueCoverArtCache";
 import { piT } from "../utils/pi-i18n";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, groupEffects } from "../effects/PanoramaOrchestrator";
-import { effectRegistry } from "../effects/registry.generated";
+import { sendDeviceList, sendVizOptions, sendOptions } from "./pi-options";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
 import { measureArialWidth } from "../utils/text-width";
@@ -546,33 +544,16 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, QueueDialSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            if (ev.payload.event === 'get-devices') {
-                await discoveryPromise;
-                const deviceItems = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-devices',
-                    items: [{ label: piT('-- Choose device --'), value: '' }, ...deviceItems]
-                });
-            }
-            if (ev.payload.event === 'get-cover-position-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-cover-position-options',
-                    items: [
-                        { label: piT('Left'), value: 'left' },
-                        { label: piT('Right'), value: 'right' },
-                    ],
-                });
-            }
-            if (ev.payload.event === 'get-viz-options') {
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-viz-options',
-                    items: [
-                        { label: piT('None'), value: 'none' },
-                        ...[...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })),
-                    ],
-                });
-            }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch (ev.payload.event) {
+            case 'get-devices': await sendDeviceList(); break;
+            case 'get-cover-position-options':
+                sendOptions('get-cover-position-options', [
+                    { label: piT('Left'), value: 'left' },
+                    { label: piT('Right'), value: 'right' },
+                ]);
+                break;
+            case 'get-viz-options': sendVizOptions({ label: piT('None'), value: 'none' }); break;
         }
     }
 

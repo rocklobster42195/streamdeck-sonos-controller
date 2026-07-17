@@ -10,12 +10,12 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
+import { discoveryPromise } from "../sonos/sonos-discovery";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { generateLineInIcon, generateBatteryKeyIcon, generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
+import { sendDeviceList, sendFadeOptions, sendOptions } from "./pi-options";
 
 // MS1 scope so far: Line-In (one-shot source switch, optional fade beforehand) and Battery
 // (full-key status display, key press = manual refresh). Night Mode/Speech Enhancement/Sleep
@@ -131,7 +131,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
                 // Re-render the actual dropdown list, not just the settings-synced warning hint —
                 // the PI may already have the (stale) list loaded from before hasBattery was known,
                 // e.g. right after the device dropdown changed while the PI was still open.
-                streamDeck.ui.sendToPropertyInspector({ event: 'get-function-options', items: functionOptionItems(hasBattery) });
+                sendOptions('get-function-options', functionOptionItems(hasBattery));
             }
         }
 
@@ -224,43 +224,13 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, MultiControlSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            const payload = ev.payload as any;
-            switch (payload.event) {
-                case 'get-devices': {
-                    await discoveryPromise;
-                    const deviceItems = sonosManager.Devices.map((device: SonosDevice) => ({
-                        label: device.Name,
-                        value: device.Host
-                    }));
-                    streamDeck.ui.sendToPropertyInspector({
-                        event: 'get-devices',
-                        items: [{ label: "-- Choose device --", value: "" }, ...deviceItems]
-                    });
-                    break;
-                }
-                case 'get-function-options': {
-                    const hasBattery = this.hasBatteryByContext.get(ev.action.id);
-                    streamDeck.ui.sendToPropertyInspector({
-                        event: 'get-function-options',
-                        items: functionOptionItems(hasBattery),
-                    });
-                    break;
-                }
-                case 'get-fade-options': {
-                    streamDeck.ui.sendToPropertyInspector({
-                        event: 'get-fade-options',
-                        items: [
-                            { label: piT('Off'), value: '0' },
-                            { label: '2 s', value: '2' },
-                            { label: '3 s', value: '3' },
-                            { label: '5 s', value: '5' },
-                            { label: '8 s', value: '8' },
-                        ],
-                    });
-                    break;
-                }
-            }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        switch ((ev.payload as any).event) {
+            case 'get-devices': await sendDeviceList(); break;
+            case 'get-function-options':
+                sendOptions('get-function-options', functionOptionItems(this.hasBatteryByContext.get(ev.action.id)));
+                break;
+            case 'get-fade-options': sendFadeOptions(); break;
         }
     }
 }

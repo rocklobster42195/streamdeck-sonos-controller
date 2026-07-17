@@ -10,11 +10,9 @@ import streamDeck, {
     DidReceiveSettingsEvent,
     WillDisappearEvent,
 } from "@elgato/streamdeck";
-import { sonosManager, discoveryPromise } from "../sonos/sonos-discovery";
-import { SonosDevice } from "@svrooij/sonos";
 import { fetchDiagnosticsSample } from "../sonos/SonosDiagnostics";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
-import { piT } from "../utils/pi-i18n";
+import { sendDeviceList } from "./pi-options";
 
 // Nerdy power-user tool built while tracking down a real flaky-speaker issue — see
 // src/sonos/SonosDiagnostics.ts for why this reads an UNOFFICIAL Sonos endpoint. Not meant to be
@@ -187,16 +185,8 @@ export class DiagnosticsDial extends SingletonAction<SonosDiagnosticsSettings> {
     }
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosDiagnosticsSettings>): Promise<void> {
-        if (typeof ev.payload === 'object' && ev.payload !== null && 'event' in ev.payload) {
-            if (ev.payload.event === 'get-devices') {
-                await discoveryPromise;
-                const items = sonosManager.Devices.map((d: SonosDevice) => ({ label: d.Name, value: d.Host }));
-                streamDeck.ui.sendToPropertyInspector({
-                    event: 'get-devices',
-                    items: [{ label: piT('-- Choose device --'), value: '' }, ...items],
-                });
-            }
-        }
+        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
+        if (ev.payload.event === 'get-devices') await sendDeviceList();
     }
 
     private async renderDial(context: string): Promise<void> {
