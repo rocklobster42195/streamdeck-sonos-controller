@@ -69,16 +69,23 @@ export async function fetchBatteryStatus(sonosDevice: SonosDevice, deviceIp: str
  *  onWillAppear at plugin startup and aborted the rest of its init (cover/transport-state fetch)
  *  before this was made defensive — awaiting discoveryPromise plus a catch-all guards both that
  *  and any other discovery-lookup failure the same way fetchBatteryStatus already treats a fetch
- *  failure: as "no battery", not a hard error. */
-export async function deviceHasBattery(deviceIp: string | undefined): Promise<boolean> {
+ *  failure: as "no battery", not a hard error.
+ *
+ *  Returns `undefined` (not `false`) specifically when the device isn't currently in
+ *  sonosManager.Devices — confirmed on hardware (2026-07-18): a battery Roam that's asleep/off its
+ *  charger temporarily drops out of discovery, and callers that treated that the same as "confirmed
+ *  no battery" wiped a valid Battery function selection (MultiControlKey) just because the device
+ *  was briefly unreachable, not because it actually lacks the hardware. Callers should preserve
+ *  whatever was last known rather than overwrite it with `undefined`. */
+export async function deviceHasBattery(deviceIp: string | undefined): Promise<boolean | undefined> {
     if (!deviceIp) return false;
     try {
         await discoveryPromise;
         const device = sonosManager.Devices.find(d => d.Host === deviceIp);
-        if (!device) return false;
+        if (!device) return undefined;
         const status = await fetchBatteryStatus(device, deviceIp);
         return status !== undefined;
     } catch {
-        return false;
+        return undefined;
     }
 }

@@ -52,6 +52,7 @@
         "None (track info only)": "Keiner (nur Track-Info)",
         "-- Select Command --": "-- Befehl wählen --",
         "-- Choose device --": "-- Gerät wählen --",
+        "(offline)": "(offline)",
         "-- No device (static color) --": "-- Kein Gerät (statische Farbe) --",
         "-- Choose group --": "-- Gruppe wählen --",
         "Mute / Preset": "Stumm / Preset",

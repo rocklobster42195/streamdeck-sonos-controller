@@ -216,13 +216,18 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         // Also written back to settings (dedup-guarded, same pattern as MultiControlKey's
         // hasBattery) so the PI's hidden hasLineIn checkbox can gate the "Append Line-In" field.
         if (settings.deviceIp) {
-            void deviceHasLineIn(settings.deviceIp).then(async (hasLineIn) => {
+            void deviceHasLineIn(settings.deviceIp).then(async (hasLineInResult) => {
                 if (!this.states.has(context)) return; // instance gone by the time this resolves
-                this.hasLineInByContext.set(context, hasLineIn);
+                // undefined means "couldn't determine right now" (device temporarily unreachable)
+                // — leave whatever was last known alone rather than writing a false negative that
+                // would hide the "Append Line-In" checkbox for a device that just happens to be
+                // asleep (see deviceHasLineIn's own doc comment for the hardware case this fixes).
+                if (hasLineInResult === undefined) return;
+                this.hasLineInByContext.set(context, hasLineInResult);
                 const current = this.settingsMap.get(context);
                 const action = streamDeck.actions.getActionById(context);
                 if (current && action) {
-                    this.settingsMap.set(context, await syncCapabilityFlag(action, current, 'hasLineIn', hasLineIn));
+                    this.settingsMap.set(context, await syncCapabilityFlag(action, current, 'hasLineIn', hasLineInResult));
                 }
                 this.queueRender(context);
             }).catch((e) => streamDeck.logger.warn(`[FavDial ${context}] Line-In capability check failed`, e));
@@ -236,7 +241,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             const controller = await sonosDeviceManager.getController(settings.deviceIp);
             this.controllers.set(context, controller);
 
-            this.registerReachabilityHandling(controller, ev, 'FAVORITES');
+            if (!this.registerReachabilityHandling(controller, ev, 'FAVORITES')) return;
             controller.registerVolumeCallback(context, (vol) => this.onVolumeInfoChanged(context, vol));
             controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
             controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
@@ -379,7 +384,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         const payload = ev.payload;
         if (typeof payload !== 'object' || payload === null || !('event' in payload)) return;
         switch ((payload as any).event) {
-            case 'get-devices': await sendDeviceList(); break;
+            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-fade-options': sendFadeOptions(); break;
             case 'get-viz-options': sendVizOptions({ label: piT('Cover mosaic'), value: 'mosaic' }); break;
             case 'get-align-options': sendAlignOptions(); break;

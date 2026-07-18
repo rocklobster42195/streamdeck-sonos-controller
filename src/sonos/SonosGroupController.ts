@@ -84,6 +84,13 @@ export class SonosGroupController {
 
   private get callbackId(): string { return `group-${this.anchorIp}`; }
 
+  // Delegates to the anchor member's own controller — see reachabilityCallbacks' doc comment on
+  // why the anchor specifically is what this group's reachability tracks. Defaults to true before
+  // the anchor's controller is resolved (matches SonosDeviceController's own initial value).
+  public get isReachable(): boolean {
+    return this.memberControllers.get(this.anchorIp)?.isReachable ?? true;
+  }
+
   public async initialize(): Promise<void> {
     if (this.isInitialized) return;
     await discoveryPromise;
@@ -315,6 +322,15 @@ export class SonosGroupController {
   unregisterVolumeCallback(id: string): void { this.volumeCallbacks.delete(id); }
   registerFadeStateCallback(id: string, callback: (fading: boolean, durationMs: number) => void): void { this.fadeStateCallbacks.set(id, callback); }
   unregisterFadeStateCallback(id: string): void { this.fadeStateCallbacks.delete(id); }
-  registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void { this.reachabilityCallbacks.set(id, callback); }
+  registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void {
+    this.reachabilityCallbacks.set(id, callback);
+    // Fire immediately with the current state — same reasoning as SonosDeviceController's own
+    // registerReachabilityCallback. Needed here TOO, separately: by the time a dial registers
+    // (after this group controller's own initialize()/resolveMembers() already ran), the anchor
+    // member's OWN reachability relay (see resolveMembers) has already fired-or-not into what was
+    // then an EMPTY reachabilityCallbacks map, so a dial registering afterward would otherwise
+    // never learn about an anchor that was already down before it registered.
+    if (!this.isReachable) callback(false);
+  }
   unregisterReachabilityCallback(id: string): void { this.reachabilityCallbacks.delete(id); }
 }

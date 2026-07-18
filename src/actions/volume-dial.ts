@@ -122,7 +122,7 @@ export class VolumeDial extends VolumePieDialAction<SonosDeviceController, Volum
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, VolumeDialSettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList(); break;
+            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-align-options': sendAlignOptions(); break;
             case 'get-viz-options': sendVizOptions({ label: piT('None'), value: 'none' }); break;
         }

@@ -290,9 +290,6 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
             const controller = await sonosDeviceManager.getController(settings.deviceIp);
             this.controllers.set(context, controller);
 
-            settings = await syncCapabilityFlag(action, settings, 'hasBattery', await deviceHasBattery(settings.deviceIp));
-            this.currentSettings.set(context, settings);
-
             // Mid-session reachability: speaker-off placeholder while the device is down (e.g. a
             // battery Roam powered off), full re-setup once it's back.
             controller.registerReachabilityCallback(context, (reachable) => {
@@ -304,6 +301,26 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
                     void action.setTitle("");
                 }
             });
+
+            // registerReachabilityCallback fires synchronously above if the device is ALREADY
+            // unreachable at registration time — bail out here so nothing below (some of it not
+            // network-dependent, e.g. a cached capability flag) unconditionally overwrites the
+            // placeholder that was just set. Same fix as MultiControlKey's identical bug
+            // (2026-07-18): the very first setup happened to be saved by deviceHasBattery/
+            // getZoneAttributes/getTransportState failing outright on a cold-unreachable device,
+            // but a LATER unreachable transition — reached via this same reachability callback's
+            // own "reachable:true" branch re-running onInstanceUpdate — isn't guaranteed to hit a
+            // failing network call before reaching the unconditional render further down.
+            if (!controller.isReachable) return;
+
+            // undefined means "couldn't determine right now" — leave the persisted hasBattery
+            // flag as it was rather than writing a false negative (see deviceHasBattery's own
+            // doc comment for the hardware case this fixes).
+            const hasBatteryResult = await deviceHasBattery(settings.deviceIp);
+            if (hasBatteryResult !== undefined) {
+                settings = await syncCapabilityFlag(action, settings, 'hasBattery', hasBatteryResult);
+            }
+            this.currentSettings.set(context, settings);
 
             // Transport state changes (play/pause/stop)
             controller.registerTransportStateCallback(context, (state) => {
@@ -400,7 +417,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, PlayPauseKeySettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList(); break;
+            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-battery-mode-options': sendBatteryModeOptions(); break;
         }
     }

@@ -156,17 +156,15 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         marqueeAnimator.update(context, { text: trackInfo.Title ?? '', availableWidth: TEXT_WIDTH });
 
         // Seed the carousel cache with the cover we already have, so browsing back to the
-        // currently-playing item never re-fetches something we're already displaying. NOT when
-        // this fire is itself the fallback carry-over (new AlbumArtUri, but still showing the
-        // PREVIOUS track's image data) — confirmed on hardware (2026-07-17): caching the fallback
-        // against the new track's key poisoned every later lookup for that key, including the
-        // real cover's own eventual correction fire, which hit this wrongly-seeded cache entry at
-        // the top of this function and got discarded — Queue Dial then stuck on the previous
-        // track's cover indefinitely (only a fresh fetch via re-opening the page bypassed it).
-        const isFallbackCarryOver = !cachedCover
-            && trackInfo.AlbumArtUri !== previousTrackInfo?.AlbumArtUri
-            && trackInfo.albumArtDataUri === previousTrackInfo?.albumArtDataUri;
-        if (!isFallbackCarryOver && trackInfo.AlbumArtUri && trackInfo.albumArtDataUri) {
+        // currently-playing item never re-fetches something we're already displaying. NOT while
+        // the controller itself flags this cover as still-pending (an unresolved placeholder, not
+        // confirmed for THIS AlbumArtUri yet — see TrackInfo.coverPending's doc comment). An
+        // earlier version inferred "is this fallback data" by comparing to the previous fire's
+        // AlbumArtUri/cover, which broke the moment the SAME still-unresolved track fired more
+        // than twice in a row (e.g. the "undefined title" transitional event Sonos can emit
+        // mid-switch) — confirmed on hardware (2026-07-18): a completely unrelated station's
+        // cover got cached against a new radio favorite's AlbumArtUri this way.
+        if (!trackInfo.coverPending && trackInfo.AlbumArtUri && trackInfo.albumArtDataUri) {
             this.coverCaches.get(context)?.set(trackInfo.AlbumArtUri, trackInfo.albumArtDataUri);
         }
 
@@ -391,7 +389,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
 
-            this.registerReachabilityHandling(controller, ev, 'QUEUE');
+            if (!this.registerReachabilityHandling(controller, ev, 'QUEUE')) return;
             controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
             // Fires immediately with cached state (incl. isRadio) if a track is already known.
             controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
@@ -556,7 +554,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, QueueDialSettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList(); break;
+            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-cover-position-options':
                 sendOptions('get-cover-position-options', [
                     { label: piT('Left'), value: 'left' },

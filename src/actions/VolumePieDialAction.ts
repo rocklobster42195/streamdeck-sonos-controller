@@ -23,6 +23,7 @@ export interface VolumePieController {
     unregisterFadeStateCallback(id: string): void;
     registerReachabilityCallback(id: string, cb: (reachable: boolean) => void): void;
     unregisterReachabilityCallback(id: string): void;
+    readonly isReachable: boolean;
 }
 
 export type VolumePieDialSettings = PanoramaCapableSettings & {
@@ -144,7 +145,11 @@ export abstract class VolumePieDialAction<
         try {
             const controller = await this.acquireController(id);
             this.controllers.set(context, controller);
-            this.registerReachabilityHandling(controller, ev, this.dialLabel);
+            // Bails out if the device was already unreachable at registration — the placeholder
+            // that just showed would otherwise be immediately overwritten by the unconditional
+            // renderDial below, which (for GroupVolumeDial specifically) has no network call of
+            // its own to naturally fail on first (see registerReachabilityHandling's doc comment).
+            if (!this.registerReachabilityHandling(controller, ev, this.dialLabel)) return;
             controller.registerVolumeCallback(context, (vi: VolumeInfo) => this.onVolumeInfoChanged(context, vi));
             controller.registerFadeStateCallback(context, (fading, durationMs) => this.states.get(context)?.anim.onFadeState(fading, durationMs));
 

@@ -18,15 +18,32 @@ export function sendOptions(event: string, items: PiOptionItem[]): void {
 }
 
 /** Device dropdown ('get-devices'). Waits for discovery so the list is never empty-by-race.
- *  Resolves to an empty list (not a crash) if discovery never succeeded — see safeDevices(). */
-export async function sendDeviceList(placeholderKey = '-- Choose device --'): Promise<void> {
+ *  Resolves to an empty list (not a crash) if discovery never succeeded — see safeDevices().
+ *
+ *  `currentIp`, when given, is the action instance's OWN currently-configured deviceIp — pass it
+ *  whenever a specific action instance is asking (i.e. every real onSendToPlugin 'get-devices'
+ *  case), not from the generic onDevicesChanged re-push below, which has no single instance to
+ *  ask. If that device isn't in the current discovery list (e.g. a battery speaker asleep or off
+ *  its charger), it's kept as its own option instead of silently dropped — confirmed on hardware
+ *  (2026-07-18): sdpi-select's bound value falling out of its own <option> list makes it reset to
+ *  the blank placeholder and write THAT back through the settings-sync channel, silently wiping a
+ *  still-valid deviceIp just because the device happened to be temporarily unreachable at the
+ *  exact moment the PI was opened. */
+export async function sendDeviceList(placeholderKey = '-- Choose device --', currentIp?: string): Promise<void> {
     await discoveryPromise;
-    const items = safeDevices().map((d) => ({ label: d.Name, value: d.Host }));
+    const known = safeDevices();
+    const items: PiOptionItem[] = known.map((d) => ({ label: d.Name, value: d.Host }));
+    if (currentIp && !known.some((d) => d.Host === currentIp)) {
+        items.unshift({ label: `${currentIp} ${piT('(offline)')}`, value: currentIp });
+    }
     sendOptions('get-devices', [{ label: piT(placeholderKey), value: '' }, ...items]);
 }
 
-/** Group dropdown ('get-groups') — one entry per current zone group, keyed by coordinator host. */
-export async function sendGroupList(): Promise<void> {
+/** Group dropdown ('get-groups') — one entry per current zone group, keyed by coordinator host.
+ *  `currentIp` — see sendDeviceList's doc comment; same reasoning applies here (a group whose
+ *  anchor is a battery speaker currently asleep would otherwise vanish from the list and get
+ *  silently reset). */
+export async function sendGroupList(currentIp?: string): Promise<void> {
     await discoveryPromise;
     const seen = new Set<string>();
     const items: PiOptionItem[] = [];
@@ -35,6 +52,9 @@ export async function sendGroupList(): Promise<void> {
         if (seen.has(coordinator.Host)) continue;
         seen.add(coordinator.Host);
         items.push({ label: d.GroupName ?? coordinator.Name, value: coordinator.Host });
+    }
+    if (currentIp && !seen.has(currentIp)) {
+        items.unshift({ label: `${currentIp} ${piT('(offline)')}`, value: currentIp });
     }
     sendOptions('get-groups', [{ label: piT('-- Choose group --'), value: '' }, ...items]);
 }

@@ -236,10 +236,16 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
             const controller = await sonosDeviceManager.getController(deviceIp);
             this.controllers.set(context, controller);
 
-            settings = await syncCapabilityFlag(ev.action, settings, 'hasBattery', await deviceHasBattery(deviceIp));
+            // undefined means "couldn't determine right now" — leave the persisted hasBattery
+            // flag as it was rather than writing a false negative (see deviceHasBattery's own
+            // doc comment for the hardware case this fixes).
+            const hasBatteryResult = await deviceHasBattery(deviceIp);
+            if (hasBatteryResult !== undefined) {
+                settings = await syncCapabilityFlag(ev.action, settings, 'hasBattery', hasBatteryResult);
+            }
             this.settingsMap.set(context, settings);
 
-            this.registerReachabilityHandling(controller, ev, 'TRACK');
+            if (!this.registerReachabilityHandling(controller, ev, 'TRACK')) return;
             controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
             controller.registerTrackInfoCallback(context, (ti) => { void this.onTrackInfoChanged(context, ti); });
             if (settings.batteryDisplayMode !== 'off') {
@@ -370,7 +376,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, TrackControlDialSettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList(); break;
+            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-viz-options':
                 sendVizOptions(
                     { label: piT('None (track info only)'), value: 'none' },

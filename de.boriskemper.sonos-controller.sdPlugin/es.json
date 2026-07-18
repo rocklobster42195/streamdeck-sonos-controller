@@ -52,6 +52,7 @@
         "None (track info only)": "Ninguno (solo info de pista)",
         "-- Select Command --": "-- Seleccionar comando --",
         "-- Choose device --": "-- Elegir dispositivo --",
+        "(offline)": "(sin conexión)",
         "-- No device (static color) --": "-- Sin dispositivo (color estático) --",
         "-- Choose group --": "-- Elegir grupo --",
         "Mute / Preset": "Silenciar / Preset",

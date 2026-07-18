@@ -64,6 +64,12 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
                 }
             });
 
+            // Bails out if the device is ALREADY unreachable at registration time — everything
+            // below is a purely local render (no network call to naturally fail on first), which
+            // would otherwise immediately overwrite the placeholder just set above. Same fix as
+            // MultiControlKey's identical bug (2026-07-18).
+            if (!controller.isReachable) return;
+
             const favObject = JSON.parse(favorite) as SonosFavorite;
             const coverArt = favObject.AlbumArtUri ? sonosFavoritesCache.getCoverArt(favObject.AlbumArtUri) : undefined;
 
@@ -143,7 +149,7 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosFavoriteSettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch ((ev.payload as any).event) {
-            case 'get-devices': await sendDeviceList(); break;
+            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-fade-options': sendFadeOptions(); break;
             case 'get-favorites': {
                 if (!sonosFavoritesCache.areFavoritesLoaded()) {

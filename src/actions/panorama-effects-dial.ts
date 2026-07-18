@@ -21,6 +21,7 @@ import type { ParticlesEffectSettings } from "../effects/particles";
 import { piT } from "../utils/pi-i18n";
 import { sendDeviceList, sendOptions } from "./pi-options";
 import { measureArialWidth, truncateToWidth } from "../utils/text-width";
+import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 
 type ParticlesSettings = {
     // Which registered effect this dial runs. Optional so existing installs (saved before this
@@ -99,6 +100,11 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
     private groupAllMembers = new Map<string, string[]>();
     private groupTimers = new Map<string, NodeJS.Timeout>();
     private groupControllers = new Map<string, { controller: SonosDeviceController; ip: string }>();
+    // Retries a failed initial connectGroupDevice() (e.g. the group's chosen member device was
+    // powered off) — without this, a failed attempt just logged once and never tried again, even
+    // once the device came back online, unlike every other action's identical scenario. Keyed by
+    // group key, not context, since the device is shared across every display in the group.
+    private groupConnectRetry = new SetupRetryScheduler();
     private groupStaticColor = new Map<string, string>();
     // Alias to the module-level map (see PanoramaOrchestrator.ts) so Track/Volume/Group Volume
     // dial can render their own slice of whichever effect is running, without depending on this
@@ -209,6 +215,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
     }
 
     private destroyGroup(key: string): void {
+        this.groupConnectRetry.cancel(key);
         const persistTimer = this.persistTimers.get(key);
         if (persistTimer) { clearTimeout(persistTimer); this.persistTimers.delete(key); }
         const timer = this.groupTimers.get(key);
@@ -217,6 +224,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
         const gc = this.groupControllers.get(key);
         if (gc) {
             gc.controller.unregisterTrackInfoCallback(`pano-color-${key}`);
+            gc.controller.unregisterReachabilityCallback(`pano-reachability-${key}`);
             sonosDeviceManager.releaseController(gc.ip);
             this.groupControllers.delete(key);
         }
@@ -378,8 +386,11 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
         const existing = this.groupControllers.get(key);
         if (existing?.ip === ip) return;
 
+        this.groupConnectRetry.cancel(key);
+
         if (existing) {
             existing.controller.unregisterTrackInfoCallback(`pano-color-${key}`);
+            existing.controller.unregisterReachabilityCallback(`pano-reachability-${key}`);
             sonosDeviceManager.releaseController(existing.ip);
             this.groupControllers.delete(key);
         }
@@ -387,6 +398,21 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
         try {
             const controller = await sonosDeviceManager.getController(ip);
             this.groupControllers.set(key, { controller, ip });
+
+            // Mid-session reachability: unlike the other actions, there's no per-tile placeholder
+            // icon to swap to here (a shared background effect, not a primary control surface) —
+            // this exists purely so a device drop is visible in the log and retried, instead of
+            // silently going stale forever. The underlying pooled SonosDeviceController already
+            // recovers on its own via polling once the device answers again (see
+            // notePollSuccess) — track-info/color callbacks then resume naturally, nothing else
+            // to do on the reachable branch.
+            controller.registerReachabilityCallback(`pano-reachability-${key}`, (reachable) => {
+                if (reachable) {
+                    streamDeck.logger.info(`Panorama Particles [${key}]: ${ip} reachable again.`);
+                } else {
+                    streamDeck.logger.warn(`Panorama Particles [${key}]: ${ip} unreachable — track info/color will go stale until it recovers.`);
+                }
+            });
 
             // Fetch current track immediately so color + title are correct after a page swipe.
             controller.getCurrentTrack().then(track => {
@@ -420,6 +446,10 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
             await this.propagateGroupSetting(key, (s) => ({ ...s, deviceIp: ip }), triggeringContext);
         } catch (e) {
             streamDeck.logger.error(`Panorama Particles: failed to connect to ${ip}`, e);
+            // Retried — without this, a device that was merely powered off at the moment the
+            // group first connected (e.g. a battery Roam) never got a second chance even once it
+            // came back, unlike every other action's identical scenario (see SetupRetryScheduler).
+            this.groupConnectRetry.schedule(key, () => void this.registerGroupDevice(key, ip, triggeringContext));
         }
     }
 
@@ -599,7 +629,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, ParticlesSettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList('-- No device (static color) --'); break;
+            case 'get-devices': await sendDeviceList('-- No device (static color) --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-effects':
                 sendOptions('get-effects', [...effectRegistry.values()].map(def => ({ label: piT(def.displayName), value: def.id })));
                 break;

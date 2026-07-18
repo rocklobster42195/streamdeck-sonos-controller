@@ -129,7 +129,16 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         // setSettings() below re-enters onDidReceiveSettings once, exactly like play-pause-key.ts's
         // same pattern, but terminates immediately on the second pass since both flags then match.
         if (deviceIp) {
-            const [hasBattery, hasLineIn] = await Promise.all([deviceHasBattery(deviceIp), deviceHasLineIn(deviceIp)]);
+            const [hasBatteryResult, hasLineInResult] = await Promise.all([deviceHasBattery(deviceIp), deviceHasLineIn(deviceIp)]);
+            // undefined means "couldn't determine right now" (e.g. the device is temporarily
+            // unreachable/asleep, not currently in sonosManager.Devices at all) — preserve
+            // whatever was last known instead of collapsing to false, which otherwise treats
+            // "can't check right now" the same as "confirmed no Battery/Line-In hardware" and
+            // wipes a still-valid function selection purely because the device happened to be
+            // offline at this exact moment. Confirmed on hardware (2026-07-18): a battery Roam
+            // that was asleep had its saved "Battery" function silently reset to empty this way.
+            const hasBattery = hasBatteryResult ?? this.hasBatteryByContext.get(context) ?? false;
+            const hasLineIn = hasLineInResult ?? this.hasLineInByContext.get(context) ?? false;
             const changed = this.hasBatteryByContext.get(context) !== hasBattery || this.hasLineInByContext.get(context) !== hasLineIn;
             this.hasBatteryByContext.set(context, hasBattery);
             this.hasLineInByContext.set(context, hasLineIn);
@@ -174,6 +183,13 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
                     void action.setTitle("");
                 }
             });
+
+            // registerReachabilityCallback fires synchronously above if the device is ALREADY
+            // unreachable at registration time (confirmed on hardware, 2026-07-18: a tile pointed
+            // at an already-down Sonos Roam showed no unreachable icon at all) — bail out here so
+            // the unconditional icon render below doesn't immediately overwrite it. The reachable
+            // branch above already re-enters via onInstanceUpdate, so nothing else needs to run.
+            if (!controller.isReachable) return;
 
             await action.setTitle("");
 
@@ -248,7 +264,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, MultiControlSettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch ((ev.payload as any).event) {
-            case 'get-devices': await sendDeviceList(); break;
+            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-function-options':
                 sendOptions('get-function-options', functionOptionItems(this.hasBatteryByContext.get(ev.action.id), this.hasLineInByContext.get(ev.action.id)));
                 break;

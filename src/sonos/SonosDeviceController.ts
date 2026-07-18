@@ -92,6 +92,12 @@ export class SonosDeviceController {
   private consecutivePollFailures = 0;
   private static readonly UNREACHABLE_AFTER_FAILURES = 2;
 
+  // Public readout of the same flag registerReachabilityCallback fires — for a caller that needs
+  // to check the CURRENT state synchronously (e.g. to skip an unconditional render that would
+  // otherwise overwrite the unreachable icon that callback just set — see MultiControlKey's
+  // onInstanceUpdate) rather than only reacting to the callback.
+  public get isReachable(): boolean { return this.reachable; }
+
   private refreshInterval?: NodeJS.Timeout;
   private pollInterval?: NodeJS.Timeout;
   // Holds the staggered first-tick setTimeout between startPolling() being called and the
@@ -338,6 +344,7 @@ export class SonosDeviceController {
             this.coverFetchAttempts = 0;
             if (!this.currentTrack) this.currentTrack = { albumArtDataUri: cover } as TrackInfo;
             else this.currentTrack.albumArtDataUri = cover;
+            this.currentTrack.coverPending = false;
             this.fireTrackInfoCallbacks(this.currentTrack!);
           }
         }
@@ -654,7 +661,18 @@ export class SonosDeviceController {
   private fireTrackInfoCallbacks(ti: TrackInfo): void {
     this.trackInfoCallbacks.forEach(cb => cb(ti));
   }
-  registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void { this.reachabilityCallbacks.set(id, callback); }
+  registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void {
+    this.reachabilityCallbacks.set(id, callback);
+    // Fire immediately with the current state, same reasoning as registerTrackInfoCallback —
+    // without this, a caller that registers AFTER the device already went unreachable (e.g. it
+    // was down before this action's onInstanceUpdate ran) never learns about it at all, since
+    // notePollFailure/notePollSuccess only fire callbacks on a TRANSITION, not on registration.
+    // Confirmed on hardware (2026-07-18): a MultiControlKey tile pointed at an already-unreachable
+    // Sonos Roam showed no unreachable icon at all, while a PlayPauseToggle sharing the same
+    // pooled controller (registered earlier, before the device dropped) correctly showed it —
+    // both used the exact same callback mechanism, only the registration timing differed.
+    if (!this.reachable) callback(false);
+  }
   unregisterReachabilityCallback(id: string): void { this.reachabilityCallbacks.delete(id); }
 
   private notePollSuccess(): void {
@@ -793,6 +811,10 @@ export class SonosDeviceController {
         const previousTrack = this.currentTrack;
         const newTrackInfo: TrackInfo = track;
         newTrackInfo.albumArtDataUri = previousTrack?.albumArtDataUri || this.lastKnownCover;
+        // Explicitly marks this fire's cover as an unconfirmed placeholder — see TrackInfo's own
+        // doc comment for why consumers must check this flag instead of inferring "is this
+        // fallback data" from whether the cover happens to match the previous fire.
+        newTrackInfo.coverPending = true;
         // Preserve isRadio across news segments (which fire with no AlbumArtUri).
         // TrackUri is the primary signal (always carries the radio stream scheme).
         // Fall back to AlbumArtUri-based detection, then preserve previous state for news segments.
@@ -811,12 +833,36 @@ export class SonosDeviceController {
         // few seconds and zeroed the counter first, so the poll loop retried the failing fetch
         // forever, once per 8s tick, confirmed via the plugin log (14 identical "Failed to fetch
         // image" errors over 43s with no sign of stopping).
-        if (track.Title !== previousTrack?.Title) this.coverFetchAttempts = 0;
+        const trackChanged = track.Title !== previousTrack?.Title;
+        if (trackChanged) this.coverFetchAttempts = 0;
         this.currentTrack = newTrackInfo;
         this.fireTrackInfoCallbacks(newTrackInfo);
 
         if (!track.AlbumArtUri) {
             this.currentAlbumArtUri = '';
+            // Some radio stations report no AlbumArtUri here at all (confirmed on hardware, e.g.
+            // WDR2 via TuneIn) — getCurrentTrackCover() already has a richer 3-tier fallback
+            // (GetMediaInfo's CurrentURIMetaData, then a stream-URI-derived /getaa guess) that
+            // this event's own `track` object doesn't carry. Without this, any dial that only
+            // reacts to this event — rather than having its OWN onInstanceUpdate happen to
+            // re-run and call the richer method separately — stayed stuck on the PREVIOUS track's
+            // cover forever after switching to such a station. Confirmed on hardware (2026-07-18):
+            // Queue Dial stuck on the old playlist's cover after switching to Sonos Radio, while
+            // Track Dial only looked correct because its setup had coincidentally re-run recently.
+            // Gated on the track actually changing — repeat fires for the same station would
+            // otherwise redo this network round-trip for no reason (see coverFetchAttempts' own
+            // gating a few lines up for the identical repeat-fire problem).
+            if (trackChanged) {
+                this.getCurrentTrackCover().then(cover => {
+                    if (!cover) return;
+                    const current = this.currentTrack;
+                    if (!current || current.Title !== track.Title) return; // moved on already
+                    current.albumArtDataUri = cover;
+                    current.coverPending = false;
+                    this.lastKnownCover = cover;
+                    this.fireTrackInfoCallbacks(current);
+                }).catch(() => {});
+            }
             return;
         }
 
@@ -841,6 +887,7 @@ export class SonosDeviceController {
             );
             if (!cover || !stillWanted) return;
             current!.albumArtDataUri = cover;
+            current!.coverPending = false;
             this.lastKnownCover = cover;
             this.currentAlbumArtUri = track.AlbumArtUri!;
             this.fireTrackInfoCallbacks(current!);

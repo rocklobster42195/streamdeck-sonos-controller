@@ -186,7 +186,7 @@ export class DiagnosticsDial extends SingletonAction<SonosDiagnosticsSettings> {
 
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosDiagnosticsSettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        if (ev.payload.event === 'get-devices') await sendDeviceList();
+        if (ev.payload.event === 'get-devices') await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp);
     }
 
     private async renderDial(context: string): Promise<void> {

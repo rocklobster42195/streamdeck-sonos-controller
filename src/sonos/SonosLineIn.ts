@@ -22,14 +22,19 @@ const LINE_IN_PROBE_TIMEOUT_MS = 4000;
  *  One, One SL, Play:3 and SYMFONISK all fail fast with HTTP 500 (~10ms) — so the probe is both
  *  correct and cheap in the negative case. Same shape as the proven `deviceHasBattery()` in
  *  SonosBattery.ts (backend-to-device SOAP call, not the PI-side messaging hack that caused
- *  problems previously). Never throws: discovery-lookup failures and any GetLineInLevel error
- *  both resolve to `false`, same "not available" contract as deviceHasBattery. */
-export async function deviceHasLineIn(deviceIp: string | undefined): Promise<boolean> {
+ *  problems previously). Any GetLineInLevel error still resolves to `false` — that IS the proven
+ *  "no Line-In port" signal above — but the device not currently being in sonosManager.Devices at
+ *  all resolves to `undefined` (unknown, not confirmed absent) instead: confirmed on hardware
+ *  (2026-07-18) that collapsing "temporarily unreachable" into "false" the same way wiped a valid
+ *  Line-In function selection (MultiControlKey) for a device that was merely asleep/off-network,
+ *  not actually missing the hardware. Callers should preserve whatever was last known rather than
+ *  overwrite it with `undefined`. */
+export async function deviceHasLineIn(deviceIp: string | undefined): Promise<boolean | undefined> {
     if (!deviceIp) return false;
     try {
         await discoveryPromise;
         const device = sonosManager.Devices.find(d => d.Host === deviceIp);
-        if (!device) return false;
+        if (!device) return undefined;
         await withTimeout(device.AudioInService.GetLineInLevel(), LINE_IN_PROBE_TIMEOUT_MS, `GetLineInLevel (${deviceIp})`);
         return true;
     } catch {

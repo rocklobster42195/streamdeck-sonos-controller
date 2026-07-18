@@ -178,6 +178,12 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
                     void action.setTitle("");
                 }
             });
+
+            // Bails out if the device is ALREADY unreachable at registration time, before any of
+            // the callback registrations/renders below get a chance to overwrite the placeholder
+            // just set above. Same fix as MultiControlKey's identical bug (2026-07-18).
+            if (!controller.isReachable) return;
+
             // Only the 'mute' command's fader icon visualizes volume — other commands ignore
             // fade-state signals entirely.
             controller.registerFadeStateCallback(context, (fading, durationMs) => {
@@ -359,7 +365,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosKeyVolumeSettings>): Promise<void> {
         if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
         switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList(); break;
+            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-command-options':
                 sendOptions('get-command-options', [
                     { label: piT('-- Select Command --'), value: '' },

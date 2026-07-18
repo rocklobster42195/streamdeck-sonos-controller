@@ -23,6 +23,7 @@ import streamDeck from "@elgato/streamdeck";
 // Structural — both SonosDeviceController and SonosGroupController provide this.
 interface ReachabilitySource {
     registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void;
+    readonly isReachable: boolean;
 }
 
 // Shared lifecycle for any dial action that can participate in the panorama effects system
@@ -82,11 +83,20 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
     // poll loop), and re-runs the whole setup once it's back — fresh state, coordinator sync,
     // covers. Subclasses must unregister via controller.unregisterReachabilityCallback(context)
     // in their cleanupInstance alongside the other callback types.
+    //
+    // Returns whether the device was ALREADY reachable at registration time — false when it was
+    // already down (registerReachabilityCallback fires synchronously in that case, showing the
+    // unreachable placeholder immediately rather than waiting for a future transition). Callers
+    // whose remaining setup has no network call of its own to naturally fail on an unreachable
+    // device (e.g. a purely local/cached read, like SonosGroupController.getVolume()'s cached
+    // aggregate) MUST check this and bail out, or their own unconditional render right after would
+    // immediately overwrite the placeholder this just set — confirmed on hardware (2026-07-18) for
+    // MultiControlKey, which had the identical bug outside this shared helper.
     protected registerReachabilityHandling(
         controller: ReachabilitySource,
         ev: WillAppearEvent<T> | DidReceiveSettingsEvent<T>,
         label: string,
-    ): void {
+    ): boolean {
         const context = ev.action.id;
         controller.registerReachabilityCallback(context, (reachable) => {
             if (reachable) {
@@ -95,6 +105,7 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
                 void this.renderUnreachableDial(context, label);
             }
         });
+        return controller.isReachable;
     }
 
     // Full-canvas "configured but unreachable" placeholder (dark speaker-off glyph — see
