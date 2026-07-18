@@ -50,16 +50,44 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
     protected abstract onInstanceUpdate(ev: WillAppearEvent<T> | DidReceiveSettingsEvent<T>): Promise<void>;
     protected abstract cleanupInstance(context: string): void;
     protected abstract renderDial(context: string): Promise<void>;
+    // Whether `context` currently has a live, set-up controller — backs skipRedundantUpdate below.
+    // Subclasses report this off their own controller map (e.g. `this.controllers.has(context)`).
+    protected abstract hasLiveInstance(context: string): boolean;
+
+    // Guards against Stream Deck re-sending onWillAppear/onDidReceiveSettings for a tile that's
+    // already correctly set up — confirmed on hardware (2026-07-18): Stream Deck can re-send
+    // onWillAppear for tiles that are already visible, with no user action and no actual settings
+    // change, repeatedly and for many tiles/devices near-simultaneously. Each full onInstanceUpdate
+    // rebuild does real network work (release+reacquire the controller, fresh GetVolume/
+    // GetTransportState, GENA re-subscribe), which compounds into noticeable lag. Requires the
+    // instance to still be live — a genuine disappear+reappear cycle already removed it via
+    // cleanupInstance, so this correctly falls through to a real rebuild then. Deliberately only
+    // wraps onWillAppear/onDidReceiveSettings (the actual Stream Deck entry points) — internal
+    // recovery paths (scheduleSetupRetry, registerReachabilityHandling's reachable:true branch)
+    // call onInstanceUpdate directly and so are unaffected, as they must be: those fire precisely
+    // when a real rebuild IS needed despite unchanged settings (the device just came back).
+    private lastAppliedSettingsJson: Map<string, string> = new Map();
+
+    private skipRedundantUpdate(context: string, settings: T): boolean {
+        const settingsJson = JSON.stringify(settings);
+        if (this.hasLiveInstance(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
+            return true;
+        }
+        this.lastAppliedSettingsJson.set(context, settingsJson);
+        return false;
+    }
 
     override async onWillAppear(ev: WillAppearEvent<T>): Promise<void> {
         this.setupRetry.cancel(ev.action.id);
         const col = 'coordinates' in ev.payload ? (ev.payload.coordinates as { column: number }).column : 0;
         this.contextColumns.set(ev.action.id, col);
+        if (this.skipRedundantUpdate(ev.action.id, ev.payload.settings)) return;
         await this.onInstanceUpdate(ev);
     }
 
     override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<T>): Promise<void> {
         this.setupRetry.cancel(ev.action.id);
+        if (this.skipRedundantUpdate(ev.action.id, ev.payload.settings)) return;
         await this.onInstanceUpdate(ev);
     }
 
@@ -68,6 +96,7 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
         this.cleanupInstance(ev.action.id);
         this.leavePanorama(ev.action.id);
         this.contextColumns.delete(ev.action.id);
+        this.lastAppliedSettingsJson.delete(ev.action.id);
     }
 
     // Call from onInstanceUpdate's catch: re-runs the whole setup later so a speaker that was

@@ -81,6 +81,15 @@ export class DiagnosticsDial extends SingletonAction<SonosDiagnosticsSettings> {
     private settingsMap: Map<string, SonosDiagnosticsSettings> = new Map();
     private states: Map<string, DialState> = new Map();
     private pollTimers: Map<string, NodeJS.Timeout> = new Map();
+    // Guards against Stream Deck re-sending onWillAppear/onDidReceiveSettings for a tile that's
+    // already correctly set up — confirmed on hardware (2026-07-18): Stream Deck can re-send
+    // onWillAppear for tiles that are already visible, with no user action and no actual settings
+    // change, repeatedly and for many tiles/devices near-simultaneously. Without this, each re-fire
+    // restarted the poll timer and fired an immediate extra fetchDiagnosticsSample call. No
+    // reachability-recovery recursion to worry about here (unlike the other actions) — this dial
+    // has no registerReachabilityCallback at all, its poll loop just keeps failing quietly and
+    // recovering on its own once the device answers again.
+    private lastAppliedSettingsJson: Map<string, string> = new Map();
 
     private newState(): DialState {
         return { metricIndex: 0, samples: METRICS.map(() => []), lastPhyErrorsCumulative: null };
@@ -126,11 +135,19 @@ export class DiagnosticsDial extends SingletonAction<SonosDiagnosticsSettings> {
         this.stopPolling(context);
         this.settingsMap.delete(context);
         this.states.delete(context);
+        this.lastAppliedSettingsJson.delete(context);
     }
 
     async onInstanceUpdate(ev: WillAppearEvent<SonosDiagnosticsSettings> | DidReceiveSettingsEvent<SonosDiagnosticsSettings>): Promise<void> {
         const context = ev.action.id;
         const settings = ev.payload.settings;
+
+        const settingsJson = JSON.stringify(settings);
+        if (this.pollTimers.has(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
+            return;
+        }
+        this.lastAppliedSettingsJson.set(context, settingsJson);
+
         const deviceChanged = this.settingsMap.get(context)?.deviceIp !== settings.deviceIp;
 
         this.settingsMap.set(context, settings);

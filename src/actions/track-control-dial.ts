@@ -194,6 +194,10 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         this.marqueeTimers.set(context, t);
     }
 
+    protected hasLiveInstance(context: string): boolean {
+        return this.controllers.has(context);
+    }
+
     protected override async onInstanceUpdate(ev: WillAppearEvent<TrackControlDialSettings> | DidReceiveSettingsEvent<TrackControlDialSettings>): Promise<void> {
         const context = ev.action.id;
         let settings = ev.payload.settings;

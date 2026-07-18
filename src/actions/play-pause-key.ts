@@ -57,6 +57,25 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     private dominantColors: Map<string, string> = new Map();
     private lastColorUri: Map<string, string> = new Map();
     private progressTimers: Map<string, NodeJS.Timeout> = new Map();
+    // Guards against Stream Deck re-sending onWillAppear/onDidReceiveSettings for a tile that's
+    // already correctly set up — confirmed on hardware (2026-07-18): Stream Deck can re-send
+    // onWillAppear for tiles that are already visible, with no user action and no actual settings
+    // change, repeatedly and for many tiles/devices near-simultaneously. Each full onInstanceUpdate
+    // rebuild does real network work (release+reacquire the controller, fresh GetTransportState,
+    // GENA re-subscribe), which compounds into noticeable lag. Deliberately only wraps
+    // onWillAppear/onDidReceiveSettings (the actual Stream Deck entry points) — the reachability
+    // callback's own "reachable:true" branch and setupRetry call onInstanceUpdate directly, so a
+    // real recovery rebuild after the device comes back online is unaffected.
+    private lastAppliedSettingsJson: Map<string, string> = new Map();
+
+    private skipRedundantUpdate(context: string, settings: PlayPauseKeySettings): boolean {
+        const settingsJson = JSON.stringify(settings);
+        if (this.controllers.has(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
+            return true;
+        }
+        this.lastAppliedSettingsJson.set(context, settingsJson);
+        return false;
+    }
 
     private onTrackInfoChanged(context: string, trackInfo: TrackInfo): void {
         const newCover = trackInfo.albumArtDataUri || undefined;
@@ -365,12 +384,14 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     }
 
     override async onWillAppear(ev: WillAppearEvent<PlayPauseKeySettings>): Promise<void> {
+        if (this.skipRedundantUpdate(ev.action.id, ev.payload.settings)) return;
         this.currentSettings.set(ev.action.id, ev.payload.settings);
         await this.onInstanceUpdate(ev);
     }
 
     override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<PlayPauseKeySettings>): Promise<void> {
         const context = ev.action.id;
+        if (this.skipRedundantUpdate(context, ev.payload.settings)) return;
         this.currentSettings.set(context, ev.payload.settings);
         await this.onInstanceUpdate(ev);
     }
@@ -399,6 +420,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         this.trackPositions.delete(context);
         this.dominantColors.delete(context);
         this.lastColorUri.delete(context);
+        this.lastAppliedSettingsJson.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<PlayPauseKeySettings>): Promise<void> {

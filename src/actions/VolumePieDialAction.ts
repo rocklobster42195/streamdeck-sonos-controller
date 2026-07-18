@@ -119,6 +119,10 @@ export abstract class VolumePieDialAction<
         this.presetSavedUntil.delete(context);
     }
 
+    protected hasLiveInstance(context: string): boolean {
+        return this.controllers.has(context);
+    }
+
     protected override async onInstanceUpdate(ev: WillAppearEvent<TSettings> | DidReceiveSettingsEvent<TSettings>): Promise<void> {
         const context = ev.action.id;
         let settings = ev.payload.settings;

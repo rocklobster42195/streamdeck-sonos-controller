@@ -338,6 +338,10 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         } catch { /* best effort — a later loadCursorCover call will just retry */ }
     }
 
+    protected hasLiveInstance(context: string): boolean {
+        return this.controllers.has(context);
+    }
+
     protected override async onInstanceUpdate(ev: WillAppearEvent<QueueDialSettings> | DidReceiveSettingsEvent<QueueDialSettings>): Promise<void> {
         const context = ev.action.id;
         let settings = ev.payload.settings;

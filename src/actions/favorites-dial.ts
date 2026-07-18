@@ -179,6 +179,10 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         }, INTERVAL_MS);
     }
 
+    protected hasLiveInstance(context: string): boolean {
+        return this.controllers.has(context);
+    }
+
     protected override async onInstanceUpdate(ev: WillAppearEvent<FavoritesDialSettings> | DidReceiveSettingsEvent<FavoritesDialSettings>): Promise<void> {
         const context = ev.action.id;
         let settings = ev.payload.settings;
