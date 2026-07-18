@@ -2,6 +2,17 @@
 
 ---
 
+## [0.4.4] — 2026-07-18
+
+- **Multi-Control key** — a new action for Line-In switching (with an optional fade) and a live Battery status display for portable speakers (Roam/Move)
+- Previous now restarts the current track instead of skipping to the previous one when pressed within the first few seconds
+- Much more resilient to flaky, sleeping, or briefly offline speakers: discovery now recovers on its own if it ever stops responding, unreachable speakers are detected faster and more reliably across every key and dial, and a speaker being asleep or in standby (e.g. a Roam saving battery) no longer wipes a saved Multi-Control setting or gets treated as permanently gone
+- Fixed several cover-art and playback issues: Queue Dial occasionally showing the wrong track's art mid-change, a broken cover URL causing a fetch storm, and NAS/CIFS folder favorites failing to play
+- Smoothed out group fade-out timing drift and fixed dial rotation being ignored while a fade was in progress
+- Reduced a rare source of input lag from Stream Deck's own tile refreshes triggering unnecessary rebuilds behind the scenes
+
+---
+
 ## [0.4.3] — 2026-07-15
 
 - fix: Queue Dial panorama color race; hide progress bar for unknown duration
