@@ -22,13 +22,17 @@ const LINE_IN_PROBE_TIMEOUT_MS = 4000;
  *  One, One SL, Play:3 and SYMFONISK all fail fast with HTTP 500 (~10ms) — so the probe is both
  *  correct and cheap in the negative case. Same shape as the proven `deviceHasBattery()` in
  *  SonosBattery.ts (backend-to-device SOAP call, not the PI-side messaging hack that caused
- *  problems previously). Any GetLineInLevel error still resolves to `false` — that IS the proven
- *  "no Line-In port" signal above — but the device not currently being in sonosManager.Devices at
- *  all resolves to `undefined` (unknown, not confirmed absent) instead: confirmed on hardware
- *  (2026-07-18) that collapsing "temporarily unreachable" into "false" the same way wiped a valid
- *  Line-In function selection (MultiControlKey) for a device that was merely asleep/off-network,
- *  not actually missing the hardware. Callers should preserve whatever was last known rather than
- *  overwrite it with `undefined`. */
+ *  problems previously). A fast GetLineInLevel SOAP fault still resolves to `false` — that IS the
+ *  proven "no Line-In port" signal above — but a `withTimeout` timeout (network/unreachable
+ *  device, distinguished by its own "timed out after" error message, since it takes the full
+ *  LINE_IN_PROBE_TIMEOUT_MS rather than the ~10ms a real device's fault response takes) resolves
+ *  to `undefined` instead, same as the device not currently being in sonosManager.Devices at all.
+ *  Confirmed on hardware (2026-07-18) that collapsing BOTH of those into `false` wiped a valid
+ *  Line-In function selection (MultiControlKey): first for a device merely asleep/off-network, and
+ *  again for a Roam in Sonos' battery-saving standby (still visible in the official app/cloud, so
+ *  it IS in sonosManager.Devices, but its local UPnP endpoint doesn't answer — the GetLineInLevel
+ *  call there times out rather than faulting). Callers should preserve whatever was last known
+ *  rather than overwrite it with a false negative. */
 export async function deviceHasLineIn(deviceIp: string | undefined): Promise<boolean | undefined> {
     if (!deviceIp) return false;
     try {
@@ -37,7 +41,8 @@ export async function deviceHasLineIn(deviceIp: string | undefined): Promise<boo
         if (!device) return undefined;
         await withTimeout(device.AudioInService.GetLineInLevel(), LINE_IN_PROBE_TIMEOUT_MS, `GetLineInLevel (${deviceIp})`);
         return true;
-    } catch {
+    } catch (e) {
+        if (e instanceof Error && e.message.includes('timed out after')) return undefined;
         return false;
     }
 }

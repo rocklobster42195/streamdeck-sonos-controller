@@ -106,6 +106,17 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
     // onDidReceiveSettings with different settings (hasBattery/hasLineIn now filled in), so the
     // JSON comparison here naturally doesn't match and lets it through.
     private lastAppliedSettingsJson: Map<string, string> = new Map();
+    // Tracks, per context, whether THIS context's own reachability callback last reported the
+    // device unreachable and hasn't yet seen a recovery — deliberately NOT controller.isReachable
+    // (a device-global flag driven by the background poll loop's own ~8s cadence). Using that flag
+    // to gate onBatteryChanged's repaint caused a regression on hardware (2026-07-18, mass restart
+    // across 9 devices): a battery callback fires SYNCHRONOUSLY with the cached status the moment
+    // it's registered during onInstanceUpdate's own initial setup, and the laggy poll-driven flag
+    // could still read stale-false from an earlier hiccup even though this same setup already
+    // proved reachability moments before — silently skipping the tile's only initial icon render
+    // (controlFunction === 'battery' has no other render path) and leaving it stuck blank. See
+    // PlayPauseKey's identical fix for the full writeup.
+    private unreachableContexts: Set<string> = new Set();
 
     private skipRedundantUpdate(context: string, settings: MultiControlSettings): boolean {
         const settingsJson = JSON.stringify(settings);
@@ -126,6 +137,14 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
     }
 
     private onBatteryChanged(context: string, battery: SonosBatteryStatus | undefined): void {
+        // The independent battery-poll loop has no network call of its own to naturally fail
+        // while unreachable (unlike e.g. a transport-state refresh) — without this check, a
+        // battery update arriving right after the reachability callback set the unreachable
+        // placeholder would repaint straight over it. Same class of bug as PlayPauseKey's
+        // identical fix (2026-07-18, confirmed on hardware for a powered-off battery Roam).
+        // Gated on unreachableContexts (this context's own last-known state), not
+        // controller.isReachable — see that field's own doc comment for why.
+        if (this.unreachableContexts.has(context)) return;
         this.batteryStatuses.set(context, battery);
         this.renderIcon(streamDeck.actions.getActionById(context), context, 'battery');
     }
@@ -162,8 +181,16 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
             // wipes a still-valid function selection purely because the device happened to be
             // offline at this exact moment. Confirmed on hardware (2026-07-18): a battery Roam
             // that was asleep had its saved "Battery" function silently reset to empty this way.
-            const hasBattery = hasBatteryResult ?? this.hasBatteryByContext.get(context) ?? false;
-            const hasLineIn = hasLineInResult ?? this.hasLineInByContext.get(context) ?? false;
+            // Falls back to the PERSISTED settings.hasBattery/hasLineIn (not just the in-memory
+            // hasBatteryByContext/hasLineInByContext maps) — those maps start empty on every
+            // fresh plugin process, so right after a restart, on a device whose discovery hasn't
+            // completed yet (common with several devices restarting near-simultaneously), the old
+            // in-memory-only fallback still collapsed to false and wiped the function anyway.
+            // Confirmed on hardware (2026-07-18): a mass restart across 9 devices left several
+            // MultiControlKey tiles reset to "Config..." despite the real device answering fine
+            // moments later.
+            const hasBattery = hasBatteryResult ?? settings.hasBattery ?? this.hasBatteryByContext.get(context) ?? false;
+            const hasLineIn = hasLineInResult ?? settings.hasLineIn ?? this.hasLineInByContext.get(context) ?? false;
             const changed = this.hasBatteryByContext.get(context) !== hasBattery || this.hasLineInByContext.get(context) !== hasLineIn;
             this.hasBatteryByContext.set(context, hasBattery);
             this.hasLineInByContext.set(context, hasLineIn);
@@ -202,8 +229,10 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
 
             controller.registerReachabilityCallback(context, (reachable) => {
                 if (reachable) {
+                    this.unreachableContexts.delete(context);
                     void this.onInstanceUpdate(ev);
                 } else {
+                    this.unreachableContexts.add(context);
                     void action.setImage(generateUnreachableKeyIcon());
                     void action.setTitle("");
                 }
@@ -255,6 +284,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         this.hasBatteryByContext.delete(context);
         this.hasLineInByContext.delete(context);
         this.lastAppliedSettingsJson.delete(context);
+        this.unreachableContexts.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<MultiControlSettings>): Promise<void> {

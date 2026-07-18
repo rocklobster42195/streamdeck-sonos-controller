@@ -135,6 +135,16 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
     }
 
     private onBatteryChanged(context: string, battery: SonosBatteryStatus | undefined): void {
+        // The independent battery-poll loop has no network call of its own to naturally fail
+        // while unreachable (unlike a real transport-state/track-info event) — without this
+        // check, a battery update arriving right after the reachability callback showed the
+        // unreachable placeholder would repaint straight over it via the unconditional renderDial
+        // below. Same class of bug as PlayPauseKey/MultiControlKey's identical fix (2026-07-18,
+        // confirmed on hardware for a powered-off battery Roam). Gated on the shared
+        // unreachableContexts (this context's own last-known state, from
+        // PanoramaCapableDialAction's registerReachabilityHandling), not controller.isReachable —
+        // see that field's own doc comment for why.
+        if (this.unreachableContexts.has(context)) return;
         const state = this.states.get(context);
         if (!state) return;
         state.batteryStatus = battery;

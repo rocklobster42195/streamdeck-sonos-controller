@@ -68,6 +68,18 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
     // when a real rebuild IS needed despite unchanged settings (the device just came back).
     private lastAppliedSettingsJson: Map<string, string> = new Map();
 
+    // Tracks, per context, whether THIS context's own reachability callback last reported the
+    // device unreachable and hasn't yet seen a recovery — see registerReachabilityHandling below.
+    // Exposed so a subclass whose OTHER callbacks (e.g. Track Dial's battery poll) have no network
+    // call of their own to naturally fail while unreachable can gate their repaint on this,
+    // instead of the device-global, poll-cadence-driven controller.isReachable (only updated every
+    // ~8s by the background poll loop, so it can still read stale-false from an earlier hiccup
+    // even right after THIS context's own setup already proved reachability via a just-succeeded
+    // call of its own). Confirmed on hardware (2026-07-18): gating on isReachable directly caused
+    // a mass-restart regression where several tiles got stuck on their unconfigured/default
+    // rendering despite the device answering fine.
+    protected unreachableContexts: Set<string> = new Set();
+
     private skipRedundantUpdate(context: string, settings: T): boolean {
         const settingsJson = JSON.stringify(settings);
         if (this.hasLiveInstance(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
@@ -97,6 +109,7 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
         this.leavePanorama(ev.action.id);
         this.contextColumns.delete(ev.action.id);
         this.lastAppliedSettingsJson.delete(ev.action.id);
+        this.unreachableContexts.delete(ev.action.id);
     }
 
     // Call from onInstanceUpdate's catch: re-runs the whole setup later so a speaker that was
@@ -129,8 +142,10 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
         const context = ev.action.id;
         controller.registerReachabilityCallback(context, (reachable) => {
             if (reachable) {
+                this.unreachableContexts.delete(context);
                 void this.onInstanceUpdate(ev);
             } else {
+                this.unreachableContexts.add(context);
                 void this.renderUnreachableDial(context, label);
             }
         });

@@ -67,6 +67,19 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     // callback's own "reachable:true" branch and setupRetry call onInstanceUpdate directly, so a
     // real recovery rebuild after the device comes back online is unaffected.
     private lastAppliedSettingsJson: Map<string, string> = new Map();
+    // Tracks, per context, whether THIS context's own reachability callback last reported the
+    // device unreachable and hasn't yet seen a recovery — deliberately NOT the same thing as
+    // controller.isReachable (a device-global flag driven by the background poll loop's own ~8s
+    // cadence, up to 2 consecutive failures old). Using that flag to gate onBatteryChanged's
+    // repaint caused a regression on hardware (2026-07-18, mass restart across 9 devices): a
+    // battery callback fires SYNCHRONOUSLY with the cached status the moment it's registered
+    // during onInstanceUpdate's own initial setup — right after that same setup already proved
+    // reachability via its own successful getZoneAttributes/getTransportState calls — but the
+    // laggy poll-driven flag could still read stale-false from an earlier hiccup, silently
+    // skipping the very first icon render and leaving the tile stuck on its default icon (title
+    // already set correctly, icon never painted). This set is instead driven exactly by this
+    // context's own registerReachabilityCallback below, so it can never be stale relative to it.
+    private unreachableContexts: Set<string> = new Set();
 
     private skipRedundantUpdate(context: string, settings: PlayPauseKeySettings): boolean {
         const settingsJson = JSON.stringify(settings);
@@ -169,6 +182,15 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     }
 
     private onBatteryChanged(context: string, battery: SonosBatteryStatus | undefined): void {
+        // The independent battery-poll loop has no network call of its own to naturally fail
+        // while unreachable — without this check, a battery update arriving right after this
+        // context's reachability callback showed the unreachable placeholder repainted straight
+        // over it with the stale "PLAYING" cover. Confirmed on hardware (2026-07-18): powering off
+        // a battery Roam left the Toggle key showing its last cover as if still playing, with only
+        // the battery badge gone. Gated on unreachableContexts (this context's own last-known
+        // state), not controller.isReachable — see that field's own doc comment for why the
+        // device-global, poll-cadence-driven flag caused a regression here.
+        if (this.unreachableContexts.has(context)) return;
         this.batteryStatuses.set(context, battery);
         void this.handleTransportStateChange(context, this.lastTransportState.get(context) ?? 'STOPPED');
     }
@@ -313,8 +335,10 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
             // battery Roam powered off), full re-setup once it's back.
             controller.registerReachabilityCallback(context, (reachable) => {
                 if (reachable) {
+                    this.unreachableContexts.delete(context);
                     void this.onInstanceUpdate(ev);
                 } else {
+                    this.unreachableContexts.add(context);
                     titleAnimator.stop(context);
                     void action.setImage(generateUnreachableKeyIcon());
                     void action.setTitle("");
@@ -421,6 +445,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         this.dominantColors.delete(context);
         this.lastColorUri.delete(context);
         this.lastAppliedSettingsJson.delete(context);
+        this.unreachableContexts.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<PlayPauseKeySettings>): Promise<void> {

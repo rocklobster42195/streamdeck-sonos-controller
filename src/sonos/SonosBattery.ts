@@ -71,20 +71,38 @@ export async function fetchBatteryStatus(sonosDevice: SonosDevice, deviceIp: str
  *  and any other discovery-lookup failure the same way fetchBatteryStatus already treats a fetch
  *  failure: as "no battery", not a hard error.
  *
- *  Returns `undefined` (not `false`) specifically when the device isn't currently in
- *  sonosManager.Devices — confirmed on hardware (2026-07-18): a battery Roam that's asleep/off its
- *  charger temporarily drops out of discovery, and callers that treated that the same as "confirmed
- *  no battery" wiped a valid Battery function selection (MultiControlKey) just because the device
- *  was briefly unreachable, not because it actually lacks the hardware. Callers should preserve
- *  whatever was last known rather than overwrite it with `undefined`. */
+ *  Returns `undefined` (not `false`) both when the device isn't currently in sonosManager.Devices,
+ *  AND when the GetZoneGroupState call itself fails/times out — deliberately NOT reusing
+ *  fetchBatteryStatus here, since that swallows a network failure into the same `undefined` its
+ *  "call succeeded, no matching battery data" case returns, which this function used to collapse
+ *  to a definitive `false`. Confirmed on hardware (2026-07-18): a Roam in Sonos' battery-saving
+ *  standby state (still shows in the official app with a real battery %, cloud-reachable, but its
+ *  local UPnP endpoint doesn't answer) IS present in sonosManager.Devices (found via cached zone
+ *  topology), so the "not found" branch below doesn't catch it — only the network call times out.
+ *  Treating that timeout as `false` wiped a valid Battery function selection (MultiControlKey)
+ *  purely because the device was in standby, not because it actually lacks the hardware. Callers
+ *  should preserve whatever was last known rather than overwrite it with a false negative. */
 export async function deviceHasBattery(deviceIp: string | undefined): Promise<boolean | undefined> {
     if (!deviceIp) return false;
     try {
         await discoveryPromise;
         const device = sonosManager.Devices.find(d => d.Host === deviceIp);
         if (!device) return undefined;
-        const status = await fetchBatteryStatus(device, deviceIp);
-        return status !== undefined;
+        const response = await withTimeout(
+            device.ZoneGroupTopologyService.GetZoneGroupState(),
+            FETCH_TIMEOUT_MS,
+            `battery capability probe (${deviceIp})`,
+        );
+        const xml = typeof response.ZoneGroupState === 'string' ? response.ZoneGroupState : '';
+        const memberRegex = /<ZoneGroupMember\b[^>]*\/>/g;
+        let match: RegExpExecArray | null;
+        while ((match = memberRegex.exec(xml)) !== null) {
+            const tag = match[0];
+            if (!tag.includes(`Location="http://${deviceIp}:`)) continue;
+            const moreInfoMatch = tag.match(/MoreInfo="([^"]*)"/);
+            return parseBatteryStatus(moreInfoMatch?.[1]) !== undefined;
+        }
+        return false;
     } catch {
         return undefined;
     }
