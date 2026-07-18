@@ -292,7 +292,20 @@ export class SonosFavoritePlayer {
             CurrentURIMetaData: resMd ?? ({ ...favorite } as unknown as string),
         });
 
-        await this.sonosDevice.Play();
+        try {
+            await this.sonosDevice.Play();
+        } catch (playError: any) {
+            // Confirmed on hardware (2026-07-18): Play() issued immediately after
+            // SetAVTransportURI can hit the device mid-transition and get rejected with UPnPError
+            // 701 ("Transition not available") — SetAVTransportURI itself had already succeeded
+            // (the track info/metadata update landed fine), only this follow-up Play() lost the
+            // race. One short retry clears it; surfacing this as a hard failure otherwise left the
+            // favorite silently not playing with no visible error and no recovery.
+            if (playError?.UpnpErrorCode !== 701) throw playError;
+            streamDeck.logger.warn(`${logPrefix} Play() hit UPnPError 701 right after SetAVTransportURI — retrying once.`);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            await this.sonosDevice.Play();
+        }
         streamDeck.logger.info(`${logPrefix} SUCCESS (Radio).`);
 
     } catch (error: any) {
