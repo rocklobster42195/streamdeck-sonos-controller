@@ -36,6 +36,7 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
+| Show device name | Display the speaker's zone name as the key title |
 | Show cover art | Display album art on the key while playing |
 | Progress bar | Thin bar at the bottom of the key showing track position, tinted to the cover's dominant color |
 | Show track title | Scroll the track title and artist across the key |
@@ -111,6 +112,7 @@ Increase, decrease, mute, or set a preset volume with a single key press.
 | Command | `Volume Up`, `Volume Down`, `Mute / Preset`, or `Volume Preset` |
 | Preset Volume | Target volume for the preset command |
 | Show preset | Display the preset value on the key |
+| Show volume | Display the current volume level on the key after adjusting it (`Volume Up`/`Volume Down`/`Mute`, not shown for `Volume Preset`) |
 
 ---
 
@@ -251,7 +253,7 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 ## Setup
 
-1. Install the plugin via the **Elgato Marketplace** or by double-clicking the `.streamDeckPlugin` file.
+1. Download the latest `.streamDeckPlugin` file from the [Releases page](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases/latest) and double-click it to install. *(Submitted to the Elgato Marketplace — pending review; this section will be updated with a direct install link once it's live there.)*
 2. Drag an action from the **Sonos Controller** category onto a key or dial slot.
 3. Open the action's settings (click the slot in Stream Deck software).
 4. Select your **Sonos device** from the dropdown — devices are discovered automatically on your local network.
