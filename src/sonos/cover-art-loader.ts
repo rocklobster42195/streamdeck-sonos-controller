@@ -20,11 +20,29 @@ const MAX_RESOLVED_CACHE = 100;
 const resolvedCache: Map<string, string> = new Map();
 const pendingFetches: Map<string, Promise<string>> = new Map();
 
+// A URL that 404s (or otherwise fails) was never cached — only SUCCESSFUL results were — so a
+// permanently-broken cover (confirmed on hardware, 2026-07-17: Sonos's own getaa proxy URL for a
+// NAS/CIFS track can be malformed — e.g. double percent-encoded — and 404s forever) got re-fetched
+// from scratch by every single caller: each of a group's members' subscription setup, every 8s
+// poll tick, every dial re-render. Ten-plus retries within about a second, repeating on every
+// plugin restart for as long as that track keeps playing — a genuine storm, not just log noise.
+// Cache the failure too, but only briefly — long enough to collapse a burst of near-simultaneous
+// callers into one real attempt, not so long that a TRANSIENT failure (e.g. throttle contention
+// right at a track change) gets mistaken for a permanent one. Confirmed on hardware (same day):
+// an initial 60s cooldown made Queue Dial appear to lag one cover behind — its cover fetch failed
+// once during the change, then the negative-cache suppressed every retry for the next minute, so
+// the dial kept showing the previous track's cover until something else forced a fresh fetch.
+const FAILURE_COOLDOWN_MS = 5_000;
+const failedAt: Map<string, number> = new Map();
+
 export async function loadImageFromUri(uri: string, device: SonosDevice): Promise<string> {
   const fullImageUrl = resolveImageUrl(uri, device);
 
   const cached = resolvedCache.get(fullImageUrl);
   if (cached) return cached;
+
+  const lastFailure = failedAt.get(fullImageUrl);
+  if (lastFailure !== undefined && Date.now() - lastFailure < FAILURE_COOLDOWN_MS) return "";
 
   const existing = pendingFetches.get(fullImageUrl);
   if (existing) return existing;
@@ -35,11 +53,14 @@ export async function loadImageFromUri(uri: string, device: SonosDevice): Promis
 
   const dataUri = await promise;
   if (dataUri) {
+    failedAt.delete(fullImageUrl);
     if (resolvedCache.size >= MAX_RESOLVED_CACHE && !resolvedCache.has(fullImageUrl)) {
       const oldestKey = resolvedCache.keys().next().value;
       if (oldestKey !== undefined) resolvedCache.delete(oldestKey);
     }
     resolvedCache.set(fullImageUrl, dataUri);
+  } else {
+    failedAt.set(fullImageUrl, Date.now());
   }
   return dataUri;
 }
