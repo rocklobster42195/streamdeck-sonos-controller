@@ -275,6 +275,11 @@ Cascading columns of code rain down the panels, Matrix-style.
 - The plugin uses UPnP event subscriptions for real-time updates. On an unstable network, a subscription may drop and recover automatically within 60 seconds.
 - If the problem persists, restart the Stream Deck software.
 
+**All dials stop responding after the computer wakes from sleep**
+- Windows sometimes reclassifies the network as "Public" after a sleep/wake cycle, which silently blocks the discovery traffic Sonos speakers use to announce themselves (SSDP), even though normal browsing/streaming still works fine.
+- The plugin caches the last speaker it successfully found and retries through it directly (bypassing SSDP) on the next startup, so most of the time this now recovers on its own — no restart needed.
+- If it doesn't recover: check Windows' network profile for your current connection (Settings → Network & Internet) and set it to **Private**, or reconnect once and confirm you're back on your usual network.
+
 **Panorama Effects not connecting across panels**
 - All Panorama Effects dials must be placed in **adjacent slots** in the same profile row.
 - Each dial detects its neighbors automatically — no manual column setting is needed.

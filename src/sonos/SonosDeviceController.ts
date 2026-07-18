@@ -1,6 +1,6 @@
 import streamDeck from "@elgato/streamdeck";
 import { SonosDevice, SonosEvents, ServiceEvents, MetaDataHelper } from "@svrooij/sonos";
-import { sonosManager } from "./sonos-discovery";
+import { sonosManager, noteReachableDeviceIp } from "./sonos-discovery";
 
 import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "./cover-art-loader";
@@ -26,6 +26,18 @@ import { sonosDeviceManager } from "./SonosDeviceManager";
 // against a short timeout here (via withTimeout) bounds that to SET_VOLUME_TIMEOUT_MS regardless
 // of the underlying library/fetch call's own timeout behavior.
 const SET_VOLUME_TIMEOUT_MS = 5000;
+
+// Same reasoning as SET_VOLUME_TIMEOUT_MS, applied to the SOAP calls a dial's onInstanceUpdate
+// awaits before it's considered ready (updateInitialState, getCurrentTrack, getTransportState) —
+// confirmed on hardware (2026-07-18, after a laptop sleep/wake cycle): none of these were
+// timeout-bounded, so a device that was still momentarily unreachable at the exact moment
+// initialize() ran left the whole controller's initialize() promise pending forever. Since
+// getController() just returns that same pending promise, the dial's onInstanceUpdate sat stuck
+// in its own await with no timeout either — never reaching the catch block that renders the
+// unreachable-speaker icon, so the dial looked completely dead (no icon, no error, nothing) until
+// a full plugin restart. Bounding these calls means a genuinely-unreachable device now fails fast
+// and visibly instead of hanging silently forever.
+const STARTUP_CALL_TIMEOUT_MS = 6000;
 
 // Battery percentage/charging state changes slowly — no need for the 8s poll cadence used for
 // transport/volume. Only runs at all while at least one caller (e.g. Track Dial in a non-'off'
@@ -244,6 +256,10 @@ export class SonosDeviceController {
   public async initialize(): Promise<void> {
     if (this.isInitialized) return;
     await this.updateInitialState();
+    // This device just answered directly — proof it's reachable independent of whatever state
+    // sonosManager/SSDP discovery is in. See noteReachableDeviceIp's own doc comment for why this
+    // breaks an otherwise-permanent deadlock when SSDP never succeeds even once.
+    noteReachableDeviceIp(this.deviceIp);
     await this.initializeSubscriptions();
     await this.syncCoordinatorSubscription();
     // Always poll — catches missed UPnP events (e.g. lost PLAYING after TRANSITIONING).
@@ -367,10 +383,18 @@ export class SonosDeviceController {
   }
 
   private async updateInitialState(): Promise<void> {
-    const volume = await this.sonosDevice.RenderingControlService.GetVolume({ InstanceID: 0, Channel: 'Master' });
+    const volume = await withTimeout(
+        this.sonosDevice.RenderingControlService.GetVolume({ InstanceID: 0, Channel: 'Master' }),
+        STARTUP_CALL_TIMEOUT_MS,
+        `initial GetVolume (${this.deviceIp})`,
+    );
     this.currentVolume = volume.CurrentVolume;
 
-    const mute = await this.sonosDevice.RenderingControlService.GetMute({ InstanceID: 0, Channel: 'Master' });
+    const mute = await withTimeout(
+        this.sonosDevice.RenderingControlService.GetMute({ InstanceID: 0, Channel: 'Master' }),
+        STARTUP_CALL_TIMEOUT_MS,
+        `initial GetMute (${this.deviceIp})`,
+    );
     this.currentMute = mute.CurrentMute;
 
     const track = await this.getCurrentTrack();
@@ -594,7 +618,11 @@ export class SonosDeviceController {
 
   // --- Getters ---
   async getTransportState(): Promise<string> {
-    const transportInfo = await this.transportDevice.AVTransportService.GetTransportInfo({ InstanceID: 0 });
+    const transportInfo = await withTimeout(
+        this.transportDevice.AVTransportService.GetTransportInfo({ InstanceID: 0 }),
+        STARTUP_CALL_TIMEOUT_MS,
+        `GetTransportInfo (${this.deviceIp})`,
+    );
     return transportInfo.CurrentTransportState;
   }
   async getPlayMode(): Promise<string> {
@@ -945,7 +973,11 @@ export class SonosDeviceController {
       return this.lastKnownCover;
   }
   async getCurrentTrack(): Promise<Track | undefined> {
-    const positionInfo = await this.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 });
+    const positionInfo = await withTimeout(
+        this.transportDevice.AVTransportService.GetPositionInfo({ InstanceID: 0 }),
+        STARTUP_CALL_TIMEOUT_MS,
+        `GetPositionInfo (${this.deviceIp})`,
+    );
     const trackMetadata = positionInfo.TrackMetaData;
     let track: Track | undefined = typeof trackMetadata !== 'string' ? trackMetadata : undefined;
 
@@ -956,7 +988,11 @@ export class SonosDeviceController {
     // bad — don't clobber good metadata queue playback already has.
     if (!track || looksLikeRawStreamFilename(track.Title) || !track.AlbumArtUri) {
         try {
-            const mediaInfo = await this.transportDevice.AVTransportService.GetMediaInfo({ InstanceID: 0 });
+            const mediaInfo = await withTimeout(
+                this.transportDevice.AVTransportService.GetMediaInfo({ InstanceID: 0 }),
+                STARTUP_CALL_TIMEOUT_MS,
+                `GetMediaInfo (${this.deviceIp})`,
+            );
             const mediaMeta = mediaInfo.CurrentURIMetaData;
             if (typeof mediaMeta !== 'string') {
                 const needsTitle = !track?.Title || looksLikeRawStreamFilename(track.Title);
@@ -972,7 +1008,11 @@ export class SonosDeviceController {
   }
   
   async getZoneAttributes(debug?: boolean): Promise<GetZoneAttributesResponse> {
-    const zoneAttributes = await this.sonosDevice.DevicePropertiesService.GetZoneAttributes();
+    const zoneAttributes = await withTimeout(
+        this.sonosDevice.DevicePropertiesService.GetZoneAttributes(),
+        STARTUP_CALL_TIMEOUT_MS,
+        `GetZoneAttributes (${this.deviceIp})`,
+    );
     if (debug) streamDeck.logger.debug(zoneAttributes);
     return zoneAttributes;
   }

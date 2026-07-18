@@ -1,6 +1,12 @@
 import streamDeck from "@elgato/streamdeck";
 import { SonosManager, SonosEventListener, SonosDevice } from "@svrooij/sonos";
 import { sonosFavoritesCache } from "./SonosFavoritesCache";
+import { withTimeout } from "../utils/with-timeout";
+
+// A cached IP that's gone stale (device replaced, moved networks) can otherwise hang for the
+// OS-level TCP connect timeout instead of failing fast — same reasoning as every other
+// withTimeout use in this codebase.
+const CACHED_IP_TIMEOUT_MS = 6000;
 
 export const sonosManager = new SonosManager();
 
@@ -58,9 +64,58 @@ export function onDevicesChanged(cb: () => void): void {
     devicesChangedListeners.add(cb);
 }
 
+interface DiscoveryGlobalSettings {
+    [key: string]: string | undefined;
+    lastKnownDeviceIp?: string;
+}
+
+// SSDP discovery depends on UDP multicast/broadcast responses actually reaching this process —
+// confirmed on hardware (2026-07-18): after a laptop sleep/wake cycle, Windows can reclassify the
+// network as "Public" and silently block inbound SSDP responses while normal outbound HTTP keeps
+// working fine (direct requests to every known device IP succeeded even though SSDP discovery
+// failed for 10+ minutes straight). InitializeFromDevice() bypasses SSDP entirely — it's a plain
+// HTTP/SOAP call to one known IP, which then pulls the full household topology the same way
+// InitializeWithDiscovery does internally. Caching the last successfully-used IP and trying it
+// FIRST means a repeat of that exact scenario recovers on its own, without the user needing to
+// fix their network profile or restart the plugin — falls through to normal SSDP discovery if the
+// cached IP is stale/gone (device replaced, moved to a new network, first-ever run, etc).
+// Called by any SonosDeviceController the moment ITS OWN direct (non-discovery) communication
+// with a device succeeds — independent of whether sonosManager/SSDP has ever worked this session.
+// Without this, the cache could only ever be seeded by a successful sonosManager-based discovery,
+// which is exactly the thing failing — a chicken-and-egg deadlock confirmed on hardware
+// (2026-07-18): individual dials worked fine all session (their configured device answered direct
+// HTTP calls just fine) while sonosManager/SSDP kept failing and favorites never loaded (favorites
+// cache only starts from a successful discovery), yet nothing ever primed the fallback because
+// discovery itself never got the one success it needed. Seeding it from ANY working controller
+// breaks that: the next retry (at most DISCOVERY_RETRY_MS away) tries this IP via
+// InitializeFromDevice and recovers immediately, with no restart and no OS-level network fix
+// needed.
+export function noteReachableDeviceIp(ip: string): void {
+    streamDeck.settings.setGlobalSettings<DiscoveryGlobalSettings>({ lastKnownDeviceIp: ip })
+        .catch((e) => streamDeck.logger.debug('Failed to cache reachable device IP', e));
+}
+
+async function tryFromCachedIp(): Promise<boolean> {
+    let cachedIp: string | undefined;
+    try {
+        const settings = await streamDeck.settings.getGlobalSettings<DiscoveryGlobalSettings>();
+        cachedIp = settings.lastKnownDeviceIp;
+    } catch { /* ignore — fall through to SSDP */ }
+    if (!cachedIp) return false;
+
+    try {
+        await withTimeout(sonosManager.InitializeFromDevice(cachedIp), CACHED_IP_TIMEOUT_MS, `InitializeFromDevice (${cachedIp})`);
+        return sonosManager.Devices.length > 0;
+    } catch {
+        return false;
+    }
+}
+
 async function runDiscovery(): Promise<void> {
     try {
-        await sonosManager.InitializeWithDiscovery();
+        if (!await tryFromCachedIp()) {
+            await sonosManager.InitializeWithDiscovery();
+        }
         if (sonosManager.Devices.length === 0) throw new Error('Discovery returned no players');
 
         const listenerStatus = SonosEventListener.DefaultInstance.GetStatus();
@@ -72,6 +127,7 @@ async function runDiscovery(): Promise<void> {
         sonosManager.Devices.forEach(d => {
             streamDeck.logger.info(`- ${d.Name} (${d.Host})`);
         });
+        noteReachableDeviceIp(sonosManager.Devices[0].Host);
         await sonosFavoritesCache.start(sonosManager.Devices[0]);
         devicesChangedListeners.forEach(cb => cb());
     } catch (err) {
