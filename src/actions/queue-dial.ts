@@ -131,12 +131,13 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         // cover is already cached, so both fires resolve to the exact data URI already on screen
         // and the animator's own same-image check skips the fade entirely; a crossfade now only
         // ever runs when a genuinely different cover arrives.
+        const previousTrackInfo = state.trackInfo;
         const cachedCover = trackInfo.AlbumArtUri ? this.coverCaches.get(context)?.get(trackInfo.AlbumArtUri) : undefined;
         if (cachedCover) {
             trackInfo = { ...trackInfo, albumArtDataUri: cachedCover };
-        } else if (!trackInfo.albumArtDataUri && state.trackInfo?.albumArtDataUri) {
+        } else if (!trackInfo.albumArtDataUri && previousTrackInfo?.albumArtDataUri) {
             // Preserve visible cover when the new event carries no art (e.g. radio news segment).
-            trackInfo = { ...trackInfo, albumArtDataUri: state.trackInfo.albumArtDataUri };
+            trackInfo = { ...trackInfo, albumArtDataUri: previousTrackInfo.albumArtDataUri };
         }
         const wasRadio = state.playbackKind === 'radio';
         state.trackInfo = trackInfo;
@@ -155,8 +156,17 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         marqueeAnimator.update(context, { text: trackInfo.Title ?? '', availableWidth: TEXT_WIDTH });
 
         // Seed the carousel cache with the cover we already have, so browsing back to the
-        // currently-playing item never re-fetches something we're already displaying.
-        if (trackInfo.AlbumArtUri && trackInfo.albumArtDataUri) {
+        // currently-playing item never re-fetches something we're already displaying. NOT when
+        // this fire is itself the fallback carry-over (new AlbumArtUri, but still showing the
+        // PREVIOUS track's image data) — confirmed on hardware (2026-07-17): caching the fallback
+        // against the new track's key poisoned every later lookup for that key, including the
+        // real cover's own eventual correction fire, which hit this wrongly-seeded cache entry at
+        // the top of this function and got discarded — Queue Dial then stuck on the previous
+        // track's cover indefinitely (only a fresh fetch via re-opening the page bypassed it).
+        const isFallbackCarryOver = !cachedCover
+            && trackInfo.AlbumArtUri !== previousTrackInfo?.AlbumArtUri
+            && trackInfo.albumArtDataUri === previousTrackInfo?.albumArtDataUri;
+        if (!isFallbackCarryOver && trackInfo.AlbumArtUri && trackInfo.albumArtDataUri) {
             this.coverCaches.get(context)?.set(trackInfo.AlbumArtUri, trackInfo.albumArtDataUri);
         }
 
