@@ -295,6 +295,7 @@ Cascading columns of code rain down the panels, Matrix-style.
 - The plugin subscribes to **UPnP events** from each Sonos device for real-time track and volume updates.
 - Subscriptions are automatically renewed to maintain the connection.
 - **No cloud connection** — the plugin only communicates with Sonos devices on your local network.
+- **VLANs** — only the initial device *discovery* (SSDP, multicast) is blocked by VLAN boundaries; once one speaker is reachable, all actual control traffic is regular unicast HTTP and crosses VLANs fine as long as your router routes between them. See the manual IP fallback in [Troubleshooting](#troubleshooting).
 
 ---
 
