@@ -9,6 +9,7 @@
     <style>
       :root { color-scheme: dark; }
       .hint { font-size: 11px; color: #888; line-height: 1.4; }
+      .manual-ip-fallback summary { cursor: pointer; font-family: "Segoe UI", Arial, Roboto, Helvetica, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif; font-size: 11px; color: #888; margin: 6px 0 2px; }
     </style>
   </head>
 
@@ -18,6 +19,17 @@
             <option value="" data-i18n="choose_device">-- Choose Device --</option>
         </sdpi-select>
     </sdpi-item>
+    <details class="manual-ip-fallback">
+        <summary data-i18n-html="manual_ip_summary">Speaker not showing up?</summary>
+        <sdpi-item label="Speaker IP" data-i18n="manual_ip_label">
+            <sdpi-textfield setting="lastKnownDeviceIp" global placeholder="192.168.1.42"></sdpi-textfield>
+        </sdpi-item>
+        <sdpi-item>
+            <sdpi-item-value class="hint" data-i18n-html="manual_ip_hint">
+                If your speaker isn't showing up in the list (e.g. it's on a different VLAN), enter the IP address of any one reachable Sonos speaker here. This only needs to be done once, in a single spot — every speaker in your household will then be found everywhere in the plugin. Afterwards, still pick your device from the dropdown above as usual.
+            </sdpi-item-value>
+        </sdpi-item>
+    </details>
 
     <sdpi-item label="Favorite" data-i18n="favorite">
         <sdpi-select id="favorite-select" setting="favorite" datasource="get-favorites" loading="Fetching favorites…" data-i18n-loading="fetching_favorites" hot-reload>

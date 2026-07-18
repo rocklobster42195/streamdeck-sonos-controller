@@ -50,6 +50,15 @@ let eventListenerHost: string | undefined;
 // to roughly 30s.
 const DISCOVERY_RETRY_MS = 5_000;
 
+// Guards against two runDiscovery() calls overlapping — needed once the manual-IP listener
+// below can trigger a call outside the normal retry chain. InitializeWithDiscovery/
+// InitializeFromDevice aren't designed to be re-entered mid-flight.
+let discoveryInFlight = false;
+
+// The scheduled retry from a previous failure — the manual-IP listener cancels this so it
+// doesn't fire a redundant second attempt right on top of the one it just triggered.
+let pendingRetryTimeout: ReturnType<typeof setTimeout> | undefined;
+
 // Fired every time discovery actually succeeds — including a LATER retry after the first attempt
 // failed. discoveryPromise only ever waits for that first attempt (see its own comment below), so
 // any PI that requested its device/group dropdown right at plugin startup and raced against a
@@ -112,6 +121,8 @@ async function tryFromCachedIp(): Promise<boolean> {
 }
 
 async function runDiscovery(): Promise<void> {
+    if (discoveryInFlight) return;
+    discoveryInFlight = true;
     try {
         if (!await tryFromCachedIp()) {
             await sonosManager.InitializeWithDiscovery();
@@ -132,9 +143,44 @@ async function runDiscovery(): Promise<void> {
         devicesChangedListeners.forEach(cb => cb());
     } catch (err) {
         streamDeck.logger.error(`Sonos discovery failed — retrying in ${DISCOVERY_RETRY_MS / 1000}s:`, err);
-        setTimeout(() => void runDiscovery(), DISCOVERY_RETRY_MS);
+        pendingRetryTimeout = setTimeout(() => void runDiscovery(), DISCOVERY_RETRY_MS);
+    } finally {
+        discoveryInFlight = false;
     }
 }
+
+// Lets a user recover from a fully SSDP-blocked network (e.g. Sonos speakers isolated on a
+// separate VLAN, multicast never reaching this process) by typing the speaker's IP into the new
+// PI "manual IP" field — see the sdpi-textfield in each ui/*.html — which writes straight into
+// this same lastKnownDeviceIp global setting via sdpi-components' `global` attribute, no plugin
+// code involved in that write. Without this listener, that write would still work eventually
+// (the retry loop above already tries the cached IP first on every attempt), but the user would
+// be staring at an empty device dropdown for up to DISCOVERY_RETRY_MS before it kicks in.
+//
+// `onDidReceiveGlobalSettings` ALSO fires as an echo of this plugin's own `getGlobalSettings()`
+// reads (tryFromCachedIp does one every attempt) and of noteReachableDeviceIp's own writes — not
+// just of PI-side edits. Reacting to every echo would spawn a redundant runDiscovery() on top of
+// the one already running, repeating forever. The `changed` check below (comparing against the
+// last value THIS listener observed, not against what discovery is currently trying) is what
+// makes it only fire on a genuinely new value — i.e. an actual PI edit.
+//
+// MUST use safeDevices(), not sonosManager.Devices directly — this listener fires on every
+// global-settings round trip (including the ones the very first, still-in-flight runDiscovery()
+// triggers), i.e. routinely while Devices is still empty. Confirmed on hardware (2026-07-18): an
+// earlier version read sonosManager.Devices.length directly here and the getter's throw
+// ("No Devices available!") happened uncaught inside the connection's message-handling callback,
+// visible in the log as "Connection: Failed to parse message" — exactly the crash-the-whole-
+// process failure mode safeDevices() exists to prevent (see its own comment above).
+let lastSeenGlobalIp: string | undefined;
+streamDeck.settings.onDidReceiveGlobalSettings<DiscoveryGlobalSettings>((ev) => {
+    const ip = ev.settings.lastKnownDeviceIp;
+    const changed = ip !== lastSeenGlobalIp;
+    lastSeenGlobalIp = ip;
+    if (changed && ip && safeDevices().length === 0) {
+        if (pendingRetryTimeout) clearTimeout(pendingRetryTimeout);
+        void runDiscovery();
+    }
+});
 
 // Start discovery immediately, but don't block plugin initialization.
 // Export the promise so other parts of the plugin can wait for it. Resolves after the FIRST

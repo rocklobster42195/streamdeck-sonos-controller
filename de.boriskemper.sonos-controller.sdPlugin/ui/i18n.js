@@ -69,6 +69,9 @@
             no_battery_hint:    'Dieses Gerät meldet keine Akkudaten — für diese Funktion einen Roam oder Move wählen.',
             no_function_available_hint: 'Für dieses Gerät steht keine Multi-Steuerung-Funktion zur Verfügung.',
             append_line_in:     'Line-In anhängen',
+            manual_ip_summary:  'Speaker wird nicht gefunden?',
+            manual_ip_label:    'Speaker-IP',
+            manual_ip_hint:     'Falls dein Speaker nicht in der Liste erscheint (z. B. weil er in einem anderen VLAN steht), gib hier die IP-Adresse eines beliebigen erreichbaren Sonos-Lautsprechers ein. Das genügt einmalig, an einer einzigen Stelle — danach werden alle Lautsprecher deines Haushalts überall im Plugin gefunden. Wähle dein Gerät anschließend wie gewohnt oben im Dropdown aus.',
         },
         es: {
             sonos_device:       'Dispositivo SONOS',
@@ -132,6 +135,9 @@
             no_battery_hint:    'Este dispositivo no informa datos de batería — elige un Roam o Move para esta función.',
             no_function_available_hint: 'Ninguna función de Multi-Control está disponible para este dispositivo.',
             append_line_in:     'Añadir Line-In',
+            manual_ip_summary:  '¿No se encuentra el altavoz?',
+            manual_ip_label:    'IP del altavoz',
+            manual_ip_hint:     'Si tu altavoz no aparece en la lista (por ejemplo, por estar en una VLAN distinta), introduce aquí la dirección IP de cualquier altavoz Sonos accesible. Basta con hacerlo una vez, en un solo sitio — a partir de ahí se encontrarán todos los altavoces de tu hogar en todo el plugin. Después, elige tu dispositivo como de costumbre en la lista de arriba.',
         },
     };
 
