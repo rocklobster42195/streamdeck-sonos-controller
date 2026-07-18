@@ -110,6 +110,11 @@ export class TitleAnimator {
         return this.animationStates.has(context);
     }
 
+    // Temporary diagnostic (2026-07-18) — see debugCallbackCounts on SonosDeviceController.
+    public get activeCount(): number {
+        return this.animationStates.size;
+    }
+
     // Updates the battery badge independently of text/backgroundImage — does not reset scroll
     // phase. Picked up on the next tick of the already-running render interval (every 50-80ms),
     // fast enough given battery status itself only changes on a much slower poll cadence.

@@ -239,6 +239,8 @@ class BoingGlobeEffectInstance implements EffectInstance<BoingGlobeEffectSetting
 const boingGlobeEffect: EffectDefinition<BoingGlobeEffectSettings> = {
     id: 'boing-globe',
     displayName: 'Boing Globe',
+    // Same bounce motion as Boing Ball — see its preferredTickMs comment / types.ts's doc comment.
+    preferredTickMs: 50,
     defaultSettings: { landColor: '#87AE73', oceanColor: '#1C3E6C' },
     settingsSchema: [
         { key: 'landColor', type: 'color', label: 'Land color', default: '#87AE73' },

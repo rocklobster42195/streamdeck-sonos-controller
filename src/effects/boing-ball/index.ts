@@ -196,6 +196,9 @@ class BoingBallEffectInstance implements EffectInstance<BoingBallEffectSettings>
 const boingBallEffect: EffectDefinition<BoingBallEffectSettings> = {
     id: 'boing-ball',
     displayName: 'Boing Ball',
+    // Fast bounce motion reads as choppy at the plugin-wide 10fps default — see types.ts's doc
+    // comment on preferredTickMs.
+    preferredTickMs: 50,
     defaultSettings: { primaryColor: '#87AE73', secondaryColor: '#FFFFFF' },
     settingsSchema: [
         { key: 'primaryColor', type: 'color', label: 'Primary color', default: '#87AE73' },

@@ -35,6 +35,11 @@ export class MarqueeAnimator {
         return this.states.has(context);
     }
 
+    // Temporary diagnostic (2026-07-18) — see debugCallbackCounts on SonosDeviceController.
+    public get activeCount(): number {
+        return this.states.size;
+    }
+
     public start(context: string, renderCallback: () => void, options?: MarqueeOptions) {
         this.stop(context);
         const text = options?.text ?? '';

@@ -247,3 +247,13 @@ export function renderPanoramaEffectSlice(key: string | undefined, offsetX: numb
 export function isPanoramaEffectActive(key: string | undefined): boolean {
     return !!key && groupEffects.has(key);
 }
+
+// Temporary diagnostic (2026-07-18) — see debugCallbackCounts on SonosDeviceController.
+export function panoramaDebugSummary(): string {
+    return `columns=${panoramaOrchestrator.panoramaColumns.size} ` +
+        `groupKeys=${panoramaOrchestrator.panoramaContextGroupKey.size} ` +
+        `renderCallbacks=${panoramaOrchestrator.renderCallbacks.size} ` +
+        `effectIds=${panoramaOrchestrator.contextEffectId.size} ` +
+        `effectSettings=${panoramaOrchestrator.contextEffectSettings.size} ` +
+        `groupEffects=${panoramaOrchestrator.groupEffects.size}`;
+}

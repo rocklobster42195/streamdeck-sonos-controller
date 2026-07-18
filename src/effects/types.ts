@@ -58,5 +58,10 @@ export interface EffectDefinition<S = Record<string, unknown>> {
     defaultSettings: S;
     /** Drives auto-generated PI controls. Field labels/keys are entirely up to you. */
     settingsSchema: EffectField[];
+    /** Group tick interval in ms this effect wants (defaults to the host's own default — currently
+     *  100ms/10fps — when omitted). Faster/larger-amplitude motion (e.g. Boing Ball's bounce) reads
+     *  as visibly choppy at the default rate; slow ambient drift (Particles) does not need more.
+     *  Confirmed on hardware (2026-07-18): Boing Ball at 10fps was noticeably stuttery. */
+    preferredTickMs?: number;
     createInstance(): EffectInstance<S>;
 }

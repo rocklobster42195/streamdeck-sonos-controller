@@ -658,7 +658,23 @@ export class SonosDeviceController {
   }
   unregisterTrackInfoCallback(id: string): void { this.trackInfoCallbacks.delete(id); }
 
+  // Temporary diagnostic (2026-07-18): snapshot every callback map's size to catch a suspected
+  // leak (stale contexts never unregistered) that would make this controller's own render fan-out
+  // grow more expensive the longer the plugin runs — see project-favdial-lag-2026-07-18 memory.
+  debugCallbackCounts(): string {
+    return `volume=${this.volumeInfoCallbacks.size} fade=${this.fadeStateCallbacks.size} ` +
+      `transport=${this.transportStateCallbacks.size} playMode=${this.playModeCallbacks.size} ` +
+      `trackInfo=${this.trackInfoCallbacks.size} battery=${this.batteryCallbacks.size} ` +
+      `reachability=${this.reachabilityCallbacks.size}`;
+  }
+
   private fireTrackInfoCallbacks(ti: TrackInfo): void {
+    // Temporary diagnostic (2026-07-18), disabled 2026-07-18 — root cause found (see
+    // project-favdial-lag-2026-07-18 memory), was firing on every track change so left noisy
+    // logging off by default. Uncomment to re-enable: pairs with the "Forwarded track info"/burst
+    // log lines — if this count is higher than the actually-configured dial/key count for this
+    // device, stale contexts are being fired on every track change instead of a healthy fixed set.
+    // streamDeck.logger.info(`[${this.deviceIp}] fireTrackInfoCallbacks: n=${this.trackInfoCallbacks.size}`);
     this.trackInfoCallbacks.forEach(cb => cb(ti));
   }
   registerReachabilityCallback(id: string, callback: (reachable: boolean) => void): void {

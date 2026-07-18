@@ -1,5 +1,10 @@
 import streamDeck from "@elgato/streamdeck";
 import "./sonos/sonos-discovery"; // This will start the discovery process
+// Diagnostic-heartbeat imports — see the disabled block at the bottom of this file.
+// import { sonosDeviceManager } from "./sonos/SonosDeviceManager";
+// import { marqueeAnimator } from "./utils/MarqueeAnimator";
+// import { titleAnimator } from "./utils/TitleAnimator";
+// import { panoramaDebugSummary } from "./effects/PanoramaOrchestrator";
 
 import { PlayPauseKey } from "./actions/play-pause-key";
 import { VolumeDial } from "./actions/volume-dial";
@@ -38,3 +43,20 @@ streamDeck.logger.info('Stream Deck plugin connected. Discovery running in backg
 // UNSUBSCRIBE all UPnP subscriptions in the grace window when Stream Deck stops/restarts the
 // plugin (websocket close) or the process is signalled — see graceful-shutdown.ts for why.
 registerGracefulShutdown();
+
+// Temporary diagnostic (2026-07-18), disabled 2026-07-18 — root cause found (the FavDial-lag
+// report was a 14-listener synchronous render burst on playlist/favorite change, not an uptime
+// leak; see project-favdial-lag-2026-07-18 memory), so this heartbeat's noisy every-5-min log line
+// was switched off. Uncomment (together with the imports above) to re-enable: periodic snapshot of
+// every shared registration map's size, to catch a suspected leak (stale contexts never
+// unregistered on a real hardware Stream Deck) that would make render fan-out gradually more
+// expensive the longer the plugin runs. Compare the first heartbeat (fresh restart) against later
+// ones (after hours of uptime) for unexplained growth.
+// const HEARTBEAT_MS = 5 * 60 * 1000;
+// setInterval(() => {
+//     streamDeck.logger.info(
+//         `[Diag heartbeat] devices: ${sonosDeviceManager.debugSummary()} | ` +
+//         `marquee=${marqueeAnimator.activeCount} title=${titleAnimator.activeCount} | ` +
+//         `panorama: ${panoramaDebugSummary()}`
+//     );
+// }, HEARTBEAT_MS);

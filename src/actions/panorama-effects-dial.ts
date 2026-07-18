@@ -49,7 +49,24 @@ type ParticlesSettings = {
 const DEFAULT_EFFECT_ID = 'particles';
 const particlesEffect = effectRegistry.get(DEFAULT_EFFECT_ID)!;
 
-const TICK_INTERVAL = 50;
+// 100ms (10 fps): lowered from 50ms (20 fps) on 2026-07-18 — this tick runs continuously for
+// every active panorama group (physics + SVG render + setFeedback per member, every tick), which
+// measured as a sustained ~20% idle CPU floor on hardware even right after a fresh plugin
+// restart (see project-favdial-lag-2026-07-18 memory). Safe to lower: tickPanorama(dtMs) receives
+// the real elapsed time and every effect scales its motion by it (see types.ts's own doc comment
+// on tickPanorama), so this halves the render/physics work without changing perceived speed —
+// only smoothness. Confirmed OK for slow ambient drift (Particles), but Boing Ball read as visibly
+// choppy at this rate on hardware — see resolveTickInterval below and each fast effect's own
+// preferredTickMs. Deliberately does NOT affect TitleAnimator's scroll (its own independent
+// setInterval) or GroupFadeCoordinator/FavoritesDial's fade ramps (their own timing, no shared
+// constant).
+const DEFAULT_TICK_INTERVAL = 100;
+
+// Per-effect override (see EffectDefinition.preferredTickMs) — falls back to the plugin-wide
+// default above for effects that don't need a faster tick (e.g. Particles' slow ambient drift).
+function resolveTickInterval(effectId: string): number {
+    return effectRegistry.get(effectId)?.preferredTickMs ?? DEFAULT_TICK_INTERVAL;
+}
 const DEFAULT_COLOR = '#404040';
 // 0.1/tick @ 50ms = ~500ms full crossfade — matches CoverArtAnimator's cover-image crossfade feel.
 const TEXT_FADE_STEP = 0.1;
@@ -323,9 +340,13 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
         }
 
         if (!this.groupTimers.has(key)) {
+            // Resolved once per group at timer-creation time — safe because a live effect switch
+            // (different preferredTickMs) always tears the whole group down and rebuilds it via
+            // syncGroups' regroup-on-effect-change path, never mutates this timer in place.
+            const tickInterval = resolveTickInterval(this.groupEffectId.get(key) ?? DEFAULT_EFFECT_ID);
             const timer = setInterval(() => {
                 const effect = this.groupEffects.get(key);
-                if (effect) safeEffectCall(() => effect.tickPanorama(TICK_INTERVAL), undefined, 'tickPanorama');
+                if (effect) safeEffectCall(() => effect.tickPanorama(tickInterval), undefined, 'tickPanorama');
 
                 const fade = this.groupTextFade.get(key);
                 if (fade) {
@@ -338,7 +359,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
                 // every display in the group perfectly in sync.
                 const members = this.groupAllMembers.get(key);
                 if (members) panoramaOrchestrator.notifyGroupRender(members);
-            }, TICK_INTERVAL);
+            }, tickInterval);
             this.groupTimers.set(key, timer);
         }
 

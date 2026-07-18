@@ -240,6 +240,8 @@ Cascading columns of code rain down the panels, Matrix-style.
 | Rotate | Tweak the active effect (particle count/speed, ball/globe drift speed, rain density, ...) |
 | Press | Trigger the effect's built-in action (toggle mode, poke a bounce, restart the rain, ...) |
 
+> **Note on background CPU usage:** an active effect renders continuously for as long as it's running — Stream Deck panels have no animation hardware of their own, so the plugin has to keep pushing a freshly-drawn frame for every tick. That's inherent to how the SDK works, not a bug. Expect a modest but constant background CPU cost while any Panorama Effects group is active (roughly 10–20% of one CPU core for a 4-panel group in our own testing, depending on the effect and your hardware) — it drops back to near zero once no group is running. Particles and Matrix Rain run at 10 fps; Boing Ball and Boing Globe run at 20 fps (their bounce motion needs the extra smoothness).
+
 ---
 
 ## Requirements
@@ -282,6 +284,9 @@ Cascading columns of code rain down the panels, Matrix-style.
 - Windows sometimes reclassifies the network as "Public" after a sleep/wake cycle, which silently blocks the discovery traffic Sonos speakers use to announce themselves (SSDP), even though normal browsing/streaming still works fine.
 - The plugin caches the last speaker it successfully found and retries through it directly (bypassing SSDP) on the next startup, so most of the time this now recovers on its own — no restart needed.
 - If it doesn't recover: check Windows' network profile for your current connection (Settings → Network & Internet) and set it to **Private**, or reconnect once and confirm you're back on your usual network.
+
+**Plugin using noticeable CPU in the background**
+- Check whether a **Panorama Effects** group is active — see the [note above](#panorama-effects-stream-deck-only) on why continuous background rendering is inherent to animated effects, not a bug. CPU usage drops back down once no effect group is running.
 
 **Panorama Effects not connecting across panels**
 - All Panorama Effects dials must be placed in **adjacent slots** in the same profile row.

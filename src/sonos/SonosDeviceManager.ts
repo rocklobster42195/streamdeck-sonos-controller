@@ -107,6 +107,14 @@ class SonosDeviceManager {
 
         streamDeck.logger.warn(`[SonosDeviceManager] Attempted to release a controller for an unknown IP: ${ip}`);
     }
+
+    // Temporary diagnostic (2026-07-18) — see debugCallbackCounts on SonosDeviceController.
+    debugSummary(): string {
+        if (this.controllerEntries.size === 0) return '(no live controllers)';
+        return [...this.controllerEntries.entries()]
+            .map(([ip, e]) => `${ip} refCount=${e.refCount} [${e.controller.debugCallbackCounts()}]`)
+            .join(' | ');
+    }
 }
 
 export const sonosDeviceManager = new SonosDeviceManager();
