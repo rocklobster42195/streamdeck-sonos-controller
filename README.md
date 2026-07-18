@@ -247,7 +247,7 @@ Cascading columns of code rain down the panels, Matrix-style.
 - **Elgato Stream Deck** — any model for key actions; **Stream Deck+** required for dial actions (developed and tested on the 4-dial Stream Deck+; hardware with more dials per row, e.g. a 6-dial Stream Deck+ XL, is untested)
 - **Stream Deck software** — version 6.9 or later
 - **Sonos system** — any Sonos speaker on the same local network as your computer
-- **Network** — plugin and speaker must be on the same subnet (no VLAN isolation between them)
+- **Network** — plugin and speaker should be on the same subnet; automatic discovery does not cross router or VLAN boundaries, though a manual IP fallback (see [Troubleshooting](#troubleshooting)) can work around this in most VLAN setups
 
 ---
 
@@ -267,8 +267,9 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 **Speaker not showing in the device list**
 - Make sure the speaker is powered on and connected to your Wi-Fi or Ethernet.
-- The computer and speaker must be on the **same subnet**. The plugin uses UPnP, which does not cross router or VLAN boundaries.
+- The computer and speaker are normally expected to be on the **same subnet** — the plugin's automatic discovery uses UPnP/SSDP, which does not cross router or VLAN boundaries.
 - Restart the Stream Deck software and wait a few seconds for discovery to complete.
+- **On a separate VLAN?** Open any action's settings and expand **"Speaker not showing up?"** below the device dropdown, then enter the IP address of any *one* reachable speaker. This only needs to be done once, in a single spot — Sonos speakers share their whole household's topology with each other, so the rest of your system is then found automatically everywhere in the plugin. You'll still need to pick your device from the dropdown afterwards, as usual. This works as long as your router allows regular (unicast) traffic between the VLANs — only multicast discovery itself is blocked.
 
 **Cover art not showing on radio stations**
 - Radio station art is fetched on first play. It may take a moment to appear after the plugin starts.
