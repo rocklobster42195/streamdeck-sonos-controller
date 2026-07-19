@@ -115,7 +115,16 @@ async function tryFromCachedIp(): Promise<boolean> {
     try {
         await withTimeout(sonosManager.InitializeFromDevice(cachedIp), CACHED_IP_TIMEOUT_MS, `InitializeFromDevice (${cachedIp})`);
         return sonosManager.Devices.length > 0;
-    } catch {
+    } catch (err) {
+        // At "info" level (this plugin's configured floor, see plugin.ts) so it actually lands in
+        // the log file — unlike noteReachableDeviceIp's own debug-level catch just above, this is
+        // the one place that would otherwise silently swallow WHY a cached/manual IP didn't work
+        // (wrong IP, device unreachable at the HTTP level despite answering ping, timed out, ...),
+        // leaving only the generic "No players found" retry message with no detail on the actual
+        // cause. Confirmed needed 2026-07-19: a user on a VLAN could ping their speaker but the
+        // manual-IP field still never recovered discovery, and there was nothing in the log to
+        // say why.
+        streamDeck.logger.warn(`Cached/manual IP (${cachedIp}) did not work:`, err);
         return false;
     }
 }
