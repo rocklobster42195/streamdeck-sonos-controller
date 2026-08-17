@@ -4,7 +4,6 @@
 
 ## [0.4.5] — 2026-08-17
 
-- add claude skills to gitignore
 - test: add targeted tests for PanoramaOrchestrator, SonosGroupController, SonosDeviceController
 - refactor: extract ControllerLease, migrate 8 actions off hand-rolled controller lifecycle
 - fix: solo Panorama dials never picked up cover-art dominantColor
