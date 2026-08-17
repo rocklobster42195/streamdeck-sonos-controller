@@ -28,3 +28,6 @@ local/
 
 # Editor
 .vscode/
+
+# Claude Skills
+.claude/skills/
