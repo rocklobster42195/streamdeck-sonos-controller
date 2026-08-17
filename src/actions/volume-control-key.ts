@@ -17,6 +17,7 @@ import { generateFaderSvg, generateVolumeButtonIcon, generateUnreachableKeyIcon 
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 import { sendDeviceList, sendOptions } from "./pi-options";
+import { ControllerLease } from "./ControllerLease";
 
 type SonosKeyVolumeSettings = {
     deviceIp?: string;
@@ -46,7 +47,10 @@ interface KeyState {
 
 @action({ UUID: "de.boriskemper.sonos-controller.volume-control-key" })
 export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
-    private controllers: Map<string, SonosDeviceController> = new Map();
+    private lease = new ControllerLease<SonosDeviceController>(
+        (ip) => sonosDeviceManager.getController(ip),
+        (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
+    );
     private initializedHash: Map<string, string> = new Map();
     private timers: Map<string, NodeJS.Timeout> = new Map();
     private longPressExecuted: Map<string, boolean> = new Map();
@@ -145,21 +149,14 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         await discoveryPromise;
 
         // Always release the previous reference before reacquiring — even when deviceIp is
-        // unchanged. getController() unconditionally increments its refCount, so acquiring
+        // unchanged. acquire() below unconditionally increments its refCount, so acquiring
         // without a matching prior release (as this used to do whenever only some other
         // setting changed) leaked one refCount per settings change: the underlying
         // SonosDeviceController's polling/event timers then never got torn down even after
         // this key was removed, since onWillDisappear only releases once. Must also run when
         // the config was CLEARED (early return below) — otherwise the old controller stayed
         // registered/refcounted despite the key no longer being configured.
-        const oldController = this.controllers.get(context);
-        if (oldController) {
-            oldController.unregisterVolumeCallback(context);
-            oldController.unregisterFadeStateCallback(context);
-            oldController.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(oldController.deviceIp);
-            this.controllers.delete(context);
-        }
+        this.lease.release(context);
 
         if (!deviceIp || !command) {
             await action.setTitle("Config...");
@@ -167,52 +164,60 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         }
 
         try {
-            const controller = await sonosDeviceManager.getController(deviceIp);
-            this.controllers.set(context, controller);
+            const controller = await this.lease.acquire(context, deviceIp, (controller) => {
+                controller.registerReachabilityCallback(context, (reachable) => {
+                    if (reachable) {
+                        void this.onInstanceUpdate(ev);
+                    } else {
+                        void action.setImage(generateUnreachableKeyIcon());
+                        void action.setTitle("");
+                    }
+                });
 
-            controller.registerReachabilityCallback(context, (reachable) => {
-                if (reachable) {
-                    void this.onInstanceUpdate(ev);
-                } else {
-                    void action.setImage(generateUnreachableKeyIcon());
-                    void action.setTitle("");
+                // Matches the original isReachable-gated ordering below: the remaining callbacks
+                // are only registered when the device is already known reachable at registration.
+                if (controller.isReachable) {
+                    // Only the 'mute' command's fader icon visualizes volume — other commands
+                    // ignore fade-state signals entirely.
+                    controller.registerFadeStateCallback(context, (fading, durationMs) => {
+                        const state = this.keyStates.get(context);
+                        if (!state || state.command !== 'mute') return;
+                        state.anim.onFadeState(fading, durationMs);
+                    });
+
+                    controller.registerVolumeCallback(context, (volume) => {
+                        let state = this.keyStates.get(context);
+                        if (!state) {
+                            state = this.newKeyState(context, volume.volume, volume.mute, command);
+                            this.keyStates.set(context, state);
+                        }
+                        state.isMuted = volume.mute;
+                        state.command = command;
+                        if (command === 'mute') {
+                            // onEcho eases the fader toward the new value — and ignores echoes
+                            // while a fade is running (those are the coarse steps the fake
+                            // descent hides).
+                            state.anim.onEcho(volume.volume);
+                        } else {
+                            // Static icons — keep the target in sync (no animation) and repaint directly.
+                            state.anim.initialize(volume.volume);
+                            this.updateIcon(action, volume.volume, volume.mute, command);
+                        }
+                        this.updateTitle(action, settings, volume);
+                    });
                 }
+
+                return [
+                    () => controller.unregisterVolumeCallback(context),
+                    () => controller.unregisterFadeStateCallback(context),
+                    () => controller.unregisterReachabilityCallback(context),
+                ];
             });
 
             // Bails out if the device is ALREADY unreachable at registration time, before any of
             // the callback registrations/renders below get a chance to overwrite the placeholder
             // just set above. Same fix as MultiControlKey's identical bug (2026-07-18).
             if (!controller.isReachable) return;
-
-            // Only the 'mute' command's fader icon visualizes volume — other commands ignore
-            // fade-state signals entirely.
-            controller.registerFadeStateCallback(context, (fading, durationMs) => {
-                const state = this.keyStates.get(context);
-                if (!state || state.command !== 'mute') return;
-                state.anim.onFadeState(fading, durationMs);
-            });
-
-            // Register callback for live mute/volume updates
-            controller.unregisterVolumeCallback(context);
-            controller.registerVolumeCallback(context, (volume) => {
-                let state = this.keyStates.get(context);
-                if (!state) {
-                    state = this.newKeyState(context, volume.volume, volume.mute, command);
-                    this.keyStates.set(context, state);
-                }
-                state.isMuted = volume.mute;
-                state.command = command;
-                if (command === 'mute') {
-                    // onEcho eases the fader toward the new value — and ignores echoes while a
-                    // fade is running (those are the coarse steps the fake descent hides).
-                    state.anim.onEcho(volume.volume);
-                } else {
-                    // Static icons — keep the target in sync (no animation) and repaint directly.
-                    state.anim.initialize(volume.volume);
-                    this.updateIcon(action, volume.volume, volume.mute, command);
-                }
-                this.updateTitle(action, settings, volume);
-            });
 
             // Set initial icon (snap, no animation on first render)
             const currentVolume = await controller.getVolume();
@@ -242,7 +247,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         const context = ev.action.id;
 
         // Immediately unregister the callback to prevent race conditions with stale settings.
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         if (controller) {
             controller.unregisterVolumeCallback(context);
             controller.unregisterFadeStateCallback(context);
@@ -256,14 +261,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     override async onWillDisappear(ev: WillDisappearEvent<SonosKeyVolumeSettings>): Promise<void> {
         const context = ev.action.id;
         this.setupRetry.cancel(context);
-        const controller = this.controllers.get(context);
-        if (controller) {
-            controller.unregisterVolumeCallback(context);
-            controller.unregisterFadeStateCallback(context);
-            controller.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(controller.deviceIp);
-        }
-        this.controllers.delete(context);
+        this.lease.release(context);
         this.initializedHash.delete(context);
 
         const timer = this.timers.get(context);
@@ -279,7 +277,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
 
     override async onKeyDown(ev: KeyDownEvent<SonosKeyVolumeSettings>): Promise<void> {
         const { action, payload } = ev;
-        const controller = this.controllers.get(action.id);
+        const controller = this.lease.get(action.id);
         const { command, volume, presetVolume } = payload.settings;
         const preset = presetVolume ?? volume;
 
@@ -319,7 +317,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     override async onKeyUp(ev: KeyUpEvent<SonosKeyVolumeSettings>): Promise<void> {
         const { action, payload } = ev;
         const { command } = payload.settings;
-        const controller = this.controllers.get(action.id);
+        const controller = this.lease.get(action.id);
 
         const timer = this.timers.get(action.id);
         if (timer) {

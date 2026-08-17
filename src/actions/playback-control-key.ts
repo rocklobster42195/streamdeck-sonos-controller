@@ -16,6 +16,7 @@ import { generatePlaybackIcon, generateUnreachableKeyIcon, INACTIVE_ICON_COLOR, 
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
 import { sendDeviceList, sendOptions } from "./pi-options";
+import { ControllerLease } from "./ControllerLease";
 
 type SonosPlaybackSettings = {
     deviceIp?: string;
@@ -24,7 +25,10 @@ type SonosPlaybackSettings = {
 
 @action({ UUID: "de.boriskemper.sonos-controller.playback-control-key" })
 export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
-    private controllers: Map<string, SonosDeviceController> = new Map();
+    private lease = new ControllerLease<SonosDeviceController>(
+        (ip) => sonosDeviceManager.getController(ip),
+        (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
+    );
     private initializedHash: Map<string, string> = new Map();
     private isRadioByContext: Map<string, boolean> = new Map();
     private playModeByContext: Map<string, string> = new Map();
@@ -79,20 +83,13 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
 
         await discoveryPromise;
 
-        // Always release before reacquiring, even when deviceIp is unchanged — getController()
-        // below unconditionally increments refCount, so releasing only on an IP change leaked
-        // one refCount per settings change (onDidReceiveSettings wipes initializedHash above,
-        // so the early-return dedup never actually prevents this path from running). Must also
-        // run when the config was CLEARED (early return below) — otherwise the old controller's
-        // callbacks kept repainting this key with the stale command, refcount held forever.
-        const oldController = this.controllers.get(context);
-        if (oldController) {
-            oldController.unregisterPlayModeCallback(context);
-            oldController.unregisterTrackInfoCallback(context);
-            oldController.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(oldController.deviceIp);
-            this.controllers.delete(context);
-        }
+        // Always release before reacquiring, even when deviceIp is unchanged — acquire() below
+        // unconditionally increments refCount, so releasing only on an IP change leaked one
+        // refCount per settings change (onDidReceiveSettings wipes initializedHash above, so the
+        // early-return dedup never actually prevents this path from running). Must also run when
+        // the config was CLEARED (early return below) — otherwise the old controller's callbacks
+        // kept repainting this key with the stale command, refcount held forever.
+        this.lease.release(context);
 
         if (!deviceIp || !command) {
             await action.setTitle("Config...");
@@ -100,40 +97,46 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
         }
 
         try {
-            const controller = await sonosDeviceManager.getController(deviceIp);
-            this.controllers.set(context, controller);
+            const controller = await this.lease.acquire(context, deviceIp, (controller) => {
+                controller.registerReachabilityCallback(context, (reachable) => {
+                    if (reachable) {
+                        this.initializedHash.delete(context);
+                        void this.onInstanceUpdate(ev);
+                    } else {
+                        void action.setImage(generateUnreachableKeyIcon());
+                        void action.setTitle("");
+                    }
+                });
 
-            controller.registerReachabilityCallback(context, (reachable) => {
-                if (reachable) {
-                    this.initializedHash.delete(context);
-                    void this.onInstanceUpdate(ev);
-                } else {
-                    void action.setImage(generateUnreachableKeyIcon());
-                    void action.setTitle("");
+                // Matches the original isReachable-gated ordering below: the remaining callbacks
+                // are only registered when the device is already known reachable at registration.
+                if (controller.isReachable) {
+                    controller.registerPlayModeCallback(context, (playMode) => {
+                        this.playModeByContext.set(context, playMode);
+                        this.updateIcon(action, command, playMode, this.isRadioByContext.get(context) ?? false);
+                    });
+                    controller.registerTrackInfoCallback(context, (trackInfo: TrackInfo) => {
+                        const isRadio = trackInfo.isRadio ?? false;
+                        const wasRadio = this.isRadioByContext.get(context);
+                        this.isRadioByContext.set(context, isRadio);
+                        // Re-render whenever radio status changes — affects all command types.
+                        if (isRadio !== wasRadio || command === 'next' || command === 'previous') {
+                            this.updateIcon(action, command, this.playModeByContext.get(context) ?? '', isRadio);
+                        }
+                    });
                 }
+
+                return [
+                    () => controller.unregisterPlayModeCallback(context),
+                    () => controller.unregisterTrackInfoCallback(context),
+                    () => controller.unregisterReachabilityCallback(context),
+                ];
             });
 
             // Bails out if the device is ALREADY unreachable at registration time, before any of
             // the callback registrations/renders below get a chance to overwrite the placeholder
             // just set above. Same fix as MultiControlKey's identical bug (2026-07-18).
             if (!controller.isReachable) return;
-
-            controller.unregisterPlayModeCallback(context);
-            controller.registerPlayModeCallback(context, (playMode) => {
-                this.playModeByContext.set(context, playMode);
-                this.updateIcon(action, command, playMode, this.isRadioByContext.get(context) ?? false);
-            });
-
-            controller.unregisterTrackInfoCallback(context);
-            controller.registerTrackInfoCallback(context, (trackInfo: TrackInfo) => {
-                const isRadio = trackInfo.isRadio ?? false;
-                const wasRadio = this.isRadioByContext.get(context);
-                this.isRadioByContext.set(context, isRadio);
-                // Re-render whenever radio status changes — affects all command types.
-                if (isRadio !== wasRadio || command === 'next' || command === 'previous') {
-                    this.updateIcon(action, command, this.playModeByContext.get(context) ?? '', isRadio);
-                }
-            });
 
             const [currentMode] = await Promise.all([controller.getPlayMode()]);
             this.playModeByContext.set(context, currentMode);
@@ -163,21 +166,14 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
     override async onWillDisappear(ev: WillDisappearEvent<SonosPlaybackSettings>): Promise<void> {
         const context = ev.action.id;
         this.setupRetry.cancel(context);
-        const controller = this.controllers.get(context);
-        if (controller) {
-            controller.unregisterPlayModeCallback(context);
-            controller.unregisterTrackInfoCallback(context);
-            controller.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(controller.deviceIp);
-        }
-        this.controllers.delete(context);
+        this.lease.release(context);
         this.initializedHash.delete(context);
         this.isRadioByContext.delete(context);
         this.playModeByContext.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<SonosPlaybackSettings>): Promise<void> {
-        const controller = this.controllers.get(ev.action.id);
+        const controller = this.lease.get(ev.action.id);
         const { command } = ev.payload.settings;
 
         if (!controller || !command) {

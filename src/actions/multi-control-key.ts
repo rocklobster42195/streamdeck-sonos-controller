@@ -11,6 +11,7 @@ import streamDeck, {
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { discoveryPromise } from "../sonos/sonos-discovery";
+import { ControllerLease } from "./ControllerLease";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { generateLineInIcon, generateBatteryKeyIcon, generateUnreachableKeyIcon } from "../utils/icons";
@@ -76,7 +77,10 @@ function functionOptionItems(hasBattery: boolean | undefined, hasLineIn: boolean
 
 @action({ UUID: "de.boriskemper.sonos-controller.multi-control-key" })
 export class MultiControlKey extends SingletonAction<MultiControlSettings> {
-    private controllers: Map<string, SonosDeviceController> = new Map();
+    private lease = new ControllerLease<SonosDeviceController>(
+        (ip) => sonosDeviceManager.getController(ip),
+        (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
+    );
     private setupRetry = new SetupRetryScheduler();
     private batteryStatuses: Map<string, SonosBatteryStatus | undefined> = new Map();
     // Last known hasBattery per context — read by the get-function-options handler below, since
@@ -120,7 +124,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
 
     private skipRedundantUpdate(context: string, settings: MultiControlSettings): boolean {
         const settingsJson = JSON.stringify(settings);
-        if (this.controllers.has(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
+        if (this.lease.has(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
             return true;
         }
         this.lastAppliedSettingsJson.set(context, settingsJson);
@@ -156,13 +160,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         let settings = payload.settings;
         const { deviceIp } = settings;
 
-        const oldController = this.controllers.get(context);
-        if (oldController) {
-            oldController.unregisterReachabilityCallback(context);
-            oldController.unregisterBatteryCallback(context);
-            sonosDeviceManager.releaseController(oldController.deviceIp);
-            this.controllers.delete(context);
-        }
+        this.lease.release(context);
         this.batteryStatuses.delete(context);
 
         await discoveryPromise;
@@ -224,32 +222,38 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         }
 
         try {
-            const controller = await sonosDeviceManager.getController(deviceIp);
-            this.controllers.set(context, controller);
-
-            controller.registerReachabilityCallback(context, (reachable) => {
-                if (reachable) {
-                    this.unreachableContexts.delete(context);
-                    void this.onInstanceUpdate(ev);
-                } else {
-                    this.unreachableContexts.add(context);
-                    void action.setImage(generateUnreachableKeyIcon());
-                    void action.setTitle("");
+            const controller = await this.lease.acquire(context, deviceIp, (controller) => {
+                controller.registerReachabilityCallback(context, (reachable) => {
+                    if (reachable) {
+                        this.unreachableContexts.delete(context);
+                        void this.onInstanceUpdate(ev);
+                    } else {
+                        this.unreachableContexts.add(context);
+                        void action.setImage(generateUnreachableKeyIcon());
+                        void action.setTitle("");
+                    }
+                });
+                // Matches the original isReachable-gated ordering below: battery is only
+                // registered here when the device is already known reachable at registration time.
+                if (controlFunction === 'battery' && controller.isReachable) {
+                    controller.registerBatteryCallback(context, (battery) => this.onBatteryChanged(context, battery));
                 }
+                return [
+                    () => controller.unregisterReachabilityCallback(context),
+                    () => controller.unregisterBatteryCallback(context),
+                ];
             });
 
-            // registerReachabilityCallback fires synchronously above if the device is ALREADY
-            // unreachable at registration time (confirmed on hardware, 2026-07-18: a tile pointed
-            // at an already-down Sonos Roam showed no unreachable icon at all) — bail out here so
-            // the unconditional icon render below doesn't immediately overwrite it. The reachable
-            // branch above already re-enters via onInstanceUpdate, so nothing else needs to run.
+            // Bails out if the device is ALREADY unreachable at registration time (confirmed on
+            // hardware, 2026-07-18: a tile pointed at an already-down Sonos Roam showed no
+            // unreachable icon at all) — the unconditional icon render below would otherwise
+            // immediately overwrite the placeholder just set above. The reachable branch above
+            // already re-enters via onInstanceUpdate, so nothing else needs to run.
             if (!controller.isReachable) return;
 
             await action.setTitle("");
 
-            if (controlFunction === 'battery') {
-                controller.registerBatteryCallback(context, (battery) => this.onBatteryChanged(context, battery));
-            } else {
+            if (controlFunction !== 'battery') {
                 this.renderIcon(action, context, controlFunction);
             }
         } catch (e) {
@@ -273,13 +277,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
     override async onWillDisappear(ev: WillDisappearEvent<MultiControlSettings>): Promise<void> {
         const context = ev.action.id;
         this.setupRetry.cancel(context);
-        const controller = this.controllers.get(context);
-        if (controller) {
-            controller.unregisterReachabilityCallback(context);
-            controller.unregisterBatteryCallback(context);
-            sonosDeviceManager.releaseController(controller.deviceIp);
-        }
-        this.controllers.delete(context);
+        this.lease.release(context);
         this.batteryStatuses.delete(context);
         this.hasBatteryByContext.delete(context);
         this.hasLineInByContext.delete(context);
@@ -289,7 +287,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
 
     override async onKeyDown(ev: KeyDownEvent<MultiControlSettings>): Promise<void> {
         const { action, payload } = ev;
-        const controller = this.controllers.get(action.id);
+        const controller = this.lease.get(action.id);
         const { controlFunction, fadeDuration } = payload.settings;
 
         if (!controller || !controlFunction) {

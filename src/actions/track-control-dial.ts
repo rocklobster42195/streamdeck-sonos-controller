@@ -25,6 +25,7 @@ import { syncCapabilityFlag } from "./capability-flag";
 import { piT } from "../utils/pi-i18n";
 import { sendDeviceList, sendVizOptions, sendBatteryModeOptions } from "./pi-options";
 import { buildUnconfiguredDialSvg, renderBatteryBadge } from "../utils/icons";
+import { ControllerLease } from "./ControllerLease";
 
 type TrackControlDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
@@ -60,7 +61,10 @@ interface DialState {
 
 @action({ UUID: "de.boriskemper.sonos-controller.track-control-dial" })
 export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDialSettings> {
-    private controllers: Map<string, SonosDeviceController> = new Map();
+    private lease = new ControllerLease<SonosDeviceController>(
+        (ip) => sonosDeviceManager.getController(ip),
+        (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
+    );
     private states: Map<string, DialState> = new Map();
     private animators: Map<string, CoverArtAnimator> = new Map();
     private marqueeTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -86,7 +90,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         if (transportState === 'PLAYING' || inPanorama) {
             this.startAnimTimer(context);
             if (transportState === 'PLAYING') {
-                const controller = this.controllers.get(context);
+                const controller = this.lease.get(context);
                 if (controller) void this.fetchAndStorePosition(context, controller);
             }
         } else {
@@ -124,7 +128,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
             }).catch(() => {});
         }
 
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         if (controller) void this.fetchAndStorePosition(context, controller);
 
         const settings = this.settingsMap.get(context);
@@ -205,7 +209,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
     }
 
     protected hasLiveInstance(context: string): boolean {
-        return this.controllers.has(context);
+        return this.lease.has(context);
     }
 
     protected override async onInstanceUpdate(ev: WillAppearEvent<TrackControlDialSettings> | DidReceiveSettingsEvent<TrackControlDialSettings>): Promise<void> {
@@ -247,8 +251,28 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         if (!deviceIp) return;
 
         try {
-            const controller = await sonosDeviceManager.getController(deviceIp);
-            this.controllers.set(context, controller);
+            // Captured from inside the synchronous register callback below — registerReachabilityHandling
+            // returns whether the device was ALREADY reachable at registration time, and the
+            // rest of this setup must bail out when it wasn't (see the check right after acquire).
+            let wasReachable = false;
+            const controller = await this.lease.acquire(context, deviceIp, (controller) => {
+                wasReachable = this.registerReachabilityHandling(controller, ev, 'TRACK');
+                if (wasReachable) {
+                    controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
+                    controller.registerTrackInfoCallback(context, (ti) => { void this.onTrackInfoChanged(context, ti); });
+                    if (settings.batteryDisplayMode !== 'off') {
+                        controller.registerBatteryCallback(context, (b) => this.onBatteryChanged(context, b));
+                    }
+                }
+                return [
+                    () => controller.unregisterTransportStateCallback(context),
+                    () => controller.unregisterTrackInfoCallback(context),
+                    () => controller.unregisterBatteryCallback(context),
+                    () => controller.unregisterReachabilityCallback(context),
+                ];
+            });
+
+            if (!wasReachable) return;
 
             // undefined means "couldn't determine right now" — leave the persisted hasBattery
             // flag as it was rather than writing a false negative (see deviceHasBattery's own
@@ -258,13 +282,6 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
                 settings = await syncCapabilityFlag(ev.action, settings, 'hasBattery', hasBatteryResult);
             }
             this.settingsMap.set(context, settings);
-
-            if (!this.registerReachabilityHandling(controller, ev, 'TRACK')) return;
-            controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
-            controller.registerTrackInfoCallback(context, (ti) => { void this.onTrackInfoChanged(context, ti); });
-            if (settings.batteryDisplayMode !== 'off') {
-                controller.registerBatteryCallback(context, (b) => this.onBatteryChanged(context, b));
-            }
 
             const [transportState, track] = await Promise.all([
                 controller.getTransportState(),
@@ -312,15 +329,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
     }
 
     protected cleanupInstance(context: string): void {
-        const controller = this.controllers.get(context);
-        if (controller) {
-            controller.unregisterTransportStateCallback(context);
-            controller.unregisterTrackInfoCallback(context);
-            controller.unregisterBatteryCallback(context);
-            controller.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(controller.deviceIp);
-            this.controllers.delete(context);
-        }
+        this.lease.release(context);
 
         const animator = this.animators.get(context);
         if (animator) { animator.destroy(context); this.animators.delete(context); }
@@ -336,7 +345,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
 
     // Dial press → next track so the user can browse playlists.
     override async onDialDown(ev: DialDownEvent<TrackControlDialSettings>): Promise<void> {
-        const controller = this.controllers.get(ev.action.id);
+        const controller = this.lease.get(ev.action.id);
         if (!controller) return;
         try {
             await controller.next();
@@ -350,7 +359,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
 
     // Touch tap → toggle play / pause.
     override async onTouchTap(ev: TouchTapEvent<TrackControlDialSettings>): Promise<void> {
-        const controller = this.controllers.get(ev.action.id);
+        const controller = this.lease.get(ev.action.id);
         if (!controller) return;
         try {
             await controller.togglePlayPause();
@@ -362,7 +371,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
     // Dial rotation → seek ±5 % per tick in the current track.
     override async onDialRotate(ev: DialRotateEvent<TrackControlDialSettings>): Promise<void> {
         const context = ev.action.id;
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         const state = this.states.get(context);
         if (!controller || !state || state.trackDuration <= 5) return;
 

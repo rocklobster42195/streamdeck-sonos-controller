@@ -19,6 +19,7 @@ import { parseRelTime } from "../sonos/rel-time";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { syncCapabilityFlag } from "./capability-flag";
 import { sendDeviceList, sendBatteryModeOptions } from "./pi-options";
+import { ControllerLease } from "./ControllerLease";
 
 /**
  * Settings for {@link PlayPauseKey}.
@@ -47,7 +48,10 @@ type PlayPauseKeySettings = {
 
 @action({ UUID: "de.boriskemper.sonos-controller.play-pause-key" })
 export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
-    private controllers: Map<string, SonosDeviceController> = new Map();
+    private lease = new ControllerLease<SonosDeviceController>(
+        (ip) => sonosDeviceManager.getController(ip),
+        (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
+    );
     private currentSettings: Map<string, PlayPauseKeySettings> = new Map();
     private currentCover: Map<string, string | undefined> = new Map();
     private batteryStatuses: Map<string, SonosBatteryStatus | undefined> = new Map();
@@ -83,7 +87,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
 
     private skipRedundantUpdate(context: string, settings: PlayPauseKeySettings): boolean {
         const settingsJson = JSON.stringify(settings);
-        if (this.controllers.has(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
+        if (this.lease.has(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
             return true;
         }
         this.lastAppliedSettingsJson.set(context, settingsJson);
@@ -103,7 +107,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
             this.currentCover.set(context, newCover);
             this.updateDominantColor(context, newCover);
         }
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         if (controller) {
             // Must not float unhandled — a rejection here (device briefly unreachable) would
             // otherwise crash the whole plugin process, same class of bug as un-awaited
@@ -210,7 +214,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         if (!action) return;
 
         const settings = this.currentSettings.get(context);
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         if (!controller || !settings) return;
 
         this.lastTransportState.set(context, transportState);
@@ -304,19 +308,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         let settings = ev.payload.settings;
         this.setupRetry.cancel(context);
 
-        if (this.controllers.has(context)) {
-            const oldController = this.controllers.get(context)!;
-            oldController.unregisterTransportStateCallback(context);
-            oldController.unregisterTrackInfoCallback(context);
-            oldController.unregisterBatteryCallback(context);
-            oldController.unregisterReachabilityCallback(context);
-            // Must release here — getController() below unconditionally increments refCount,
-            // so skipping this leaked one refCount per re-init (every onWillAppear/settings
-            // change), permanently orphaning the controller and its polling/event timers once
-            // this instance eventually disappears (onWillDisappear only releases once).
-            sonosDeviceManager.releaseController(oldController.deviceIp);
-            this.controllers.delete(context);
-        }
+        this.lease.release(context);
         this.stopProgressTimer(context);
         this.currentCover.delete(context);
 
@@ -327,22 +319,51 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
             return;
         }
 
-        try {
-            const controller = await sonosDeviceManager.getController(settings.deviceIp);
-            this.controllers.set(context, controller);
+        // Set before acquiring so a callback that fires synchronously during registration (e.g. a
+        // reused controller's cached trackInfo) already has settings available — matches the
+        // original ordering's guarantee that handleTransportStateChangeUnsafe's `if (!settings)
+        // return;` guard never fires spuriously. syncCapabilityFlag below only ever changes the
+        // unrelated `hasBattery` field, so setting this early is safe.
+        this.currentSettings.set(context, settings);
 
-            // Mid-session reachability: speaker-off placeholder while the device is down (e.g. a
-            // battery Roam powered off), full re-setup once it's back.
-            controller.registerReachabilityCallback(context, (reachable) => {
-                if (reachable) {
-                    this.unreachableContexts.delete(context);
-                    void this.onInstanceUpdate(ev);
-                } else {
-                    this.unreachableContexts.add(context);
-                    titleAnimator.stop(context);
-                    void action.setImage(generateUnreachableKeyIcon());
-                    void action.setTitle("");
+        try {
+            const controller = await this.lease.acquire(context, settings.deviceIp, (controller) => {
+                // Mid-session reachability: speaker-off placeholder while the device is down (e.g. a
+                // battery Roam powered off), full re-setup once it's back.
+                controller.registerReachabilityCallback(context, (reachable) => {
+                    if (reachable) {
+                        this.unreachableContexts.delete(context);
+                        void this.onInstanceUpdate(ev);
+                    } else {
+                        this.unreachableContexts.add(context);
+                        titleAnimator.stop(context);
+                        void action.setImage(generateUnreachableKeyIcon());
+                        void action.setTitle("");
+                    }
+                });
+
+                // Matches the original isReachable-gated ordering below: the remaining callbacks
+                // are only registered when the device is already known reachable at registration.
+                if (controller.isReachable) {
+                    // Transport state changes (play/pause/stop)
+                    controller.registerTransportStateCallback(context, (state) => {
+                        this.handleTransportStateChange(context, state);
+                    });
+                    // Track info changes — this is the only cover update path
+                    controller.registerTrackInfoCallback(context, (trackInfo) => {
+                        this.onTrackInfoChanged(context, trackInfo);
+                    });
+                    if ((settings.batteryDisplayMode ?? 'warning') !== 'off') {
+                        controller.registerBatteryCallback(context, (b) => this.onBatteryChanged(context, b));
+                    }
                 }
+
+                return [
+                    () => controller.unregisterTransportStateCallback(context),
+                    () => controller.unregisterTrackInfoCallback(context),
+                    () => controller.unregisterBatteryCallback(context),
+                    () => controller.unregisterReachabilityCallback(context),
+                ];
             });
 
             // registerReachabilityCallback fires synchronously above if the device is ALREADY
@@ -364,20 +385,6 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
                 settings = await syncCapabilityFlag(action, settings, 'hasBattery', hasBatteryResult);
             }
             this.currentSettings.set(context, settings);
-
-            // Transport state changes (play/pause/stop)
-            controller.registerTransportStateCallback(context, (state) => {
-                this.handleTransportStateChange(context, state);
-            });
-
-            // Track info changes — this is the only cover update path
-            controller.registerTrackInfoCallback(context, (trackInfo) => {
-                this.onTrackInfoChanged(context, trackInfo);
-            });
-
-            if ((settings.batteryDisplayMode ?? 'warning') !== 'off') {
-                controller.registerBatteryCallback(context, (b) => this.onBatteryChanged(context, b));
-            }
 
             if (settings.showDeviceName) {
                 const zoneAttributes = await controller.getZoneAttributes();
@@ -425,18 +432,8 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         this.setupRetry.cancel(context);
         titleAnimator.stop(context);
 
-        const controller = this.controllers.get(context);
-        if (controller) {
-            controller.unregisterTransportStateCallback(context);
-            controller.unregisterTrackInfoCallback(context);
-            controller.unregisterBatteryCallback(context);
-            controller.unregisterReachabilityCallback(context);
-            // Release by the controller's OWN IP (not the current settings' deviceIp) so the
-            // release always matches the acquisition, like every other action does.
-            sonosDeviceManager.releaseController(controller.deviceIp);
-        }
+        this.lease.release(context);
         this.stopProgressTimer(context);
-        this.controllers.delete(context);
         this.currentSettings.delete(context);
         this.currentCover.delete(context);
         this.batteryStatuses.delete(context);
@@ -449,7 +446,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     }
 
     override async onKeyDown(ev: KeyDownEvent<PlayPauseKeySettings>): Promise<void> {
-        const controller = this.controllers.get(ev.action.id);
+        const controller = this.lease.get(ev.action.id);
         if (!controller) return;
         try {
             await controller.togglePlayPause();

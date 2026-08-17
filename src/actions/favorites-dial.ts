@@ -22,6 +22,7 @@ import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { syncCapabilityFlag } from "./capability-flag";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { sendDeviceList, sendFadeOptions, sendVizOptions, sendAlignOptions } from "./pi-options";
+import { ControllerLease } from "./ControllerLease";
 
 type FavoritesDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
@@ -54,7 +55,10 @@ interface FavDialState {
 
 @action({ UUID: "de.boriskemper.sonos-controller.favorites-dial" })
 export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettings> {
-    private controllers: Map<string, SonosDeviceController> = new Map();
+    private lease = new ControllerLease<SonosDeviceController>(
+        (ip) => sonosDeviceManager.getController(ip),
+        (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
+    );
     private states: Map<string, FavDialState> = new Map();
     private renderGen: Map<string, number> = new Map();
     // Whether the currently configured device has a physical Line-In input — resolved
@@ -180,7 +184,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
     }
 
     protected hasLiveInstance(context: string): boolean {
-        return this.controllers.has(context);
+        return this.lease.has(context);
     }
 
     protected override async onInstanceUpdate(ev: WillAppearEvent<FavoritesDialSettings> | DidReceiveSettingsEvent<FavoritesDialSettings>): Promise<void> {
@@ -242,13 +246,23 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         if (!settings.deviceIp) return;
 
         try {
-            const controller = await sonosDeviceManager.getController(settings.deviceIp);
-            this.controllers.set(context, controller);
+            let wasReachable = false;
+            const controller = await this.lease.acquire(context, settings.deviceIp, (controller) => {
+                wasReachable = this.registerReachabilityHandling(controller, ev, 'FAVORITES');
+                if (wasReachable) {
+                    controller.registerVolumeCallback(context, (vol) => this.onVolumeInfoChanged(context, vol));
+                    controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
+                    controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
+                }
+                return [
+                    () => controller.unregisterVolumeCallback(context),
+                    () => controller.unregisterTransportStateCallback(context),
+                    () => controller.unregisterTrackInfoCallback(context),
+                    () => controller.unregisterReachabilityCallback(context),
+                ];
+            });
 
-            if (!this.registerReachabilityHandling(controller, ev, 'FAVORITES')) return;
-            controller.registerVolumeCallback(context, (vol) => this.onVolumeInfoChanged(context, vol));
-            controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
-            controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
+            if (!wasReachable) return;
 
             const [vol, ts] = await Promise.all([
                 controller.getVolume(),
@@ -291,15 +305,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         if (state?.browseTimeoutId) clearTimeout(state.browseTimeoutId);
         if (state?.fadeTimer) clearInterval(state.fadeTimer);
 
-        const controller = this.controllers.get(context);
-        if (controller) {
-            controller.unregisterVolumeCallback(context);
-            controller.unregisterTransportStateCallback(context);
-            controller.unregisterTrackInfoCallback(context);
-            controller.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(controller.deviceIp);
-            this.controllers.delete(context);
-        }
+        this.lease.release(context);
 
         marqueeAnimator.destroy(context);
 
@@ -341,7 +347,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
     override async onDialDown(ev: DialDownEvent<FavoritesDialSettings>): Promise<void> {
         const context = ev.action.id;
         const state = this.states.get(context);
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         const favs = this.getFavorites(context);
         if (!state || !controller || state.currentIndex === -1 || favs.length === 0) return;
 

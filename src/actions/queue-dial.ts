@@ -23,6 +23,7 @@ import { QueueCoverArtCache } from "./QueueCoverArtCache";
 import { piT } from "../utils/pi-i18n";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, groupEffects } from "../effects/PanoramaOrchestrator";
 import { sendDeviceList, sendVizOptions, sendOptions } from "./pi-options";
+import { ControllerLease } from "./ControllerLease";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
 import { measureArialWidth } from "../utils/text-width";
@@ -91,7 +92,10 @@ function cursorMarqueeKey(context: string): string {
 
 @action({ UUID: "de.boriskemper.sonos-controller.queue-dial" })
 export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
-    private controllers: Map<string, SonosDeviceController> = new Map();
+    private lease = new ControllerLease<SonosDeviceController>(
+        (ip) => sonosDeviceManager.getController(ip),
+        (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
+    );
     private states: Map<string, QueueDialState> = new Map();
     private animators: Map<string, CoverArtAnimator> = new Map();
     private coverCaches: Map<string, QueueCoverArtCache> = new Map();
@@ -170,7 +174,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
 
         this.extractDominantColor(context, trackInfo.albumArtDataUri);
 
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         if (controller) {
             // Radio -> queue transition: eager-fetch the queue so the position/length are ready.
             // Otherwise (still queue, or still radio) just refresh the live position cheaply.
@@ -193,7 +197,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
     // upwards of 10+ seconds (same shared-connection-pool issue as the carousel scroll fix).
     private onPlayModeChanged(context: string, playMode: string): void {
         const state = this.states.get(context);
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         if (!state || !controller) return;
         if (state.lastPlayMode === playMode) return;
         state.lastPlayMode = playMode;
@@ -298,7 +302,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
     // clobber whatever is now in focus. Swaps state.cursorCoverUri directly (no crossfade).
     private async loadCursorCover(context: string): Promise<void> {
         const state = this.states.get(context);
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         const cache = this.coverCaches.get(context);
         if (!state || !controller || !cache) return;
 
@@ -327,7 +331,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
     // pre-fetch the carousel's immediate neighbors so sequential single-step scrolling (the
     // common case) usually finds its next cover already cached instead of fetching-then-waiting.
     private async prefetchCover(context: string, item: Track | undefined): Promise<void> {
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         const cache = this.coverCaches.get(context);
         if (!controller || !cache || !item?.AlbumArtUri) return;
         const key = item.AlbumArtUri ?? item.TrackUri ?? '';
@@ -339,7 +343,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
     }
 
     protected hasLiveInstance(context: string): boolean {
-        return this.controllers.has(context);
+        return this.lease.has(context);
     }
 
     protected override async onInstanceUpdate(ev: WillAppearEvent<QueueDialSettings> | DidReceiveSettingsEvent<QueueDialSettings>): Promise<void> {
@@ -390,14 +394,24 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         if (!deviceIp) return;
 
         try {
-            const controller = await sonosDeviceManager.getController(deviceIp);
-            this.controllers.set(context, controller);
+            let wasReachable = false;
+            const controller = await this.lease.acquire(context, deviceIp, (controller) => {
+                wasReachable = this.registerReachabilityHandling(controller, ev, 'QUEUE');
+                if (wasReachable) {
+                    controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
+                    // Fires immediately with cached state (incl. isRadio) if a track is already known.
+                    controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
+                    controller.registerPlayModeCallback(context, (pm) => this.onPlayModeChanged(context, pm));
+                }
+                return [
+                    () => controller.unregisterTransportStateCallback(context),
+                    () => controller.unregisterTrackInfoCallback(context),
+                    () => controller.unregisterPlayModeCallback(context),
+                    () => controller.unregisterReachabilityCallback(context),
+                ];
+            });
 
-            if (!this.registerReachabilityHandling(controller, ev, 'QUEUE')) return;
-            controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
-            // Fires immediately with cached state (incl. isRadio) if a track is already known.
-            controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
-            controller.registerPlayModeCallback(context, (pm) => this.onPlayModeChanged(context, pm));
+            if (!wasReachable) return;
 
             const [transportState, track, playMode] = await Promise.all([
                 controller.getTransportState(),
@@ -439,15 +453,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         if (state?.browseTimeoutId) clearTimeout(state.browseTimeoutId);
         if (state?.coverDebounceTimer) clearTimeout(state.coverDebounceTimer);
 
-        const controller = this.controllers.get(context);
-        if (controller) {
-            controller.unregisterTransportStateCallback(context);
-            controller.unregisterTrackInfoCallback(context);
-            controller.unregisterPlayModeCallback(context);
-            controller.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(controller.deviceIp);
-            this.controllers.delete(context);
-        }
+        this.lease.release(context);
 
         const animator = this.animators.get(context);
         if (animator) { animator.destroy(context); this.animators.delete(context); }
@@ -511,7 +517,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
     override async onDialDown(ev: DialDownEvent<QueueDialSettings>): Promise<void> {
         const context = ev.action.id;
         const state = this.states.get(context);
-        const controller = this.controllers.get(context);
+        const controller = this.lease.get(context);
         if (!state || !controller) return;
         if (state.cursorIndex === -1) return;
 

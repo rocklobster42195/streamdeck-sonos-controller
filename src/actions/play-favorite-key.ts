@@ -11,6 +11,7 @@ import streamDeck, {
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { discoveryPromise, sonosFavoritesCache } from "../sonos/sonos-discovery";
+import { ControllerLease } from "./ControllerLease";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
@@ -26,7 +27,10 @@ type SonosFavoriteSettings = {
 
 @action({ UUID: "de.boriskemper.sonos-controller.play-favorite-key" })
 export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
-    private controllers: Map<string, SonosDeviceController> = new Map();
+    private lease = new ControllerLease<SonosDeviceController>(
+        (ip) => sonosDeviceManager.getController(ip),
+        (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
+    );
     // Guards against Stream Deck re-sending onWillAppear/onDidReceiveSettings for a tile that's
     // already correctly set up — confirmed on hardware (2026-07-18): Stream Deck can re-send
     // onWillAppear for tiles that are already visible, with no user action and no actual settings
@@ -40,7 +44,7 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
 
     private skipRedundantUpdate(context: string, settings: SonosFavoriteSettings): boolean {
         const settingsJson = JSON.stringify(settings);
-        if (this.controllers.has(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
+        if (this.lease.has(context) && this.lastAppliedSettingsJson.get(context) === settingsJson) {
             return true;
         }
         this.lastAppliedSettingsJson.set(context, settingsJson);
@@ -55,11 +59,7 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
         this.setupRetry.cancel(context);
         const { deviceIp, favorite, showTitle } = payload.settings;
 
-        if (this.controllers.has(context)) {
-            this.controllers.get(context)!.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(this.controllers.get(context)!.deviceIp);
-            this.controllers.delete(context);
-        }
+        this.lease.release(context);
 
         await discoveryPromise;
 
@@ -70,17 +70,17 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
         }
 
         try {
-            const controller = await sonosDeviceManager.getController(deviceIp);
-            this.controllers.set(context, controller);
-
-            controller.registerReachabilityCallback(context, (reachable) => {
-                if (reachable) {
-                    void this.onInstanceUpdate(ev);
-                } else {
-                    titleAnimator.stop(context);
-                    void action.setImage(generateUnreachableKeyIcon());
-                    void action.setTitle("");
-                }
+            const controller = await this.lease.acquire(context, deviceIp, (controller) => {
+                controller.registerReachabilityCallback(context, (reachable) => {
+                    if (reachable) {
+                        void this.onInstanceUpdate(ev);
+                    } else {
+                        titleAnimator.stop(context);
+                        void action.setImage(generateUnreachableKeyIcon());
+                        void action.setTitle("");
+                    }
+                });
+                return [() => controller.unregisterReachabilityCallback(context)];
             });
 
             // Bails out if the device is ALREADY unreachable at registration time — everything
@@ -131,18 +131,13 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
         this.setupRetry.cancel(context);
         titleAnimator.stop(context);
 
-        const controller = this.controllers.get(context);
-        if (controller) {
-            controller.unregisterReachabilityCallback(context);
-            sonosDeviceManager.releaseController(controller.deviceIp);
-        }
-        this.controllers.delete(context);
+        this.lease.release(context);
         this.lastAppliedSettingsJson.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<SonosFavoriteSettings>): Promise<void> {
         const { action, payload } = ev;
-        const controller = this.controllers.get(action.id);
+        const controller = this.lease.get(action.id);
         const { favorite, fadeDuration } = payload.settings;
 
         if (!controller || !favorite) {
