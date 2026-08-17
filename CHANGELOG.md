@@ -2,6 +2,21 @@
 
 ---
 
+## [0.4.5] — 2026-08-17
+
+- add claude skills to gitignore
+- test: add targeted tests for PanoramaOrchestrator, SonosGroupController, SonosDeviceController
+- refactor: extract ControllerLease, migrate 8 actions off hand-rolled controller lifecycle
+- fix: solo Panorama dials never picked up cover-art dominantColor
+- fix: log why a cached/manual discovery IP failed instead of swallowing it
+- fix: reduce Panorama Effects background CPU usage
+- docs: explain why the VLAN fallback works in Network Notes
+- docs: document the manual speaker-IP fallback for VLAN setups
+- feat: add manual speaker-IP fallback for SSDP-blocked networks (VLANs)
+- docs: fill in two missing settings, correct install instructions
+
+---
+
 ## [0.4.4] — 2026-07-18
 
 - **Multi-Control key** — a new action for Line-In switching (with an optional fade) and a live Battery status display for portable speakers (Roam/Move)
