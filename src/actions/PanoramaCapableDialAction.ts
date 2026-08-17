@@ -42,6 +42,11 @@ export type PanoramaCapableSettings = {
 
 export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSettings> extends SingletonAction<T> {
     protected contextColumns: Map<string, number> = new Map();
+    // Which physical Stream Deck device each context is on — column numbers are only unique
+    // within one device, so this disambiguates two solo tiles at the same column on separate
+    // physical units (see PanoramaOrchestrator's panoramaDeviceIds doc comment). Same lifecycle as
+    // contextColumns: set on appear, never changes without a re-appear.
+    protected contextDeviceIds: Map<string, string> = new Map();
     protected settingsMap: Map<string, T> = new Map();
     private animTimers: Map<string, NodeJS.Timeout> = new Map();
     // Retries a failed setup (unreachable speaker) — see scheduleSetupRetry / SetupRetryScheduler.
@@ -93,6 +98,7 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
         this.setupRetry.cancel(ev.action.id);
         const col = 'coordinates' in ev.payload ? (ev.payload.coordinates as { column: number }).column : 0;
         this.contextColumns.set(ev.action.id, col);
+        this.contextDeviceIds.set(ev.action.id, ev.action.device.id);
         if (this.skipRedundantUpdate(ev.action.id, ev.payload.settings)) return;
         await this.onInstanceUpdate(ev);
     }
@@ -108,6 +114,7 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
         this.cleanupInstance(ev.action.id);
         this.leavePanorama(ev.action.id);
         this.contextColumns.delete(ev.action.id);
+        this.contextDeviceIds.delete(ev.action.id);
         this.lastAppliedSettingsJson.delete(ev.action.id);
         this.unreachableContexts.delete(ev.action.id);
     }
@@ -221,7 +228,7 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
     // PanoramaOrchestrator), or leaves it if not currently in effect mode.
     protected syncPanoramaParticipation(context: string, settings: T): void {
         if (this.isEffectMode(settings.visualizerMode)) {
-            registerInPanorama(context, this.contextColumns.get(context) ?? 0);
+            registerInPanorama(context, this.contextColumns.get(context) ?? 0, this.contextDeviceIds.get(context) ?? '');
             setContextEffectId(context, settings.visualizerMode!);
             setContextEffectSettings(context, settings);
             registerPanoramaRenderCallback(context, () => this.renderDial(context));

@@ -13,7 +13,7 @@ import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
-import { panoramaOrchestrator, panoramaColumns, panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, safeEffectCall, setContextEffectSettings, DISPLAY_W, DISPLAY_H } from "../effects/PanoramaOrchestrator";
+import { panoramaOrchestrator, panoramaColumns, panoramaDeviceIds, panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, safeEffectCall, setContextEffectSettings, DISPLAY_W, DISPLAY_H } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
 import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
 import type { EffectInstance } from "../effects/types";
@@ -123,6 +123,14 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
     // group key, not context, since the device is shared across every display in the group.
     private groupConnectRetry = new SetupRetryScheduler();
     private groupStaticColor = new Map<string, string>();
+    // Last dominant color extracted from the connected device's cover art, per group — separate
+    // from groupStaticColor (the user's explicit PI color picker). Read by gatherEffectSettings so
+    // a live-fetched color survives the NEXT settings push (e.g. an unrelated PI field edit, a
+    // capability-flag write-back, or a regroup): without this, the color pushed directly via
+    // registerGroupDevice's callbacks below got silently overwritten back to
+    // configuredColor/DEFAULT_COLOR by the very next gatherEffectSettings call, since that method
+    // had no way to know a dominant color had ever been fetched.
+    private groupDominantColor = new Map<string, string>();
     // Alias to the module-level map (see PanoramaOrchestrator.ts) so Track/Volume/Group Volume
     // dial can render their own slice of whichever effect is running, without depending on this
     // action's instance at all.
@@ -254,6 +262,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
         }
         this.groupContexts.delete(key);
         this.groupStaticColor.delete(key);
+        this.groupDominantColor.delete(key);
         this.groupTrackInfo.delete(key);
         this.groupTextFade.delete(key);
         this.groupShowTrackInfo.delete(key);
@@ -286,7 +295,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
         // same "group's live dominant color wins, else first configured color" precedence as
         // before this generalization.
         const configuredColor = (merged.staticColor as string | undefined) ?? (merged.color as string | undefined);
-        merged.color = this.groupStaticColor.get(key) ?? configuredColor ?? DEFAULT_COLOR;
+        merged.color = this.groupStaticColor.get(key) ?? this.groupDominantColor.get(key) ?? configuredColor ?? DEFAULT_COLOR;
         return merged;
     }
 
@@ -363,9 +372,16 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
             this.groupTimers.set(key, timer);
         }
 
-        // Find a device from any group member and connect it.
+        // Find a device from any group member and connect it. Falls back to the orchestrator's
+        // shared contextEffectSettings (populated by ALL 4 dial actions, not just this one) so a
+        // solo Volume/Group Volume Dial — which has no dominant-color extraction of its own,
+        // unlike Track/Queue Dial — still gets a device connected here for cover-art color
+        // purposes even with no actual Panorama Effects Dial tile in its group. Without this, such
+        // a group never called registerGroupDevice at all and the effect just sat on
+        // staticColor/DEFAULT_COLOR forever.
         for (const ctx of ctxs) {
-            const ip = this.settingsMap.get(ctx)?.deviceIp;
+            const ip = this.settingsMap.get(ctx)?.deviceIp
+                ?? (panoramaOrchestrator.contextEffectSettings.get(ctx)?.deviceIp as string | undefined);
             if (ip) {
                 await this.registerGroupDevice(key, ip, ctx);
                 break;
@@ -448,7 +464,9 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
             controller.getCurrentTrackCover().then(cover => {
                 if (!cover) return;
                 getDominantColor(cover).then(color => {
-                    this.groupEffects.get(key)?.onSettingsChange?.({ color: ensureVisibleColor(color, DEFAULT_COLOR) });
+                    const visible = ensureVisibleColor(color, DEFAULT_COLOR);
+                    this.groupDominantColor.set(key, visible);
+                    this.groupEffects.get(key)?.onSettingsChange?.({ color: visible });
                 }).catch(() => {});
             }).catch(() => {});
 
@@ -460,7 +478,9 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
                 const art = trackInfo.albumArtDataUri;
                 if (!art) return;
                 getDominantColor(art).then(color => {
-                    this.groupEffects.get(key)?.onSettingsChange?.({ color: ensureVisibleColor(color, DEFAULT_COLOR) });
+                    const visible = ensureVisibleColor(color, DEFAULT_COLOR);
+                    this.groupDominantColor.set(key, visible);
+                    this.groupEffects.get(key)?.onSettingsChange?.({ color: visible });
                 }).catch(() => {});
             });
 
@@ -543,6 +563,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
 
         this.settingsMap.set(context, settings);
         panoramaColumns.set(context, col);
+        panoramaDeviceIds.set(context, ev.action.device.id);
         panoramaOrchestrator.contextEffectId.set(context, settings.effectId ?? DEFAULT_EFFECT_ID);
         setContextEffectSettings(context, settings);
         panoramaOrchestrator.registerRenderCallback(context, () => this.queueRender(context));
@@ -616,6 +637,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
         await this.saveGroupStateToSettings(context);
         this.leaveGroup(context);
         panoramaColumns.delete(context);
+        panoramaDeviceIds.delete(context);
         panoramaOrchestrator.contextEffectId.delete(context);
         panoramaOrchestrator.contextEffectSettings.delete(context);
         panoramaOrchestrator.unregisterRenderCallback(context);

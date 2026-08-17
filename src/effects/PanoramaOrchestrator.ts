@@ -40,6 +40,13 @@ export function safeEffectCall<T>(fn: () => T, fallback: T, what: string): T {
 
 class PanoramaOrchestratorImpl {
     readonly panoramaColumns = new Map<string, number>();
+    // Which physical Stream Deck device each context is on (ev.action.device.id). Column numbers
+    // are only unique WITHIN one device — without this, two solo panorama tiles on two different
+    // physical Stream Deck units that happen to sit at the same column would collide onto the same
+    // group key (see panoramaKey) and incorrectly share one effect instance/device connection/
+    // dominant color, despite having nothing to do with each other. Not yet hardware-verified with
+    // more than one physical device connected at once.
+    readonly panoramaDeviceIds = new Map<string, string>();
     readonly panoramaContextGroupKey = new Map<string, string>();
     // Which effect each context wants to run. Populated by whichever action owns that context
     // (all 4 dial actions) whenever it registers into the panorama — computeAllGroups() only
@@ -85,14 +92,16 @@ class PanoramaOrchestratorImpl {
         this.settingsHandler = handler;
     }
 
-    registerInPanorama(context: string, column: number): void {
+    registerInPanorama(context: string, column: number, deviceId: string): void {
         this.panoramaColumns.set(context, column);
+        this.panoramaDeviceIds.set(context, deviceId);
         this.requestSync();
     }
 
     unregisterFromPanorama(context: string): void {
         this.panoramaContextGroupKey.delete(context);
         this.panoramaColumns.delete(context);
+        this.panoramaDeviceIds.delete(context);
         this.contextEffectId.delete(context);
         this.contextEffectSettings.delete(context);
         this.renderCallbacks.delete(context);
@@ -146,31 +155,41 @@ class PanoramaOrchestratorImpl {
         return (col - minCol) * DISPLAY_W;
     }
 
-    panoramaKey(cols: number[]): string {
-        return 'panorama-cols-' + [...cols].sort((a, b) => a - b).join(',');
+    // deviceId is embedded (not just the column list) so two solo tiles on different physical
+    // Stream Deck units at the same column number never collide onto one key — see panoramaDeviceIds.
+    panoramaKey(deviceId: string, cols: number[]): string {
+        return 'panorama-' + deviceId + '-cols-' + [...cols].sort((a, b) => a - b).join(',');
     }
 
     colsFromKey(key: string): number[] {
-        return key.replace('panorama-cols-', '').split(',').map(Number);
+        return key.slice(key.lastIndexOf('-cols-') + '-cols-'.length).split(',').map(Number);
     }
 
     /**
-     * Connected components over column adjacency (adjacent columns differ by exactly 1) AND
-     * matching chosen effect — two adjacent dials only join the same group if they want the same
-     * effect. A dial next to a differently-configured (or unconfigured) neighbor still forms its
+     * Connected components over column adjacency (adjacent columns differ by exactly 1, on the
+     * SAME physical device) AND matching chosen effect — two adjacent dials only join the same
+     * group if they're on the same device and want the same effect. A dial next to a differently-
+     * configured (or unconfigured) neighbor — or simply on a different device — still forms its
      * own single-member group, which is exactly what makes it render its effect solo.
      * Returns Map<groupKey, contexts[]>.
      */
     computeAllGroups(): Map<string, string[]> {
-        const sorted = [...this.panoramaColumns.entries()].sort(([, a], [, b]) => a - b);
+        const sorted = [...this.panoramaColumns.entries()].sort(([ctxA, a], [ctxB, b]) => {
+            const devA = this.panoramaDeviceIds.get(ctxA) ?? '';
+            const devB = this.panoramaDeviceIds.get(ctxB) ?? '';
+            if (devA !== devB) return devA < devB ? -1 : 1;
+            return a - b;
+        });
         const result = new Map<string, string[]>();
         let i = 0;
         while (i < sorted.length) {
+            const deviceId = this.panoramaDeviceIds.get(sorted[i][0]) ?? '';
             const cols = [sorted[i][1]];
             const ctxs = [sorted[i][0]];
             const effectId = this.contextEffectId.get(sorted[i][0]);
             while (
                 i + 1 < sorted.length &&
+                (this.panoramaDeviceIds.get(sorted[i + 1][0]) ?? '') === deviceId &&
                 sorted[i + 1][1] === sorted[i][1] + 1 &&
                 this.contextEffectId.get(sorted[i + 1][0]) === effectId
             ) {
@@ -178,7 +197,7 @@ class PanoramaOrchestratorImpl {
                 cols.push(sorted[i][1]);
                 ctxs.push(sorted[i][0]);
             }
-            result.set(this.panoramaKey(cols), ctxs);
+            result.set(this.panoramaKey(deviceId, cols), ctxs);
             i++;
         }
         return result;
@@ -199,10 +218,11 @@ export const panoramaOrchestrator = new PanoramaOrchestratorImpl();
 // Back-compat named exports so existing action files (Track/Volume/Group Volume dial) keep
 // working with the same import shape they already use.
 export const panoramaColumns = panoramaOrchestrator.panoramaColumns;
+export const panoramaDeviceIds = panoramaOrchestrator.panoramaDeviceIds;
 export const panoramaContextGroupKey = panoramaOrchestrator.panoramaContextGroupKey;
 
-export function registerInPanorama(context: string, column: number): void {
-    panoramaOrchestrator.registerInPanorama(context, column);
+export function registerInPanorama(context: string, column: number, deviceId: string): void {
+    panoramaOrchestrator.registerInPanorama(context, column, deviceId);
 }
 
 export function unregisterFromPanorama(context: string): void {
