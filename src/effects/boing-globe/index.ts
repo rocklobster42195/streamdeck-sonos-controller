@@ -1,6 +1,6 @@
 import zlib from "node:zlib";
 import type { EffectDefinition, EffectInstance, PanoramaInitContext } from "../types";
-import { encodePngDataUri } from "../shared/png";
+import { encodePngDataUri } from "../../utils/png";
 import { BM_W, BM_H, LAND_BITMAP_B64 } from "./landBitmap";
 
 // A raytraced Earth globe with the same bounce physics as Boing Ball, but drifting off one edge

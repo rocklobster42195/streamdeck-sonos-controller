@@ -1,5 +1,5 @@
 import type { EffectDefinition, EffectInstance, PanoramaInitContext } from "../types";
-import { encodePngDataUri } from "../shared/png";
+import { encodePngDataUri } from "../../utils/png";
 
 // Ports the raytraced checkered-sphere look already designed and tuned in
 // local/tools/generate-boing-gif.mjs (sage + white checker, tilt, specular highlight) to a live

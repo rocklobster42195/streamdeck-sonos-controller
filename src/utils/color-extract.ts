@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import { decodeImage, resizeRGBA } from './image-decode';
 
 /**
  * Keeps a dominant color usable as an accent on the dials' dark backgrounds: colors already
@@ -33,12 +33,10 @@ export async function getDominantColor(dataUri: string): Promise<string> {
         const comma = dataUri.indexOf(',');
         if (comma === -1) return '#CCCCCC';
         const buf = Buffer.from(dataUri.slice(comma + 1), 'base64');
-        const { data } = await sharp(buf)
-            .resize(1, 1, { fit: 'cover' })
-            .removeAlpha()
-            .raw()
-            .toBuffer({ resolveWithObject: true });
-        return `rgb(${data[0]},${data[1]},${data[2]})`;
+        const decoded = decodeImage(buf);
+        if (!decoded) return '#CCCCCC';
+        const [r, g, b] = resizeRGBA(decoded, 1, 1);
+        return `rgb(${r},${g},${b})`;
     } catch {
         return '#CCCCCC';
     }

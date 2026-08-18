@@ -24,7 +24,6 @@ const config = {
 			return url.pathToFileURL(path.resolve(path.dirname(sourcemapPath), relativeSourcePath)).href;
 		}
 	},
-	external: ["sharp"],
 	plugins: [
         copy({
             targets: [

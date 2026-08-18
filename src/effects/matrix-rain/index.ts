@@ -1,5 +1,5 @@
 import type { EffectDefinition, EffectInstance, PanoramaInitContext } from "../types";
-import { encodePngDataUri } from "../shared/png";
+import { encodePngDataUri } from "../../utils/png";
 
 // Classic "digital rain" look, panorama-width-aware. Toned down deliberately: this runs behind
 // cover art/text/etc, so it needs to read as a "dezent" (subtle) background pattern, not a neon,

@@ -1,9 +1,10 @@
 
 import { SonosDevice, ServiceEvents } from '@svrooij/sonos';
-import sharp from 'sharp';
 import streamDeck from '@elgato/streamdeck';
 import { SonosFavorite } from './SonosTypes';
 import { decodeXmlEntities } from '../utils/xml';
+import { decodeImage, resizeRGBA } from '../utils/image-decode';
+import { encodePngDataUri } from '../utils/png';
 
 /**
  * A cache for Sonos favorites and their scaled cover art.
@@ -195,12 +196,13 @@ private async fetchAndScaleCoverArt(imageUrl: string, title: string): Promise<vo
 
         const imageBuffer = await response.arrayBuffer();
 
-        const scaledImageBuffer = await sharp(Buffer.from(imageBuffer))
-            .resize(72, 72)
-            .png()
-            .toBuffer();
-
-        const base64Image = `data:image/png;base64,${scaledImageBuffer.toString('base64')}`;
+        const decoded = decodeImage(Buffer.from(imageBuffer));
+        if (!decoded) {
+            streamDeck.logger.debug(`Cover for "${title}" could not be decoded.`);
+            return;
+        }
+        const resized = resizeRGBA(decoded, 72, 72);
+        const base64Image = encodePngDataUri(72, 72, resized);
         this.coverArtCache.set(imageUrl, base64Image);
 
     } catch {
