@@ -2,6 +2,14 @@
 
 ---
 
+## [0.4.6] — 2026-08-18
+
+- **Fixed a crash on startup** affecting the packaged plugin on some systems — a native dependency was never actually being included in the shipped package, so the plugin could fail to load at all depending on the machine. If v0.4.5 didn't run for you, this fixes it.
+- Track Control Dial's cover art is now shown in full instead of being cropped, which was especially visible on non-square artwork (e.g. some internet radio stations' banner-style images)
+- Slightly faster default animation speed for the Particles panorama effect
+
+---
+
 ## [0.4.5] — 2026-08-17
 
 - test: add targeted tests for PanoramaOrchestrator, SonosGroupController, SonosDeviceController
