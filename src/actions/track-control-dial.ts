@@ -27,6 +27,19 @@ import { sendDeviceList, sendVizOptions, sendBatteryModeOptions } from "./pi-opt
 import { buildUnconfiguredDialSvg, renderBatteryBadge } from "../utils/icons";
 import { ControllerLease } from "./ControllerLease";
 
+// Cover art is drawn as a size x size square (CoverArtAnimator.render, size = max(w,h)) — making
+// COVER_WIDTH equal that square's own side (100, matching the canvas height) means the square
+// exactly fills its box with zero overflow, so nothing ever needs cropping in the first place.
+// Deliberately NOT the narrower 87px Queue Dial uses (which crops 13px off a 100px square and
+// leans on a generous gap as a safety margin against clipPath unreliability on the Stream Deck's
+// SVG renderer — see queue-dial.ts's COVER_WIDTH comment): with zero overflow, that whole class of
+// bleed risk doesn't apply here, so the cover can stay fully visible and the gap can be modest.
+const COVER_WIDTH = 100;
+const OUTER_MARGIN = 8;
+const COVER_TEXT_GAP = 8;
+const TEXT_WIDTH = 200 - COVER_WIDTH - COVER_TEXT_GAP - OUTER_MARGIN;
+const COVER_X = 200 - COVER_WIDTH;
+
 type TrackControlDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
     showTrackTitle?: boolean;
@@ -156,7 +169,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
     }
 
     private marqWidth(_settings?: TrackControlDialSettings): number {
-        return 97;
+        return TEXT_WIDTH;
     }
 
     private async computeTruncatedText(text: string, fontSize: number, availableWidth: number): Promise<string> {
@@ -473,53 +486,51 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         let svg: string;
 
         if (visualizerMode === 'none') {
-            // 'left' anchor: the artwork square starts exactly at the cover slot (x=113) and its
-            // overflow leaves the canvas on the right — never toward the text/progress bar. The
-            // centered default started the image at x=106.5, visibly sliding under the progress
-            // bar's end on hardware (same unclipped-image behavior as Queue Dial's cover shift).
-            const sharpCover = animator.render(context, 113, 0, 87, 100, 'left');
+            // COVER_WIDTH matches the artwork square's own side exactly (see the constant's doc
+            // comment), so there's no overflow to crop and the anchor is moot — cover is fully
+            // visible instead of a 13px-cropped slice.
+            const coverFrag = animator.render(context, COVER_X, 0, COVER_WIDTH, 100);
 
             let titleFrag = '';
             if (settings?.showTrackTitle !== false) {
                 if (marqueeAnimator.isRunning(context)) {
-                    titleFrag = marqueeAnimator.render(context, 8, 72, 97, 20);
+                    titleFrag = marqueeAnimator.render(context, OUTER_MARGIN, 72, TEXT_WIDTH, 20);
                 } else {
                     const t = escapeXml(state.trackInfo?.Title ?? 'Sonos');
-                    titleFrag = `<text x="8" y="72" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
+                    titleFrag = `<text x="${OUTER_MARGIN}" y="72" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
                 }
             }
 
             svg = [
                 '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                 '<defs>',
-                '  <clipPath id="textClip"><rect x="8" y="0" width="97" height="100"/></clipPath>',
-                '  <clipPath id="coverClip"><rect x="113" y="0" width="87" height="100" rx="6"/></clipPath>',
+                `  <clipPath id="textClip"><rect x="${OUTER_MARGIN}" y="0" width="${TEXT_WIDTH}" height="100"/></clipPath>`,
+                `  <clipPath id="coverClip"><rect x="${COVER_X}" y="0" width="${COVER_WIDTH}" height="100" rx="6"/></clipPath>`,
                 '</defs>',
                 '<rect width="200" height="100" fill="black"/>',
                 `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                 titleFrag,
-                `  <text x="8" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${escapeXml(artist)}</text>`,
+                `  <text x="${OUTER_MARGIN}" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${escapeXml(artist)}</text>`,
                 '</g>',
-                `<rect x="8" y="95" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                progressPct > 0 ? `<rect x="8" y="95" width="${Math.round(97 * progress)}" height="5" fill="${escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
-                `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                `<rect x="${OUTER_MARGIN}" y="95" width="${TEXT_WIDTH}" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
+                progressPct > 0 ? `<rect x="${OUTER_MARGIN}" y="95" width="${Math.round(TEXT_WIDTH * progress)}" height="5" fill="${escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
+                `<g clip-path="url(#coverClip)">${coverFrag}</g>`,
                 batteryBadge,
                 '</svg>',
             ].join('');
         } else {
-            // 'left' anchor: the artwork square starts exactly at the cover slot (x=113) and its
-            // overflow leaves the canvas on the right — never toward the text/progress bar. The
-            // centered default started the image at x=106.5, visibly sliding under the progress
-            // bar's end on hardware (same unclipped-image behavior as Queue Dial's cover shift).
-            const sharpCover = animator.render(context, 113, 0, 87, 100, 'left');
+            // COVER_WIDTH matches the artwork square's own side exactly (see the constant's doc
+            // comment), so there's no overflow to crop and the anchor is moot — cover is fully
+            // visible instead of a 13px-cropped slice.
+            const coverFrag = animator.render(context, COVER_X, 0, COVER_WIDTH, 100);
 
             let titleFrag = '';
             if (settings?.showTrackTitle !== false) {
                 if (marqueeAnimator.isRunning(context)) {
-                    titleFrag = marqueeAnimator.render(context, 8, 22, 97, 20);
+                    titleFrag = marqueeAnimator.render(context, OUTER_MARGIN, 22, TEXT_WIDTH, 20);
                 } else {
                     const t = escapeXml(state.trackInfo?.Title ?? 'Sonos');
-                    titleFrag = `<text x="8" y="22" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
+                    titleFrag = `<text x="${OUTER_MARGIN}" y="22" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
                 }
             }
 
@@ -534,19 +545,19 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
                 let panoTitleFrag = '';
                 if (settings?.showTrackTitle !== false) {
                     if (marqueeAnimator.isRunning(context)) {
-                        panoTitleFrag = marqueeAnimator.render(context, 8, 72, 97, 20);
+                        panoTitleFrag = marqueeAnimator.render(context, OUTER_MARGIN, 72, TEXT_WIDTH, 20);
                     } else {
                         const t = escapeXml(state.trackInfo?.Title ?? 'Sonos');
-                        panoTitleFrag = `<text x="8" y="72" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
+                        panoTitleFrag = `<text x="${OUTER_MARGIN}" y="72" fill="${fontColor}" font-family="Arial,sans-serif" font-size="${fontSize}" clip-path="url(#textClip)">${t}</text>`;
                     }
                 }
 
                 // Text background pills — only as wide as the respective text.
                 const titleText = state.trackInfo?.Title ?? '';
                 const titlePillW = settings?.showTrackTitle !== false && titleText
-                    ? Math.min(99, measureArialWidth(titleText, fontSize) + 8) : 0;
+                    ? Math.min(TEXT_WIDTH + 6, measureArialWidth(titleText, fontSize) + 8) : 0;
                 const artistPillW = artist
-                    ? Math.min(99, measureArialWidth(artist, 11) + 8) : 0;
+                    ? Math.min(TEXT_WIDTH + 6, measureArialWidth(artist, 11) + 8) : 0;
                 const titlePillY = Math.round(72 - fontSize * 0.8);
                 const titlePillH = Math.round(fontSize * 1.1);
 
@@ -554,8 +565,8 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
                     '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                     '<defs>',
                     '  <clipPath id="c"><rect width="200" height="100"/></clipPath>',
-                    '  <clipPath id="textClip"><rect x="8" y="0" width="97" height="100"/></clipPath>',
-                    '  <clipPath id="coverClip"><rect x="113" y="0" width="87" height="100" rx="6"/></clipPath>',
+                    `  <clipPath id="textClip"><rect x="${OUTER_MARGIN}" y="0" width="${TEXT_WIDTH}" height="100"/></clipPath>`,
+                    `  <clipPath id="coverClip"><rect x="${COVER_X}" y="0" width="${COVER_WIDTH}" height="100" rx="6"/></clipPath>`,
                     '</defs>',
                     '<rect width="200" height="100" fill="#000"/>',
                     `<g clip-path="url(#c)">${particleFrag}</g>`,
@@ -563,11 +574,11 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
                     artistPillW > 0 ? `<rect x="5" y="77" width="${artistPillW}" height="13" fill="black" opacity="0.55" rx="3"/>` : '',
                     `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                     panoTitleFrag,
-                    `  <text x="8" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${escapeXml(artist)}</text>`,
+                    `  <text x="${OUTER_MARGIN}" y="86" fill="#999999" font-family="Arial,sans-serif" font-size="11">${escapeXml(artist)}</text>`,
                     '</g>',
-                    `<rect x="8" y="95" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                    progressPct > 0 ? `<rect x="8" y="95" width="${Math.round(97 * progress)}" height="5" fill="${escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
-                    `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                    `<rect x="${OUTER_MARGIN}" y="95" width="${TEXT_WIDTH}" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
+                    progressPct > 0 ? `<rect x="${OUTER_MARGIN}" y="95" width="${Math.round(TEXT_WIDTH * progress)}" height="5" fill="${escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
+                    `<g clip-path="url(#coverClip)">${coverFrag}</g>`,
                     batteryBadge,
                     '</svg>',
                 ].join('');
@@ -579,18 +590,18 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
                 svg = [
                     '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                     '<defs>',
-                    '  <clipPath id="textClip"><rect x="8" y="2" width="97" height="96"/></clipPath>',
-                    '  <clipPath id="coverClip"><rect x="113" y="0" width="87" height="100" rx="6"/></clipPath>',
+                    `  <clipPath id="textClip"><rect x="${OUTER_MARGIN}" y="2" width="${TEXT_WIDTH}" height="96"/></clipPath>`,
+                    `  <clipPath id="coverClip"><rect x="${COVER_X}" y="0" width="${COVER_WIDTH}" height="100" rx="6"/></clipPath>`,
                     '</defs>',
                     '<rect width="200" height="100" fill="black"/>',
                     `<g clip-path="url(#textClip)" opacity="${textOpacity}">`,
                     titleFrag,
-                    `  <text x="8" y="38" fill="#999999" font-family="Arial,sans-serif" font-size="12">${escapeXml(artist)}</text>`,
+                    `  <text x="${OUTER_MARGIN}" y="38" fill="#999999" font-family="Arial,sans-serif" font-size="12">${escapeXml(artist)}</text>`,
                     '</g>',
-                    `<rect x="8" y="48" width="97" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
-                    progressPct > 0 ? `<rect x="8" y="48" width="${Math.round(97 * progress)}" height="5" fill="${escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
+                    `<rect x="${OUTER_MARGIN}" y="48" width="${TEXT_WIDTH}" height="5" fill="white" opacity="0.12" rx="2.5"/>`,
+                    progressPct > 0 ? `<rect x="${OUTER_MARGIN}" y="48" width="${Math.round(TEXT_WIDTH * progress)}" height="5" fill="${escapeXml(accentColor)}" opacity="0.9" rx="2.5"/>` : '',
                     visualizer,
-                    `<g clip-path="url(#coverClip)">${sharpCover}</g>`,
+                    `<g clip-path="url(#coverClip)">${coverFrag}</g>`,
                     batteryBadge,
                     '</svg>',
                 ].join('');
