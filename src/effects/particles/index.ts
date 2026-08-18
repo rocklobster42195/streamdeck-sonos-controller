@@ -15,7 +15,7 @@ const MIN_PER_DISPLAY = 4;
 const MAX_PER_DISPLAY = 40;
 const SPEED_MIN = 0.05;
 const SPEED_MAX = 1.5;
-const SPEED_DEFAULT = 0.25;
+const SPEED_DEFAULT = 0.8;
 const SPEED_STEP = 0.05;
 
 let instanceCounter = 0;
