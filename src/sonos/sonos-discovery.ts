@@ -33,6 +33,44 @@ export function safeDevices(): SonosDevice[] {
 // Listener host after discovery — module-internal, only used for the startup log below.
 let eventListenerHost: string | undefined;
 
+// A bonded Sonos stereo pair's non-primary speaker (and an HT setup's satellites/sub) reports the
+// SAME room name as its visible partner in sonosManager.Devices, differing only by its own
+// (hidden) IP — Sonos's real UPnP topology marks it Invisible="1", but SonosManager never copies
+// that flag onto the SonosDevice objects it builds; only ZoneGroupTopologyService's own
+// GetParsedZoneGroupState() exposes it (confirmed by reading @svrooij/sonos's source directly,
+// see tools/diagnose-stereo-pairs.mjs and the notes filed in the node-sonos-ts fork). Without
+// this, every consumer that lists/counts devices sees a bonded room twice.
+//
+// Cached and refreshed once per successful discovery rather than fetched live on every read —
+// SonosGroupController re-derives group membership/naming from this on every topology
+// poll/push (several times a minute per active group), and re-issuing the underlying SOAP call
+// that often would add needless network chatter for something (stereo/HT bonding) that in
+// practice never changes mid-session. A user who re-bonds/un-bonds speakers while the plugin is
+// running won't see it reflected until the next discovery/plugin restart — an acceptable
+// trade-off for how rare that action is.
+let invisibleSatelliteHostsCache: Set<string> = new Set();
+
+async function refreshInvisibleSatelliteHosts(): Promise<void> {
+    try {
+        const groups = await safeDevices()[0]?.ZoneGroupTopologyService.GetParsedZoneGroupState();
+        const hosts = new Set<string>();
+        for (const group of groups ?? []) {
+            for (const member of group.members) {
+                if (member.Invisible) hosts.add(member.host);
+            }
+        }
+        invisibleSatelliteHostsCache = hosts;
+    } catch (e) {
+        streamDeck.logger.debug('Failed to resolve stereo/HT-bonded satellite hosts', e);
+    }
+}
+
+/** True for a bonded stereo/HT pair's invisible non-primary speaker — see the cache's own doc
+ *  comment above for why this exists and how it's kept (reasonably) fresh. */
+export function isInvisibleSatellite(host: string): boolean {
+    return invisibleSatelliteHostsCache.has(host);
+}
+
 // A failed SSDP discovery is retried until it succeeds. Without this, one bad round at plugin
 // start ("No players found" — seen on hardware right after a plugin restart) left the entire
 // session with an empty sonosManager: no PI device lists, and — much worse — no group topology,
@@ -149,6 +187,7 @@ async function runDiscovery(): Promise<void> {
         });
         noteReachableDeviceIp(sonosManager.Devices[0].Host);
         await sonosFavoritesCache.start(sonosManager.Devices[0]);
+        void refreshInvisibleSatelliteHosts();
         devicesChangedListeners.forEach(cb => cb());
     } catch (err) {
         streamDeck.logger.error(`Sonos discovery failed — retrying in ${DISCOVERY_RETRY_MS / 1000}s:`, err);

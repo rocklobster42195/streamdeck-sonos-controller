@@ -24,6 +24,10 @@ export interface VolumePieController {
     registerReachabilityCallback(id: string, cb: (reachable: boolean) => void): void;
     unregisterReachabilityCallback(id: string): void;
     readonly isReachable: boolean;
+    // Optional — only SonosGroupController implements this (group membership/name can change
+    // live while a tile is visible; a single-speaker VolumeDial's zone name doesn't need it).
+    registerDisplayNameCallback?(id: string, cb: (name: string) => void): void;
+    unregisterDisplayNameCallback?(id: string): void;
 }
 
 export type VolumePieDialSettings = PanoramaCapableSettings & {
@@ -108,6 +112,7 @@ export abstract class VolumePieDialAction<
             oldController.unregisterVolumeCallback(context);
             oldController.unregisterFadeStateCallback(context);
             oldController.unregisterReachabilityCallback(context);
+            oldController.unregisterDisplayNameCallback?.(context);
             this.releaseController(oldController);
             this.controllers.delete(context);
         }
@@ -156,6 +161,12 @@ export abstract class VolumePieDialAction<
             if (!this.registerReachabilityHandling(controller, ev, this.dialLabel)) return;
             controller.registerVolumeCallback(context, (vi: VolumeInfo) => this.onVolumeInfoChanged(context, vi));
             controller.registerFadeStateCallback(context, (fading, durationMs) => this.states.get(context)?.anim.onFadeState(fading, durationMs));
+            controller.registerDisplayNameCallback?.(context, (name) => {
+                const s = this.states.get(context);
+                if (!s || s.displayName === name) return;
+                s.displayName = name;
+                void this.renderDial(context);
+            });
 
             const [name, vol] = await Promise.all([
                 Promise.resolve(this.fetchDisplayName(controller)),

@@ -6,6 +6,7 @@ import type { VolumeInfo } from './SonosTypes';
 vi.mock('./sonos-discovery', () => ({
     safeDevices: vi.fn(),
     discoveryPromise: Promise.resolve(),
+    isInvisibleSatellite: vi.fn(() => false),
 }));
 
 vi.mock('./SonosDeviceManager', () => ({
@@ -15,11 +16,24 @@ vi.mock('./SonosDeviceManager', () => ({
     },
 }));
 
-import { safeDevices } from './sonos-discovery';
+import { safeDevices, isInvisibleSatellite } from './sonos-discovery';
 import { sonosDeviceManager } from './SonosDeviceManager';
 import { SonosGroupController } from './SonosGroupController';
 
-type FakeDevice = { Host: string; Name: string; Coordinator?: FakeDevice; GroupName?: string };
+type FakeDevice = {
+    Host: string;
+    Name: string;
+    Coordinator?: FakeDevice;
+    GroupName?: string;
+    Events: { on: ReturnType<typeof vi.fn>; removeListener: ReturnType<typeof vi.fn> };
+};
+
+// resolveCoordinator() subscribes to the anchor's live Events emitter (Coordinator/GroupName/
+// GroupId) — every fake device needs a stub for it, even non-anchors, to mirror the real
+// SonosDevice shape.
+function fakeDevice(fields: Omit<FakeDevice, 'Events'>): FakeDevice {
+    return { ...fields, Events: { on: vi.fn(), removeListener: vi.fn() } };
+}
 
 type FakeController = {
     isReachable: boolean;
@@ -77,6 +91,7 @@ describe('SonosGroupController', () => {
             return c as unknown as import('./SonosDeviceController').SonosDeviceController;
         });
         vi.mocked(sonosDeviceManager.releaseController).mockClear();
+        vi.mocked(isInvisibleSatellite).mockReset().mockReturnValue(false);
     });
 
     afterEach(() => {
@@ -84,9 +99,9 @@ describe('SonosGroupController', () => {
     });
 
     it('resolveMembers: a topology recheck unregisters+releases a dropped member exactly once and registers a new one, leaving an unchanged member untouched', async () => {
-        const deviceA: FakeDevice = { Host: 'A', Name: 'Living Room' };
-        const deviceB: FakeDevice = { Host: 'B', Name: 'Kitchen', Coordinator: deviceA, GroupName: 'Party' };
-        const deviceC: FakeDevice = { Host: 'C', Name: 'Bedroom', Coordinator: deviceA, GroupName: 'Party' };
+        const deviceA: FakeDevice = fakeDevice({ Host: 'A', Name: 'Living Room' });
+        const deviceB: FakeDevice = fakeDevice({ Host: 'B', Name: 'Kitchen', Coordinator: deviceA, GroupName: 'Party' });
+        const deviceC: FakeDevice = fakeDevice({ Host: 'C', Name: 'Bedroom', Coordinator: deviceA, GroupName: 'Party' });
 
         vi.mocked(safeDevices).mockReturnValue([deviceA, deviceB] as never);
 
@@ -116,9 +131,9 @@ describe('SonosGroupController', () => {
     });
 
     it('dedupes the group fade-aggregate callback so a same-tick false/false/false sequence never flickers back to true', async () => {
-        const deviceA: FakeDevice = { Host: 'A', Name: 'A' };
-        const deviceB: FakeDevice = { Host: 'B', Name: 'B', Coordinator: deviceA };
-        const deviceC: FakeDevice = { Host: 'C', Name: 'C', Coordinator: deviceA };
+        const deviceA: FakeDevice = fakeDevice({ Host: 'A', Name: 'A' });
+        const deviceB: FakeDevice = fakeDevice({ Host: 'B', Name: 'B', Coordinator: deviceA });
+        const deviceC: FakeDevice = fakeDevice({ Host: 'C', Name: 'C', Coordinator: deviceA });
         vi.mocked(safeDevices).mockReturnValue([deviceA, deviceB, deviceC] as never);
 
         const group = new SonosGroupController('A');
@@ -144,7 +159,7 @@ describe('SonosGroupController', () => {
     });
 
     it('MEMBER_FEEDBACK_SUPPRESS_MS: ignores an echoed volume while suppressed, applies it once the window lapses, and adjustVolume then reads the live baseline', async () => {
-        const deviceA: FakeDevice = { Host: 'A', Name: 'A' };
+        const deviceA: FakeDevice = fakeDevice({ Host: 'A', Name: 'A' });
         vi.mocked(safeDevices).mockReturnValue([deviceA] as never);
 
         const group = new SonosGroupController('A');
@@ -172,8 +187,8 @@ describe('SonosGroupController', () => {
     });
 
     it('adjustVolume clamps at the 100 boundary and skips setVolume entirely when the delta is a no-op', async () => {
-        const deviceA: FakeDevice = { Host: 'A', Name: 'A' };
-        const deviceB: FakeDevice = { Host: 'B', Name: 'B', Coordinator: deviceA };
+        const deviceA: FakeDevice = fakeDevice({ Host: 'A', Name: 'A' });
+        const deviceB: FakeDevice = fakeDevice({ Host: 'B', Name: 'B', Coordinator: deviceA });
         vi.mocked(safeDevices).mockReturnValue([deviceA, deviceB] as never);
 
         const group = new SonosGroupController('A');
@@ -191,8 +206,8 @@ describe('SonosGroupController', () => {
     });
 
     it('only relays the ANCHOR member\'s reachability, and a late registration gets the current state immediately', async () => {
-        const deviceA: FakeDevice = { Host: 'A', Name: 'A' };
-        const deviceB: FakeDevice = { Host: 'B', Name: 'B', Coordinator: deviceA };
+        const deviceA: FakeDevice = fakeDevice({ Host: 'A', Name: 'A' });
+        const deviceB: FakeDevice = fakeDevice({ Host: 'B', Name: 'B', Coordinator: deviceA });
         vi.mocked(safeDevices).mockReturnValue([deviceA, deviceB] as never);
 
         const group = new SonosGroupController('A');
@@ -209,5 +224,55 @@ describe('SonosGroupController', () => {
         const lateSpy = vi.fn();
         group.registerReachabilityCallback('late-listener', lateSpy);
         expect(lateSpy).toHaveBeenCalledWith(false);
+    });
+
+    it('excludes an invisible stereo-pair satellite from group membership and from the "+N" name count', async () => {
+        const deviceA: FakeDevice = fakeDevice({ Host: 'A', Name: 'Kitchen' }); // visible primary, the configured anchor
+        const deviceASat: FakeDevice = fakeDevice({ Host: 'A-sat', Name: 'Kitchen', Coordinator: deviceA }); // invisible bonded satellite
+        const deviceB: FakeDevice = fakeDevice({ Host: 'B', Name: 'Living Room', Coordinator: deviceA }); // a genuinely separate room
+        vi.mocked(safeDevices).mockReturnValue([deviceA, deviceASat, deviceB] as never);
+        vi.mocked(isInvisibleSatellite).mockImplementation((host: string) => host === 'A-sat');
+
+        const group = new SonosGroupController('A');
+        await group.initialize();
+
+        // Only the visible primary and the genuinely separate room get their own controller —
+        // the invisible satellite never does (no wasted connection, no double-counted volume).
+        expect(controllersByHost.has('A')).toBe(true);
+        expect(controllersByHost.has('B')).toBe(true);
+        expect(controllersByHost.has('A-sat')).toBe(false);
+
+        // "Kitchen + 1" (one OTHER room) — NOT "Kitchen + 2", which the satellite would cause if
+        // it were counted as a member alongside the real second room.
+        expect(group.getGroupName()).toBe('Kitchen + 1');
+    });
+
+    it('does not append "+1" for a standalone bonded stereo pair with no other room in the group', async () => {
+        const deviceA: FakeDevice = fakeDevice({ Host: 'A', Name: 'Bedroom' });
+        const deviceASat: FakeDevice = fakeDevice({ Host: 'A-sat', Name: 'Bedroom', Coordinator: deviceA });
+        vi.mocked(safeDevices).mockReturnValue([deviceA, deviceASat] as never);
+        vi.mocked(isInvisibleSatellite).mockImplementation((host: string) => host === 'A-sat');
+
+        const group = new SonosGroupController('A');
+        await group.initialize();
+
+        // Without the filter this would read "Bedroom + 1" purely because of its own hidden
+        // second unit, even though it isn't grouped with any other room at all.
+        expect(group.getGroupName()).toBe('Bedroom');
+    });
+
+    it('keeps the configured anchor as a member even if it is itself flagged invisible (a pre-existing misconfiguration from before the device dropdown filtered these out)', async () => {
+        const deviceA: FakeDevice = fakeDevice({ Host: 'A', Name: 'Kitchen' });
+        const deviceASat: FakeDevice = fakeDevice({ Host: 'A-sat', Name: 'Kitchen', Coordinator: deviceA });
+        vi.mocked(safeDevices).mockReturnValue([deviceA, deviceASat] as never);
+        vi.mocked(isInvisibleSatellite).mockImplementation((host: string) => host === 'A-sat');
+
+        // This tile's own anchorIp happens to be the invisible satellite's host.
+        const group = new SonosGroupController('A-sat');
+        await group.initialize();
+
+        // Must not be silently dropped just because it's flagged invisible — that would break
+        // this tile's group volume control entirely, far worse than an inflated name count.
+        expect(controllersByHost.has('A-sat')).toBe(true);
     });
 });

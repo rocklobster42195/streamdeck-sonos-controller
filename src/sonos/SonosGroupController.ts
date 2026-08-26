@@ -1,5 +1,6 @@
 import streamDeck from "@elgato/streamdeck";
-import { safeDevices, discoveryPromise } from "./sonos-discovery";
+import { SonosDevice, SonosEvents } from "@svrooij/sonos";
+import { safeDevices, discoveryPromise, isInvisibleSatellite } from "./sonos-discovery";
 import { sonosDeviceManager } from "./SonosDeviceManager";
 import { SonosDeviceController } from "./SonosDeviceController";
 import { VolumeInfo } from "./SonosTypes";
@@ -74,15 +75,46 @@ export class SonosGroupController {
   // disappearance is what should read as "this tile's speaker is off". Other members dropping out
   // just degrades gracefully (their setVolume calls fail individually and are logged).
   private reachabilityCallbacks: Map<string, (reachable: boolean) => void> = new Map();
+  private displayNameCallbacks: Map<string, (name: string) => void> = new Map();
 
   private topologyTimer?: NodeJS.Timeout;
   private isInitialized = false;
+
+  // The manager-owned SonosDevice for the anchor (NOT SonosDeviceController.sonosDevice, which is
+  // a bare `new SonosDevice(ip)` that never gets topology fields populated — see resolveCoordinator's
+  // comment). Its `.Events` emitter is fed by the manager's own GENA subscription to household
+  // zone-group topology, so listening on it gives near-instant notice of a group/name change
+  // instead of waiting for the next TOPOLOGY_RECHECK_MS poll tick.
+  private anchorDevice: SonosDevice | undefined;
+  private readonly onAnchorTopologyEvent = (): void => { void this.refreshTopology(); };
 
   constructor(anchorIp: string) {
     this.anchorIp = anchorIp;
   }
 
+  private subscribeAnchorTopologyEvents(device: SonosDevice): void {
+    if (this.anchorDevice) return; // already subscribed
+    this.anchorDevice = device;
+    device.Events.on(SonosEvents.Coordinator, this.onAnchorTopologyEvent);
+    device.Events.on(SonosEvents.GroupName, this.onAnchorTopologyEvent);
+    device.Events.on(SonosEvents.GroupId, this.onAnchorTopologyEvent);
+  }
+
   private get callbackId(): string { return `group-${this.anchorIp}`; }
+
+  // Sonos's own "+N" group-name suffix (see resolveCoordinator) and this class's own membership
+  // resolution (resolveMembers) must both ignore a bonded stereo/HT pair's invisible non-primary
+  // half — see isInvisibleSatellite's doc comment in sonos-discovery.ts. The configured anchor
+  // itself is always kept even if it happens to BE an invisible host (e.g. a tile configured
+  // before the device-dropdown filter existed, back when both halves looked identical) — silently
+  // dropping the one device this controller is supposed to be driving would be far worse than an
+  // occasionally-inflated count for that one pre-existing misconfiguration.
+  private visibleGroupMemberHosts(coordinatorHost: string): string[] {
+    return safeDevices()
+      .filter(d => (d.Coordinator ?? d).Host === coordinatorHost)
+      .filter(d => d.Host === this.anchorIp || !isInvisibleSatellite(d.Host))
+      .map(d => d.Host);
+  }
 
   // Delegates to the anchor member's own controller — see reachabilityCallbacks' doc comment on
   // why the anchor specifically is what this group's reachability tracks. Defaults to true before
@@ -103,6 +135,12 @@ export class SonosGroupController {
 
   public destroy(): void {
     if (this.topologyTimer) clearInterval(this.topologyTimer);
+    if (this.anchorDevice) {
+      this.anchorDevice.Events.removeListener(SonosEvents.Coordinator, this.onAnchorTopologyEvent);
+      this.anchorDevice.Events.removeListener(SonosEvents.GroupName, this.onAnchorTopologyEvent);
+      this.anchorDevice.Events.removeListener(SonosEvents.GroupId, this.onAnchorTopologyEvent);
+      this.anchorDevice = undefined;
+    }
     for (const [host, controller] of this.memberControllers) {
       controller.unregisterVolumeCallback(this.callbackId);
       controller.unregisterFadeStateCallback(this.callbackId);
@@ -117,6 +155,7 @@ export class SonosGroupController {
     this.volumeCallbacks.clear();
     this.fadeStateCallbacks.clear();
     this.reachabilityCallbacks.clear();
+    this.displayNameCallbacks.clear();
   }
 
   // Returns true if the coordinator changed (caller may want to log it).
@@ -124,8 +163,22 @@ export class SonosGroupController {
     const anchor = safeDevices().find(d => d.Host === this.anchorIp);
     if (!anchor) return false;
 
+    // Catches up a subscription that initialize() couldn't make yet (anchor not discovered at
+    // startup) — cheap no-op once already subscribed, see subscribeAnchorTopologyEvents.
+    this.subscribeAnchorTopologyEvents(anchor);
+
     const coordinator = anchor.Coordinator ?? anchor;
-    this.groupName = anchor.GroupName ?? coordinator.Name;
+    // Recomputed ourselves instead of trusting anchor.GroupName — the library's own "+N" suffix
+    // (ParseGroup in @svrooij/sonos's zone-group-topology.service.extension.js) counts EVERY
+    // ZoneGroupMember, including a bonded pair's invisible satellite, so a standalone
+    // stereo-paired room would otherwise permanently show e.g. "Küche + 1" even when it isn't
+    // actually grouped with anything else.
+    const memberCount = this.visibleGroupMemberHosts(coordinator.Host).length;
+    const newName = memberCount > 1 ? `${coordinator.Name} + ${memberCount - 1}` : coordinator.Name;
+    if (newName !== this.groupName) {
+      this.groupName = newName;
+      this.notifyDisplayNameChanged();
+    }
 
     const changed = this.coordinatorHost !== coordinator.Host;
     if (changed) this.coordinatorHost = coordinator.Host;
@@ -136,11 +189,7 @@ export class SonosGroupController {
   // coordinator host), releasing any that are no longer part of the group.
   private async resolveMembers(): Promise<void> {
     if (!this.coordinatorHost) return;
-    const currentHosts = new Set(
-      safeDevices()
-        .filter(d => (d.Coordinator ?? d).Host === this.coordinatorHost)
-        .map(d => d.Host)
-    );
+    const currentHosts = new Set(this.visibleGroupMemberHosts(this.coordinatorHost));
 
     for (const host of [...this.memberControllers.keys()]) {
       if (currentHosts.has(host)) continue;
@@ -185,15 +234,22 @@ export class SonosGroupController {
   }
 
   private startTopologyWatch(): void {
-    this.topologyTimer = setInterval(async () => {
-      const coordinatorChanged = this.resolveCoordinator();
-      await this.resolveMembers();
-      if (coordinatorChanged) {
-        streamDeck.logger.info(`SonosGroupController: coordinator for anchor ${this.anchorIp} is now ${this.coordinatorHost} ("${this.groupName}").`);
-      }
-      await this.refreshMuteState();
-      this.notifyVolumeChanged();
-    }, TOPOLOGY_RECHECK_MS);
+    this.topologyTimer = setInterval(() => void this.refreshTopology(), TOPOLOGY_RECHECK_MS);
+  }
+
+  // Re-resolves group membership/coordinator/name and re-announces the aggregate volume. Runs on
+  // the TOPOLOGY_RECHECK_MS fallback poll AND — the primary path — whenever the anchor's live
+  // Coordinator/GroupName/GroupId event fires (see onAnchorTopologyEvent). A real topology change
+  // can fire more than one of those events back to back; re-running this is cheap/idempotent
+  // (resolveMembers skips hosts already resolved), so no extra debouncing is needed.
+  private async refreshTopology(): Promise<void> {
+    const coordinatorChanged = this.resolveCoordinator();
+    await this.resolveMembers();
+    if (coordinatorChanged) {
+      streamDeck.logger.info(`SonosGroupController: coordinator for anchor ${this.anchorIp} is now ${this.coordinatorHost} ("${this.groupName}").`);
+    }
+    await this.refreshMuteState();
+    this.notifyVolumeChanged();
   }
 
   private async refreshMuteState(): Promise<void> {
@@ -206,6 +262,11 @@ export class SonosGroupController {
   private notifyVolumeChanged(): void {
     const info = this.aggregateVolume();
     this.volumeCallbacks.forEach(cb => cb(info));
+  }
+
+  private notifyDisplayNameChanged(): void {
+    const name = this.getGroupName();
+    this.displayNameCallbacks.forEach(cb => cb(name));
   }
 
   private aggregateVolume(): VolumeInfo {
@@ -333,4 +394,6 @@ export class SonosGroupController {
     if (!this.isReachable) callback(false);
   }
   unregisterReachabilityCallback(id: string): void { this.reachabilityCallbacks.delete(id); }
+  registerDisplayNameCallback(id: string, callback: (name: string) => void): void { this.displayNameCallbacks.set(id, callback); }
+  unregisterDisplayNameCallback(id: string): void { this.displayNameCallbacks.delete(id); }
 }

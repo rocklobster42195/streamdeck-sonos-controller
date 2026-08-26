@@ -7,7 +7,7 @@
 // PI — exactly what the inline versions did.
 
 import streamDeck from "@elgato/streamdeck";
-import { safeDevices, discoveryPromise, onDevicesChanged } from "../sonos/sonos-discovery";
+import { safeDevices, discoveryPromise, onDevicesChanged, isInvisibleSatellite } from "../sonos/sonos-discovery";
 import { effectRegistry } from "../effects/registry.generated";
 import { piT } from "../utils/pi-i18n";
 
@@ -23,17 +23,19 @@ export function sendOptions(event: string, items: PiOptionItem[]): void {
  *  `currentIp`, when given, is the action instance's OWN currently-configured deviceIp — pass it
  *  whenever a specific action instance is asking (i.e. every real onSendToPlugin 'get-devices'
  *  case), not from the generic onDevicesChanged re-push below, which has no single instance to
- *  ask. If that device isn't in the current discovery list (e.g. a battery speaker asleep or off
- *  its charger), it's kept as its own option instead of silently dropped — confirmed on hardware
- *  (2026-07-18): sdpi-select's bound value falling out of its own <option> list makes it reset to
- *  the blank placeholder and write THAT back through the settings-sync channel, silently wiping a
- *  still-valid deviceIp just because the device happened to be temporarily unreachable at the
- *  exact moment the PI was opened. */
+ *  ask. If that device isn't in the current (filtered) list (e.g. a battery speaker asleep or off
+ *  its charger, or one already pointed at an invisible satellite from before this filter existed),
+ *  it's kept as its own option instead of silently dropped — confirmed on hardware (2026-07-18):
+ *  sdpi-select's bound value falling out of its own <option> list makes it reset to the blank
+ *  placeholder and write THAT back through the settings-sync channel, silently wiping a
+ *  still-valid deviceIp just because the device happened to be temporarily unreachable (or, now,
+ *  filtered) at the exact moment the PI was opened. */
 export async function sendDeviceList(placeholderKey = '-- Choose device --', currentIp?: string): Promise<void> {
     await discoveryPromise;
     const known = safeDevices();
-    const items: PiOptionItem[] = known.map((d) => ({ label: d.Name, value: d.Host }));
-    if (currentIp && !known.some((d) => d.Host === currentIp)) {
+    const visible = known.filter((d) => !isInvisibleSatellite(d.Host));
+    const items: PiOptionItem[] = visible.map((d) => ({ label: d.Name, value: d.Host }));
+    if (currentIp && !visible.some((d) => d.Host === currentIp)) {
         items.unshift({ label: `${currentIp} ${piT('(offline)')}`, value: currentIp });
     }
     sendOptions('get-devices', [{ label: piT(placeholderKey), value: '' }, ...items]);
@@ -45,13 +47,24 @@ export async function sendDeviceList(placeholderKey = '-- Choose device --', cur
  *  silently reset). */
 export async function sendGroupList(currentIp?: string): Promise<void> {
     await discoveryPromise;
+    const known = safeDevices();
     const seen = new Set<string>();
     const items: PiOptionItem[] = [];
-    for (const d of safeDevices()) {
+    for (const d of known) {
         const coordinator = d.Coordinator ?? d;
         if (seen.has(coordinator.Host)) continue;
         seen.add(coordinator.Host);
-        items.push({ label: d.GroupName ?? coordinator.Name, value: coordinator.Host });
+        // Recomputed ourselves rather than trusting d.GroupName — the library's own "+N" suffix
+        // counts EVERY zone member, including a bonded stereo/HT pair's invisible satellite, so a
+        // group containing one or more bonded rooms would otherwise show an inflated count (e.g.
+        // "Herrenzimmer + 8" instead of "+6" for a 7-room group with 2 bonded pairs). Same fix as
+        // SonosGroupController.resolveCoordinator()'s dial-face group name.
+        const memberCount = known
+            .filter((m) => (m.Coordinator ?? m).Host === coordinator.Host)
+            .filter((m) => !isInvisibleSatellite(m.Host))
+            .length;
+        const label = memberCount > 1 ? `${coordinator.Name} + ${memberCount - 1}` : coordinator.Name;
+        items.push({ label, value: coordinator.Host });
     }
     if (currentIp && !seen.has(currentIp)) {
         items.unshift({ label: `${currentIp} ${piT('(offline)')}`, value: currentIp });
