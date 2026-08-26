@@ -2,6 +2,13 @@
 
 ---
 
+## [0.4.7] — 2026-08-26
+
+- docs: link the Elgato Marketplace listing in the README
+- fix: GroupVolumeDial group display — live updates and correct counts around bonded stereo pairs
+
+---
+
 ## [0.4.6] — 2026-08-18
 
 - **Fixed a crash on startup** affecting the packaged plugin on some systems — a native dependency was never actually being included in the shipped package, so the plugin could fail to load at all depending on the machine. If v0.4.5 didn't run for you, this fixes it.
