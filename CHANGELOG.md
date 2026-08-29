@@ -2,6 +2,12 @@
 
 ---
 
+## [0.4.9] — 2026-08-29
+
+- Renamed to "SONOS Controller" — no functional changes from 0.4.8.
+
+---
+
 ## [0.4.8] — 2026-08-29
 
 - **Fixed the plugin latching onto the wrong Sonos system.** If your own speakers were briefly unreachable at startup (e.g. a coordinator asleep) and another Sonos household was visible on the network — over a VPN, a guest network, at a friend's place — the plugin could adopt *that* system instead: wrong favourites in the Favorites Dial, and the Group Volume Dial coming up blank. It now locks onto your household on first run and won't switch to a foreign one. To deliberately move it to a different system, enter a speaker IP from that system in a dial's manual-IP field.
