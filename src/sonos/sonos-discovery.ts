@@ -1,12 +1,36 @@
 import streamDeck from "@elgato/streamdeck";
-import { SonosManager, SonosEventListener, SonosDevice } from "@svrooij/sonos";
+import { SonosManager, SonosEventListener, SonosDevice, SonosDeviceDiscovery } from "@svrooij/sonos";
 import { sonosFavoritesCache } from "./SonosFavoritesCache";
 import { withTimeout } from "../utils/with-timeout";
 
 // A cached IP that's gone stale (device replaced, moved networks) can otherwise hang for the
 // OS-level TCP connect timeout instead of failing fast — same reasoning as every other
 // withTimeout use in this codebase.
-const CACHED_IP_TIMEOUT_MS = 6000;
+//
+// 10s (was 6s) + CACHED_IP_ATTEMPTS tries: the cached IP is the single strongest signal for
+// "which Sonos household is really mine", and a 6s one-shot lost that race on hardware
+// (2026-08-28) when the configured coordinator was briefly asleep at plugin start — discovery
+// fell straight through to SSDP and adopted a *foreign* household visible over a VPN (a friend's
+// network the user was on). Giving the cached IP a longer, retried window before the SSDP
+// fallback makes that scenario recover on its own. Worst case when the cached device really is
+// gone (moved to a brand-new network, first-ever run): ~21s of the first discoveryPromise spent
+// here before SSDP — deemed acceptable against the same ~30s worst case DISCOVERY_RETRY_MS
+// already tolerates, and the household check (see resolveHouseholdHost) is the real backstop.
+const CACHED_IP_TIMEOUT_MS = 10_000;
+const CACHED_IP_ATTEMPTS = 2;
+const CACHED_IP_RETRY_GAP_MS = 1_000;
+
+// Per-responder GetHouseholdID probe during the SSDP fallback — these IPs just answered an
+// M-SEARCH so they're reachable now; 4s is plenty and keeps a network with many players from
+// dragging the whole probe loop out.
+const HOUSEHOLD_PROBE_MS = 4_000;
+
+// SSDP fallback (only runs when the cached IP didn't work).
+// Search() enumerates ALL responders so a pinned household can be picked out even if a foreign one
+// answers first — but it always waits the full window, so keep it short. SearchOne() (unpinned
+// case) resolves the moment any device answers; its value is just an upper bound.
+const SSDP_SEARCH_SECONDS = 8;
+const SSDP_SEARCH_ONE_SECONDS = 10;
 
 export const sonosManager = new SonosManager();
 
@@ -114,6 +138,120 @@ export function onDevicesChanged(cb: () => void): void {
 interface DiscoveryGlobalSettings {
     [key: string]: string | undefined;
     lastKnownDeviceIp?: string;
+    // The Sonos HouseholdID (e.g. "Sonos_xxxxxxxxxxxxxxxx") this plugin is bound to. Set from the
+    // first device of the first successful discovery and then enforced on every subsequent one —
+    // if SSDP later surfaces only a *different* household (a foreign system reachable over a VPN
+    // or guest network — confirmed root cause 2026-08-28: favorites + GroupVolumeDial came up
+    // wrong because a friend's Sonos won the SSDP race while the user's own coordinator was
+    // briefly asleep), that discovery is rejected and retried rather than adopted.
+    //
+    // Reset: entering a reachable IP from a different household into any PI's manual-IP field
+    // (which writes lastKnownDeviceIp) is treated as an explicit "switch systems" — the pin is
+    // cleared and re-derived from that device. A pinned household that is merely unreachable for
+    // a while (power cut, router swap, user travelling) is never auto-cleared; only that manual
+    // action clears it.
+    householdId?: string;
+}
+
+// setGlobalSettings replaces the whole payload, so a bare setGlobalSettings({ lastKnownDeviceIp })
+// would wipe householdId (and vice-versa). Every write goes through here: read current, merge the
+// patch, write back. `undefined` values in the patch delete that key.
+async function patchGlobalSettings(patch: Partial<DiscoveryGlobalSettings>): Promise<void> {
+    let current: DiscoveryGlobalSettings = {};
+    try {
+        current = await streamDeck.settings.getGlobalSettings<DiscoveryGlobalSettings>();
+    } catch { /* first write of the session, or read failed — start from empty */ }
+    const merged: DiscoveryGlobalSettings = { ...current, ...patch };
+    for (const k of Object.keys(merged)) {
+        if (merged[k] === undefined) delete merged[k];
+    }
+    await streamDeck.settings.setGlobalSettings<DiscoveryGlobalSettings>(merged);
+}
+
+async function getPinnedHouseholdId(): Promise<string | undefined> {
+    try {
+        return (await streamDeck.settings.getGlobalSettings<DiscoveryGlobalSettings>()).householdId;
+    } catch {
+        return undefined;
+    }
+}
+
+// A plain SOAP GetHouseholdID against one IP, bounded like every other startup call. Returns
+// undefined on any failure — callers treat that as "couldn't determine", never as a mismatch, so
+// a transient hiccup can't lock the plugin out of its own system.
+async function readHouseholdId(host: string, timeoutMs = HOUSEHOLD_PROBE_MS): Promise<string | undefined> {
+    try {
+        const res = await withTimeout(
+            new SonosDevice(host).DevicePropertiesService.GetHouseholdID(),
+            timeoutMs,
+            `GetHouseholdID (${host})`,
+        );
+        return res?.CurrentHouseholdID || undefined;
+    } catch (e) {
+        streamDeck.logger.debug(`Could not read HouseholdID from ${host}`, e);
+        return undefined;
+    }
+}
+
+// Picks an IP that belongs to the pinned Sonos household (or, when nothing is pinned yet, the
+// first Sonos found) — WITHOUT letting sonosManager touch anything until the household is vetted.
+// sonosManager has no way to un-adopt a household once InitializeFrom* has run, so the check has
+// to happen before that, not after. Throws when nothing suitable is reachable → runDiscovery
+// retries on its normal cadence.
+async function resolveHouseholdHost(): Promise<string> {
+    const pinned = await getPinnedHouseholdId();
+
+    // 1. Cached / manual IP first — bypasses SSDP entirely (VPN or Windows "Public" profile
+    //    silently dropping inbound multicast; see noteReachableDeviceIp's comment below).
+    let cachedIp: string | undefined;
+    try {
+        cachedIp = (await streamDeck.settings.getGlobalSettings<DiscoveryGlobalSettings>()).lastKnownDeviceIp;
+    } catch { /* fall through to SSDP */ }
+
+    if (cachedIp) {
+        for (let attempt = 1; attempt <= CACHED_IP_ATTEMPTS; attempt++) {
+            const hh = await readHouseholdId(cachedIp, CACHED_IP_TIMEOUT_MS);
+            if (hh && (!pinned || hh === pinned)) return cachedIp;
+            if (hh && pinned && hh !== pinned) {
+                streamDeck.logger.warn(`Cached/manual IP ${cachedIp} is in Sonos household ${hh}, not the pinned ${pinned} — ignoring it.`);
+                break; // a wrong-household cached IP won't become right by retrying
+            }
+            // hh === undefined: device unreachable right now (briefly asleep on hardware
+            // 2026-08-28). Retry before giving up on the strongest household signal we have.
+            streamDeck.logger.warn(`Cached/manual IP ${cachedIp} unreachable — attempt ${attempt}/${CACHED_IP_ATTEMPTS}.`);
+            if (attempt < CACHED_IP_ATTEMPTS) await new Promise((r) => setTimeout(r, CACHED_IP_RETRY_GAP_MS));
+        }
+    }
+
+    // 2. SSDP fallback.
+    //    Unpinned: adopt whoever answers first (SearchOne — fast, matches the old
+    //    InitializeWithDiscovery behaviour so a first-ever run's PI dropdowns don't wait).
+    //    Pinned: enumerate ALL responders (Search) and filter by household, so a foreign system
+    //    that replies faster can't shadow the pinned one.
+    if (!pinned) {
+        return (await new SonosDeviceDiscovery().SearchOne(SSDP_SEARCH_ONE_SECONDS)).host;
+    }
+    const players = await new SonosDeviceDiscovery().Search(SSDP_SEARCH_SECONDS);
+    for (const p of players) {
+        if (await readHouseholdId(p.host) === pinned) return p.host;
+    }
+    throw new Error(
+        `SSDP found ${players.length} player(s) but none in the pinned household ${pinned} — ` +
+        `retrying in ${DISCOVERY_RETRY_MS / 1000}s (own system likely off/asleep, or only a foreign one is reachable).`,
+    );
+}
+
+// After a successful init: if no household is pinned yet, pin whatever we just connected to. When
+// one IS pinned, resolveHouseholdHost already guaranteed the match, so there's nothing to do.
+async function pinHouseholdIfUnpinned(): Promise<void> {
+    if (await getPinnedHouseholdId()) return;
+    const hh = await readHouseholdId(sonosManager.Devices[0].Host, CACHED_IP_TIMEOUT_MS);
+    if (hh) {
+        await patchGlobalSettings({ householdId: hh });
+        streamDeck.logger.info(`Pinned Sonos household to ${hh} (${sonosManager.Devices[0].Name}).`);
+    } else {
+        streamDeck.logger.warn('Could not read HouseholdID after first discovery — will pin on a later run.');
+    }
 }
 
 // SSDP discovery depends on UDP multicast/broadcast responses actually reaching this process —
@@ -138,43 +276,21 @@ interface DiscoveryGlobalSettings {
 // InitializeFromDevice and recovers immediately, with no restart and no OS-level network fix
 // needed.
 export function noteReachableDeviceIp(ip: string): void {
-    streamDeck.settings.setGlobalSettings<DiscoveryGlobalSettings>({ lastKnownDeviceIp: ip })
+    patchGlobalSettings({ lastKnownDeviceIp: ip })
         .catch((e) => streamDeck.logger.debug('Failed to cache reachable device IP', e));
-}
-
-async function tryFromCachedIp(): Promise<boolean> {
-    let cachedIp: string | undefined;
-    try {
-        const settings = await streamDeck.settings.getGlobalSettings<DiscoveryGlobalSettings>();
-        cachedIp = settings.lastKnownDeviceIp;
-    } catch { /* ignore — fall through to SSDP */ }
-    if (!cachedIp) return false;
-
-    try {
-        await withTimeout(sonosManager.InitializeFromDevice(cachedIp), CACHED_IP_TIMEOUT_MS, `InitializeFromDevice (${cachedIp})`);
-        return sonosManager.Devices.length > 0;
-    } catch (err) {
-        // At "info" level (this plugin's configured floor, see plugin.ts) so it actually lands in
-        // the log file — unlike noteReachableDeviceIp's own debug-level catch just above, this is
-        // the one place that would otherwise silently swallow WHY a cached/manual IP didn't work
-        // (wrong IP, device unreachable at the HTTP level despite answering ping, timed out, ...),
-        // leaving only the generic "No players found" retry message with no detail on the actual
-        // cause. Confirmed needed 2026-07-19: a user on a VLAN could ping their speaker but the
-        // manual-IP field still never recovered discovery, and there was nothing in the log to
-        // say why.
-        streamDeck.logger.warn(`Cached/manual IP (${cachedIp}) did not work:`, err);
-        return false;
-    }
 }
 
 async function runDiscovery(): Promise<void> {
     if (discoveryInFlight) return;
     discoveryInFlight = true;
     try {
-        if (!await tryFromCachedIp()) {
-            await sonosManager.InitializeWithDiscovery();
-        }
+        // Resolve a vetted host (cached IP, else SSDP-enumerate + household-filter) BEFORE handing
+        // it to sonosManager — which can't un-adopt a household once it has one.
+        const host = await resolveHouseholdHost();
+        await withTimeout(sonosManager.InitializeFromDevice(host), CACHED_IP_TIMEOUT_MS, `InitializeFromDevice (${host})`);
         if (sonosManager.Devices.length === 0) throw new Error('Discovery returned no players');
+
+        await pinHouseholdIfUnpinned();
 
         const listenerStatus = SonosEventListener.DefaultInstance.GetStatus();
         if (listenerStatus) {
@@ -195,6 +311,28 @@ async function runDiscovery(): Promise<void> {
     } finally {
         discoveryInFlight = false;
     }
+}
+
+// A manual IP typed into a PI's manual-IP field while a system is ALREADY up is an explicit
+// "switch to this system": if that IP is reachable and sits in a different Sonos household than
+// the pinned one, clear the pin and re-run discovery (which re-pins from this IP via the cached-IP
+// path). Same-household re-entries are ignored so there's no needless teardown. This is the only
+// path that clears a household pin — an unreachable-for-a-while pinned system is never auto-reset.
+async function maybeSwitchHousehold(ip: string): Promise<void> {
+    if (discoveryInFlight) return;
+    const pinned = await getPinnedHouseholdId();
+    if (!pinned) return; // nothing pinned; a running-but-unpinned session pins on its next run
+
+    const actual = await readHouseholdId(ip);
+    if (!actual || actual === pinned) return;
+
+    streamDeck.logger.info(
+        `Manual IP ${ip} is in Sonos household ${actual}, not the pinned ${pinned} — treating as an ` +
+        `explicit system switch: clearing the pin and re-initializing.`,
+    );
+    await patchGlobalSettings({ householdId: undefined, lastKnownDeviceIp: ip });
+    if (pendingRetryTimeout) clearTimeout(pendingRetryTimeout);
+    await runDiscovery();
 }
 
 // Lets a user recover from a fully SSDP-blocked network (e.g. Sonos speakers isolated on a
@@ -224,9 +362,14 @@ streamDeck.settings.onDidReceiveGlobalSettings<DiscoveryGlobalSettings>((ev) => 
     const ip = ev.settings.lastKnownDeviceIp;
     const changed = ip !== lastSeenGlobalIp;
     lastSeenGlobalIp = ip;
-    if (changed && ip && safeDevices().length === 0) {
+    if (!changed || !ip) return;
+    if (safeDevices().length === 0) {
         if (pendingRetryTimeout) clearTimeout(pendingRetryTimeout);
         void runDiscovery();
+    } else {
+        // Already have a working system — only re-initialize if this IP is a deliberate switch to
+        // a different household (see maybeSwitchHousehold); a same-household entry is a no-op.
+        void maybeSwitchHousehold(ip);
     }
 });
 

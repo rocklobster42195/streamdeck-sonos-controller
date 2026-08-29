@@ -38,6 +38,11 @@ class SonosFavoritesCache {
      * @param device A Sonos device to be used for future polling.
      */
     public async start(device: SonosDevice): Promise<void> {
+        // Idempotent: discovery calls this on every success, and a household switch (manual IP
+        // pointing at a different system) re-runs discovery mid-session. Without dropping the old
+        // subscription first, favoritesChangedHandler stacks once per re-discovery — each Favorites
+        // event then triggers N redundant refreshes.
+        this.stop();
         this.deviceForFetching = device;
 
         // Subscribe to favorites changes.
