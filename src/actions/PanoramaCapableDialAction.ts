@@ -14,9 +14,11 @@ import {
     setContextEffectSettings,
     registerPanoramaRenderCallback,
     unregisterPanoramaRenderCallback,
+    getPanoramaSliceOffset,
+    renderPanoramaEffectSlice,
 } from "../effects/PanoramaOrchestrator";
 import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
-import { buildUnreachableDialSvg } from "../utils/icons";
+import { buildUnreachableDialSvg, buildUnreachableCenterFragment } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import streamDeck from "@elgato/streamdeck";
 
@@ -152,21 +154,45 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
                 this.unreachableContexts.delete(context);
                 void this.onInstanceUpdate(ev);
             } else {
-                this.unreachableContexts.add(context);
                 void this.renderUnreachableDial(context, label);
             }
         });
         return controller.isReachable;
     }
 
-    // Full-canvas "configured but unreachable" placeholder (dark speaker-off glyph — see
-    // buildUnreachableDialSvg) for the catch path of a subclass's initial-state setup: a device
-    // that doesn't answer used to leave the dial blank or stuck on the unconfigured cog, which
-    // reads as "not set up yet" instead of "speaker offline".
+    // "Configured but unreachable" placeholder for the catch path of a subclass's initial-state
+    // setup: a device that doesn't answer used to leave the dial blank or stuck on the
+    // unconfigured cog, which reads as "not set up yet" instead of "speaker offline". Also called
+    // directly from a subclass's own setup catch block (a device that's already down at the very
+    // first connect attempt never starts SonosDeviceController's poll loop — see that class's
+    // initialize() — so the registerReachabilityCallback transition above never fires for it; this
+    // is the only signal for that case). Marks `context` in unreachableContexts either way, so the
+    // panorama tick's per-context render callback (registerPanoramaRenderCallback, running
+    // independently of why we got here) doesn't immediately repaint over this placeholder.
+    //
+    // If a panorama effect is currently running for this context, keeps it visible and drops just
+    // the centered glyph+label on top (buildUnreachableCenterFragment) instead of a full-canvas
+    // replace — the effect is decorative background art, not live device state, so there's nothing
+    // misleading about leaving it animating; only the actual volume/track/queue content underneath
+    // would be stale, and that's exactly what the overlay hides.
     protected async renderUnreachableDial(context: string, label: string): Promise<void> {
+        this.unreachableContexts.add(context);
         const sdAction = streamDeck.actions.getActionById(context);
         if (!sdAction || !sdAction.isDial()) return;
-        const svg = buildUnreachableDialSvg(label);
+
+        const rawKey = panoramaContextGroupKey.get(context);
+        const panoramaKey = isPanoramaEffectActive(rawKey) ? rawKey : undefined;
+        const svg = panoramaKey
+            ? [
+                '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+                '<defs><clipPath id="c"><rect width="200" height="100"/></clipPath></defs>',
+                '<rect width="200" height="100" fill="#000"/>',
+                `<g clip-path="url(#c)">${renderPanoramaEffectSlice(panoramaKey, getPanoramaSliceOffset(context))}</g>`,
+                buildUnreachableCenterFragment(label),
+                '</svg>',
+            ].join('')
+            : buildUnreachableDialSvg(label);
+
         await sdAction.setFeedback({
             'full-canvas': `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
             'title': '',

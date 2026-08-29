@@ -261,11 +261,28 @@ export class SonosDeviceController {
   // --- Init & Destroy ---
   public async initialize(): Promise<void> {
     if (this.isInitialized) return;
-    await this.updateInitialState();
-    // This device just answered directly — proof it's reachable independent of whatever state
-    // sonosManager/SSDP discovery is in. See noteReachableDeviceIp's own doc comment for why this
-    // breaks an otherwise-permanent deadlock when SSDP never succeeds even once.
-    noteReachableDeviceIp(this.deviceIp);
+    try {
+      await this.updateInitialState();
+      // This device just answered directly — proof it's reachable independent of whatever state
+      // sonosManager/SSDP discovery is in. See noteReachableDeviceIp's own doc comment for why this
+      // breaks an otherwise-permanent deadlock when SSDP never succeeds even once.
+      noteReachableDeviceIp(this.deviceIp);
+    } catch (e) {
+      // The device was already down at the very first connect attempt. Without this catch,
+      // initialize() rejects — SonosDeviceManager.getController() never pools a controller whose
+      // initialize() rejected, so every caller for this IP creates and discards its own throwaway
+      // instance instead of sharing one, and none of them ever reach startPolling() below. That
+      // leaves `reachable` stuck at its default `true` forever: the poll loop that's supposed to
+      // flip it (notePollFailure/notePollSuccess) never runs, so no caller's
+      // registerReachabilityCallback ever sees a real transition — only whichever ad-hoc fallback
+      // that specific caller's own setup catch happens to have, independently, with no shared
+      // state and no path back to normal once the device returns. Declaring it unreachable now
+      // (mirroring notePollFailure's flip, but skipping straight there since we already know)
+      // lets initialize() still complete normally below, so this controller gets pooled and
+      // recovers the same way any mid-session drop does.
+      streamDeck.logger.warn(`[${this.deviceIp}] Initial connection failed — starting unreachable`, e);
+      this.reachable = false;
+    }
     await this.initializeSubscriptions();
     await this.syncCoordinatorSubscription();
     // Always poll — catches missed UPnP events (e.g. lost PLAYING after TRANSITIONING).

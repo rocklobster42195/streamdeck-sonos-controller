@@ -12,6 +12,7 @@ import streamDeck, {
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
+import { buildUnreachableCenterFragment } from "../utils/icons";
 import { escapeXml } from "../utils/xml";
 import { panoramaOrchestrator, panoramaColumns, panoramaDeviceIds, panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, safeEffectCall, setContextEffectSettings, DISPLAY_W, DISPLAY_H } from "../effects/PanoramaOrchestrator";
 import { effectRegistry } from "../effects/registry.generated";
@@ -147,6 +148,11 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
     // it does NOT change when a dial's chosen effect changes in place. Without this, syncGroups
     // has no way to tell "same columns, different effect" apart from "nothing changed at all".
     private groupEffectId = new Map<string, string>();
+    // Whether the group's shared source device (registerGroupDevice) currently answers. Absent
+    // (or true) = reachable; only set to false while down. Drives the small unreachable badge in
+    // renderDial — unlike the other dials, this action has no per-tile placeholder (see
+    // registerGroupDevice's reachability callback doc comment), just this corner overlay.
+    private groupReachable = new Map<string, boolean>();
 
     private settingsMap = new Map<string, ParticlesSettings>();
     // Alias to module-level map so all code using this.contextGroupKey still works.
@@ -266,6 +272,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
         this.groupTrackInfo.delete(key);
         this.groupTextFade.delete(key);
         this.groupShowTrackInfo.delete(key);
+        this.groupReachable.delete(key);
     }
 
     // Gathers every effect-relevant field from the group's members into one settings bag. Passed
@@ -430,6 +437,7 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
             existing.controller.unregisterReachabilityCallback(`pano-reachability-${key}`);
             sonosDeviceManager.releaseController(existing.ip);
             this.groupControllers.delete(key);
+            this.groupReachable.delete(key);
         }
 
         try {
@@ -446,9 +454,13 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
             controller.registerReachabilityCallback(`pano-reachability-${key}`, (reachable) => {
                 if (reachable) {
                     streamDeck.logger.info(`Panorama Particles [${key}]: ${ip} reachable again.`);
+                    this.groupReachable.delete(key);
                 } else {
                     streamDeck.logger.warn(`Panorama Particles [${key}]: ${ip} unreachable — track info/color will go stale until it recovers.`);
+                    this.groupReachable.set(key, false);
                 }
+                const g = this.groupContexts.get(key);
+                if (g) for (const ctx of g) this.queueRender(ctx);
             });
 
             // Fetch current track immediately so color + title are correct after a page swipe.
@@ -715,7 +727,12 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
             ? [...(this.groupContexts.get(key) ?? [context])].map(c => panoramaColumns.get(c) ?? 0)
             : [myCol];
         const maxCol = Math.max(...ownCols);
-        const showTrackInfo = !!key && (this.groupShowTrackInfo.get(key) ?? false);
+        const unreachable = !!key && this.groupReachable.get(key) === false;
+        // Suppress title/artist while unreachable — that text is only ever as fresh as the last
+        // successful poll of the group's source device (see registerGroupDevice's reachability
+        // callback doc comment), so it'd otherwise sit there frozen and misleadingly "current"
+        // right next to the icon that's specifically saying "this info may be stale".
+        const showTrackInfo = !unreachable && !!key && (this.groupShowTrackInfo.get(key) ?? false);
         const trackInfo = showTrackInfo ? (this.groupTrackInfo.get(key!) ?? null) : null;
 
         // Text anchor at x=196 of the rightmost own-tile display, expressed in this display's
@@ -758,6 +775,11 @@ export class PanoramaEffectsDial extends SingletonAction<ParticlesSettings> {
             this.renderFadeableText(textAnchorX, 72, 20, '#fff', '500', titleText, oldTitleText, fade?.fadeOpacity),
             artistPillW > 0 ? `<rect x="${textAnchorX - artistPillW - 4}" y="77" width="${artistPillW + 8}" height="20" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : '',
             this.renderFadeableText(textAnchorX, 93, 15, '#aaa', undefined, artistText, oldArtistText, fade?.fadeOpacity),
+            // Centered status glyph, outside the effect's own clip-path so it always stays on top —
+            // this dial has no full-canvas placeholder (see registerGroupDevice's reachability
+            // callback doc comment), the effect keeps animating underneath, same treatment as every
+            // other panorama-capable dial's renderUnreachableDial (see PanoramaCapableDialAction).
+            unreachable ? buildUnreachableCenterFragment(piT('Panorama').toUpperCase()) : '',
             '</svg>',
         ].join('');
 

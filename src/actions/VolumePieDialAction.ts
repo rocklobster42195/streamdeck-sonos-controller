@@ -11,6 +11,7 @@ import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSl
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
 import { escapeXml } from "../utils/xml";
+import { piT } from "../utils/pi-i18n";
 
 // Everything Volume Dial and Group Volume Dial both need from their controller — structural, so
 // SonosDeviceController and SonosGroupController each satisfy it without a common base class.
@@ -66,7 +67,11 @@ export abstract class VolumePieDialAction<
     protected static readonly FEEDBACK_SUPPRESS_MS = 800;
 
     /** Label on the unconfigured/unreachable placeholder ('VOLUME' / 'GROUP'). */
-    protected abstract readonly dialLabel: string;
+    // Untranslated Localization key (e.g. 'Volume', 'Group') — piT() resolves it fresh on every
+    // access via the dialLabel getter below, not once at class-field-init time, since
+    // streamDeck.info.application.language may not be populated yet that early.
+    protected abstract readonly dialLabelKey: string;
+    protected get dialLabel(): string { return piT(this.dialLabelKey).toUpperCase(); }
     /** The configured target id (deviceIp / groupIp), or undefined when not yet configured. */
     protected abstract configuredId(settings: TSettings): string | undefined;
     protected abstract acquireController(id: string): Promise<TController>;
@@ -159,6 +164,10 @@ export abstract class VolumePieDialAction<
             // renderDial below, which (for GroupVolumeDial specifically) has no network call of
             // its own to naturally fail on first (see registerReachabilityHandling's doc comment).
             if (!this.registerReachabilityHandling(controller, ev, this.dialLabel)) return;
+            // We're past the bail-out above, so the controller currently believes it's reachable —
+            // clear any stale flag a previous failed setup attempt (see the catch block below) left
+            // behind, or the unconditional renderDial() a few lines down would be a no-op forever.
+            this.unreachableContexts.delete(context);
             controller.registerVolumeCallback(context, (vi: VolumeInfo) => this.onVolumeInfoChanged(context, vi));
             controller.registerFadeStateCallback(context, (fading, durationMs) => this.states.get(context)?.anim.onFadeState(fading, durationMs));
             controller.registerDisplayNameCallback?.(context, (name) => {
@@ -292,6 +301,19 @@ export abstract class VolumePieDialAction<
     protected async renderDial(context: string): Promise<void> {
         const sdAction = streamDeck.actions.getActionById(context);
         if (!sdAction?.isDial()) return;
+        // The panorama tick's shared render callback keeps firing on the normal ~50-100ms
+        // cadence regardless of reachability (going unreachable doesn't leave the panorama
+        // group) — without this, it repaints straight over the unreachable placeholder that
+        // registerReachabilityHandling just set, within one tick. Re-render (not just bail)
+        // because registerInPanorama's group-key assignment is itself debounced ~60ms behind
+        // registration (see PanoramaOrchestrator.requestSync) — the very first
+        // renderUnreachableDial call can land before that debounce fires and see no active
+        // effect group yet, permanently missing the effect overlay otherwise. Re-checking on
+        // every tick self-heals within one cycle once the group actually forms.
+        if (this.unreachableContexts.has(context)) {
+            void this.renderUnreachableDial(context, this.dialLabel);
+            return;
+        }
 
         const settings = this.settingsMap.get(context);
         const state = this.states.get(context);

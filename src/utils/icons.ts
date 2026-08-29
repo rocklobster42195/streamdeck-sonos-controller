@@ -268,6 +268,26 @@ export function buildUnreachableDialSvg(label: string): string {
     return buildDialStatusSvg(mdiSpeakerOff, label);
 }
 
+// Centered "unreachable" overlay — an SVG <g> fragment (not a standalone <svg>), for a dial that
+// keeps its normal content (a running panorama effect) visible underneath instead of a
+// full-canvas replace, dropping just the glyph (+ optional label) on top in the same position
+// buildDialStatusSvg uses. A dark backing circle/pill keeps both legible over a busy effect.
+export function buildUnreachableCenterFragment(label?: string): string {
+    const cx = 100, cy = label ? 38 : 50, rOuter = 18;
+    const scale = (rOuter * 2) / 24;
+    const parts = [
+        `<circle cx="${cx}" cy="${cy}" r="${rOuter + 10}" fill="#000" fill-opacity="0.55"/>`,
+        `<g transform="translate(${cx - rOuter},${cy - rOuter}) scale(${scale})"><path fill="${INACTIVE_ICON_COLOR}" d="${mdiSpeakerOff}"/></g>`,
+    ];
+    if (label) {
+        parts.push(
+            `<rect x="${cx - 40}" y="70" width="80" height="18" rx="3" fill="#000" fill-opacity="0.55"/>`,
+            `<text x="${cx}" y="83" fill="#888" font-family="Arial,sans-serif" font-size="11" text-anchor="middle" letter-spacing="1.5">${label}</text>`,
+        );
+    }
+    return parts.join('');
+}
+
 // Key-sized variant for the button actions (Play/Pause, Volume, Playback Control, Favorite).
 export function generateUnreachableKeyIcon(): string {
     return svgUri(mdiSpeakerOff, INACTIVE_ICON_COLOR);

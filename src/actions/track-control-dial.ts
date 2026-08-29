@@ -269,7 +269,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
             // rest of this setup must bail out when it wasn't (see the check right after acquire).
             let wasReachable = false;
             const controller = await this.lease.acquire(context, deviceIp, (controller) => {
-                wasReachable = this.registerReachabilityHandling(controller, ev, 'TRACK');
+                wasReachable = this.registerReachabilityHandling(controller, ev, piT('Track').toUpperCase());
                 if (wasReachable) {
                     controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
                     controller.registerTrackInfoCallback(context, (ti) => { void this.onTrackInfoChanged(context, ti); });
@@ -286,6 +286,10 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
             });
 
             if (!wasReachable) return;
+            // We're past the bail-out above, so the controller currently believes it's reachable —
+            // clear any stale flag a previous failed setup attempt (see the catch block below) left
+            // behind, or renderDial()'s guard would keep no-op'ing forever.
+            this.unreachableContexts.delete(context);
 
             // undefined means "couldn't determine right now" — leave the persisted hasBattery
             // flag as it was rather than writing a false negative (see deviceHasBattery's own
@@ -336,7 +340,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
 
         } catch (e) {
             streamDeck.logger.error(`Error getting initial state for ${deviceIp}`, e);
-            await this.renderUnreachableDial(context, 'TRACK');
+            await this.renderUnreachableDial(context, piT('Track').toUpperCase());
             this.scheduleSetupRetry(ev);
         }
     }
@@ -449,12 +453,25 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         const state = this.states.get(context);
         const animator = this.animators.get(context);
         if (!sdAction || !sdAction.isDial() || !state || !animator) return;
+        // The panorama tick's shared render callback keeps firing on the normal ~50-100ms
+        // cadence regardless of reachability (going unreachable doesn't leave the panorama
+        // group) — without this, it repaints straight over the unreachable placeholder that
+        // registerReachabilityHandling just set, within one tick. Re-render (not just bail)
+        // because registerInPanorama's group-key assignment is itself debounced ~60ms behind
+        // registration (see PanoramaOrchestrator.requestSync) — the very first
+        // renderUnreachableDial call can land before that debounce fires and see no active
+        // effect group yet, permanently missing the effect overlay otherwise. Re-checking on
+        // every tick self-heals within one cycle once the group actually forms.
+        if (this.unreachableContexts.has(context)) {
+            void this.renderUnreachableDial(context, piT('Track').toUpperCase());
+            return;
+        }
 
         const settings = this.settingsMap.get(context);
 
         // No device configured: show a minimal ready screen.
         if (!settings?.deviceIp) {
-            const readySvg = buildUnconfiguredDialSvg('TRACK');
+            const readySvg = buildUnconfiguredDialSvg(piT('Track').toUpperCase());
             const img = `data:image/svg+xml;base64,${Buffer.from(readySvg).toString('base64')}`;
             await sdAction.setFeedback({ 'full-canvas': img, 'title': '', 'indicator': { value: 0, enabled: false } }).catch(() => {});
             return;

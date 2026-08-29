@@ -396,7 +396,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         try {
             let wasReachable = false;
             const controller = await this.lease.acquire(context, deviceIp, (controller) => {
-                wasReachable = this.registerReachabilityHandling(controller, ev, 'QUEUE');
+                wasReachable = this.registerReachabilityHandling(controller, ev, piT('Queue').toUpperCase());
                 if (wasReachable) {
                     controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
                     // Fires immediately with cached state (incl. isRadio) if a track is already known.
@@ -412,6 +412,10 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
             });
 
             if (!wasReachable) return;
+            // We're past the bail-out above, so the controller currently believes it's reachable —
+            // clear any stale flag a previous failed setup attempt (see the catch block below) left
+            // behind, or renderDial()'s guard would keep no-op'ing forever.
+            this.unreachableContexts.delete(context);
 
             const [transportState, track, playMode] = await Promise.all([
                 controller.getTransportState(),
@@ -443,7 +447,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
             await this.renderDial(context);
         } catch (e) {
             streamDeck.logger.error(`Error getting initial state for ${deviceIp}`, e);
-            await this.renderUnreachableDial(context, 'QUEUE');
+            await this.renderUnreachableDial(context, piT('Queue').toUpperCase());
             this.scheduleSetupRetry(ev);
         }
     }
@@ -580,11 +584,24 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         const state = this.states.get(context);
         const animator = this.animators.get(context);
         if (!sdAction || !sdAction.isDial() || !state || !animator) return;
+        // The panorama tick's shared render callback keeps firing on the normal ~50-100ms
+        // cadence regardless of reachability (going unreachable doesn't leave the panorama
+        // group) — without this, it repaints straight over the unreachable placeholder that
+        // registerReachabilityHandling just set, within one tick. Re-render (not just bail)
+        // because registerInPanorama's group-key assignment is itself debounced ~60ms behind
+        // registration (see PanoramaOrchestrator.requestSync) — the very first
+        // renderUnreachableDial call can land before that debounce fires and see no active
+        // effect group yet, permanently missing the effect overlay otherwise. Re-checking on
+        // every tick self-heals within one cycle once the group actually forms.
+        if (this.unreachableContexts.has(context)) {
+            void this.renderUnreachableDial(context, piT('Queue').toUpperCase());
+            return;
+        }
 
         const settings = this.settingsMap.get(context);
 
         if (!settings?.deviceIp) {
-            const readySvg = buildUnconfiguredDialSvg('QUEUE');
+            const readySvg = buildUnconfiguredDialSvg(piT('Queue').toUpperCase());
             const img = `data:image/svg+xml;base64,${Buffer.from(readySvg).toString('base64')}`;
             await sdAction.setFeedback({ 'full-canvas': img, 'title': '', 'indicator': { value: 0, enabled: false } }).catch(() => {});
             return;

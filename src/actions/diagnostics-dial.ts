@@ -13,6 +13,7 @@ import streamDeck, {
 import { fetchDiagnosticsSample } from "../sonos/SonosDiagnostics";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
 import { sendDeviceList } from "./pi-options";
+import { piT } from "../utils/pi-i18n";
 
 // Nerdy power-user tool built while tracking down a real flaky-speaker issue — see
 // src/sonos/SonosDiagnostics.ts for why this reads an UNOFFICIAL Sonos endpoint. Not meant to be
@@ -212,7 +213,7 @@ export class DiagnosticsDial extends SingletonAction<SonosDiagnosticsSettings> {
 
         const settings = this.settingsMap.get(context);
         if (!settings?.deviceIp) {
-            const svg = buildUnconfiguredDialSvg('DIAG');
+            const svg = buildUnconfiguredDialSvg(piT('Diag').toUpperCase());
             await sdAction.setFeedback({
                 'full-canvas': `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
                 'title': '',

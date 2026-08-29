@@ -20,7 +20,7 @@ type VolumeDialSettings = VolumePieDialSettings & {
 
 @action({ UUID: "de.boriskemper.sonos-controller.volume-dial" })
 export class VolumeDial extends VolumePieDialAction<SonosDeviceController, VolumeDialSettings> {
-    protected readonly dialLabel = 'VOLUME';
+    protected readonly dialLabelKey = 'Volume';
 
     // Rotation sends carry the absolute target volume — the device is the single speaker this
     // dial controls, so "latest target wins" is exactly right (unlike Group Volume Dial's

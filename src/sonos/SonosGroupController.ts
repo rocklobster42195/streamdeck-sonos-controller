@@ -80,6 +80,15 @@ export class SonosGroupController {
   private topologyTimer?: NodeJS.Timeout;
   private isInitialized = false;
 
+  // Fallback for isReachable while the anchor has never been resolved into memberControllers —
+  // e.g. Sonos discovery itself found zero players (see sonos-discovery.ts), so resolveMembers()
+  // never even runs. Starts true (matches SonosDeviceController's own "innocent until proven
+  // otherwise" default, and the brief normal startup window before the first resolve completes),
+  // flipped false once initialize()/refreshTopology() actually had a fair shot and still couldn't
+  // find the anchor. Once the anchor DOES resolve, isReachable delegates to its own controller
+  // instead (the real, poll-driven, per-device signal) — this flag only matters before that.
+  private reachable = true;
+
   // The manager-owned SonosDevice for the anchor (NOT SonosDeviceController.sonosDevice, which is
   // a bare `new SonosDevice(ip)` that never gets topology fields populated — see resolveCoordinator's
   // comment). Its `.Events` emitter is fed by the manager's own GENA subscription to household
@@ -120,7 +129,7 @@ export class SonosGroupController {
   // why the anchor specifically is what this group's reachability tracks. Defaults to true before
   // the anchor's controller is resolved (matches SonosDeviceController's own initial value).
   public get isReachable(): boolean {
-    return this.memberControllers.get(this.anchorIp)?.isReachable ?? true;
+    return this.memberControllers.get(this.anchorIp)?.isReachable ?? this.reachable;
   }
 
   public async initialize(): Promise<void> {
@@ -128,6 +137,15 @@ export class SonosGroupController {
     await discoveryPromise;
     this.resolveCoordinator();
     await this.resolveMembers();
+    // discoveryPromise above already guarantees discovery had its one full first attempt — if the
+    // anchor still isn't resolved at this point, that's a real "can't find it" signal, not just
+    // "hasn't had a chance yet". Without this, isReachable's fallback stayed stuck true forever
+    // whenever Sonos discovery itself found zero players (e.g. the whole network down at plugin
+    // start), and no caller's registerReachabilityCallback ever saw the group as unreachable.
+    if (!this.memberControllers.has(this.anchorIp)) {
+      this.reachable = false;
+      streamDeck.logger.warn(`SonosGroupController [${this.anchorIp}]: anchor not found after initial discovery — starting unreachable.`);
+    }
     await this.refreshMuteState();
     this.startTopologyWatch();
     this.isInitialized = true;
@@ -247,6 +265,17 @@ export class SonosGroupController {
     await this.resolveMembers();
     if (coordinatorChanged) {
       streamDeck.logger.info(`SonosGroupController: coordinator for anchor ${this.anchorIp} is now ${this.coordinatorHost} ("${this.groupName}").`);
+    }
+    // Mirrors the same check in initialize() — this is the self-heal path for a group that
+    // started unreachable (or whose anchor dropped out of discovery entirely): once the anchor
+    // resolves, isReachable delegates to its own controller from here on, so announce the
+    // transition to anyone already registered. The reverse (anchor now missing after previously
+    // resolving) is the rare "device removed from the network" case, handled the same way.
+    const anchorResolved = this.memberControllers.has(this.anchorIp);
+    if (anchorResolved !== this.reachable) {
+      this.reachable = anchorResolved;
+      streamDeck.logger.info(`SonosGroupController [${this.anchorIp}]: anchor ${anchorResolved ? 'found again' : 'no longer found'} in discovery.`);
+      this.reachabilityCallbacks.forEach(cb => cb(anchorResolved));
     }
     await this.refreshMuteState();
     this.notifyVolumeChanged();

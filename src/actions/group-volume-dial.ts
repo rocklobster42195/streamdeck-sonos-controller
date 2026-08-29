@@ -22,7 +22,7 @@ type GroupVolumeDialSettings = VolumePieDialSettings & {
 
 @action({ UUID: "de.boriskemper.sonos-controller.group-volume-dial" })
 export class GroupVolumeDial extends VolumePieDialAction<SonosGroupController, GroupVolumeDialSettings> {
-    protected readonly dialLabel = 'GROUP';
+    protected readonly dialLabelKey = 'Group';
 
     // Rotation sends accumulate raw tick deltas (rather than tracking an absolute target) so the
     // send never depends on a locally cached "current group volume" baseline that could go stale

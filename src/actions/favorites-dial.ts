@@ -248,7 +248,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         try {
             let wasReachable = false;
             const controller = await this.lease.acquire(context, settings.deviceIp, (controller) => {
-                wasReachable = this.registerReachabilityHandling(controller, ev, 'FAVORITES');
+                wasReachable = this.registerReachabilityHandling(controller, ev, piT('Favorites').toUpperCase());
                 if (wasReachable) {
                     controller.registerVolumeCallback(context, (vol) => this.onVolumeInfoChanged(context, vol));
                     controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
@@ -263,6 +263,10 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             });
 
             if (!wasReachable) return;
+            // We're past the bail-out above, so the controller currently believes it's reachable —
+            // clear any stale flag a previous failed setup attempt (see the catch block below) left
+            // behind, or renderDial()'s guard would keep no-op'ing forever.
+            this.unreachableContexts.delete(context);
 
             const [vol, ts] = await Promise.all([
                 controller.getVolume(),
@@ -295,7 +299,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             await this.renderDial(context);
         } catch (e) {
             streamDeck.logger.error(`[FavDial ${context}] Setup error:`, e);
-            await this.renderUnreachableDial(context, 'FAVORITES');
+            await this.renderUnreachableDial(context, piT('Favorites').toUpperCase());
             this.scheduleSetupRetry(ev);
         }
     }
@@ -440,6 +444,19 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         const action = streamDeck.actions.getActionById(context);
         const state = this.states.get(context);
         if (!action || !action.isDial() || !state) return;
+        // The panorama tick's shared render callback keeps firing on the normal ~50-100ms
+        // cadence regardless of reachability (going unreachable doesn't leave the panorama
+        // group) — without this, it repaints straight over the unreachable placeholder that
+        // registerReachabilityHandling just set, within one tick. Re-render (not just bail)
+        // because registerInPanorama's group-key assignment is itself debounced ~60ms behind
+        // registration (see PanoramaOrchestrator.requestSync) — the very first
+        // renderUnreachableDial call can land before that debounce fires and see no active
+        // effect group yet, permanently missing the effect overlay otherwise. Re-checking on
+        // every tick self-heals within one cycle once the group actually forms.
+        if (this.unreachableContexts.has(context)) {
+            void this.renderUnreachableDial(context, piT('Favorites').toUpperCase());
+            return;
+        }
 
         const isBrowsing = state.currentIndex !== -1;
         const favs = this.getFavorites(context);
