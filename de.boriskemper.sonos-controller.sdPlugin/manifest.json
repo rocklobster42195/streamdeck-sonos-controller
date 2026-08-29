@@ -1,5 +1,5 @@
 {
-	"Name": "SONOS-Controller",
+	"Name": "SONOS Controller",
 	"Version": "0.4.8.0",
 	"Author": "Boris Kemper",
 	"Actions": [
@@ -245,7 +245,7 @@
 			]
 		}
 	],
-	"Category": "SONOS-Controller",
+	"Category": "SONOS Controller",
 	"CategoryIcon": "imgs/plugin/lobster",
 	"CodePath": "bin/plugin.js",
 	"Description": "Control your SONOS system with your StreamDeck+\nThis plugin is not connected to SONOS.\n\nThis plugin uses SONOS-TS by Stephan van Rooij (https://sonos-ts.svrooij.io/), licensed under MIT License.\n\nIcons by\nhttps://pictogrammers.com\n\nsdpi-components by GeekyEggo\nhttps://github.com/geekyeggo/sdpi-components",
