@@ -203,30 +203,37 @@ export class SonosFavoritePlayer {
 
   /**
    * Best-effort playback for a favorite that arrived with no <res>/TrackUri — only <r:resMD>
-   * (TIDAL track radio / flow, some service playlists). We can't know the exact play URI without
-   * the music service's own getMetadata call, so: (1) log the full favorite shape at ERROR level
-   * so a real occurrence is diagnosable in one shot, (2) derive a URI from the resMD's inner
-   * <item id="…"> — a bare container id → x-rincon-cpcontainer:, anything already carrying a
-   * scheme → used as-is, (3) try the queue first, then SetAVTransportURI, passing the verbatim
-   * resMD (which carries the <desc id="cdudn"> service token) as metadata both times.
+   * (TIDAL artist/track radio, flow, some service playlists). We can't call the music service's
+   * own getMetadata, so: (1) log the full favorite shape at ERROR level so a real occurrence is
+   * diagnosable in one shot; (2) normalise the resMD (Sonos writes slashes in some service item
+   * ids as the literal token `__UNENCODED_SLASH__` — confirmed with a TIDAL "Artist Radio"
+   * favorite, id `10082064artists__UNENCODED_SLASH__3717340__UNENCODED_SLASH__radio`); (3) derive
+   * a URI from the resMD's inner <item id="…"> — already-schemed → as-is, otherwise
+   * x-rincon-cpcontainer:; (4) enqueue, then SetAVTransportURI as fallback, passing the resMD
+   * (which carries <desc id="cdudn">) as XML-ESCAPED metadata — favorite.ResMD is decoded DIDL
+   * and the SDK inserts a string *MetaData verbatim, so unescaped markup would break the SOAP
+   * envelope → UPnPError 402 (seen on the first attempt at this).
    */
   private async playResMdOnlyFavorite(favorite: SonosFavorite, device: SonosDevice, logPrefix: string): Promise<void> {
-    const resMd = typeof favorite.ResMD === 'string' && favorite.ResMD.length > 0 ? favorite.ResMD : undefined;
+    const rawResMd = typeof favorite.ResMD === 'string' && favorite.ResMD.length > 0 ? favorite.ResMD : undefined;
     streamDeck.logger.error(
       `${logPrefix} Favorite has no TrackUri (no <res> in FV:2). ItemId=${favorite.ItemId} ` +
       `ParentId=${favorite.ParentId} UpnpClass=${favorite.UpnpClass} ProtocolInfo=${favorite.ProtocolInfo} ` +
-      `ResMD=${resMd ?? '(none)'}`
+      `ResMD=${rawResMd ?? '(none)'}`
     );
-    if (!resMd) {
+    if (!rawResMd) {
       throw new Error('Favorite has neither TrackUri nor ResMD — cannot play.');
     }
+    const resMd = rawResMd.replace(/__UNENCODED_SLASH__/g, '/');
 
     const idMatch = resMd.match(/<item\b[^>]*\bid="([^"]+)"/);
     const rawId = idMatch ? decodeXmlEntities(idMatch[1]) : (favorite.ItemId ?? '');
-    if (!rawId) {
-      throw new Error('ResMD carries no item id — cannot derive a play URI.');
+    if (!rawId || rawId.startsWith('FV:2')) {
+      // "FV:2/NN" is the favourites-list entry id, not a playable container id.
+      throw new Error(`ResMD has no usable item id ("${rawId}") — cannot derive a play URI.`);
     }
     const uri = /^[a-z][a-z0-9+.-]*:/i.test(rawId) ? rawId : `x-rincon-cpcontainer:${rawId}`;
+    const metadata = escapeXml(resMd);
     streamDeck.logger.info(`${logPrefix} ResMD-only favorite — best-effort. derivedUri="${uri}"`);
 
     try {
@@ -234,7 +241,7 @@ export class SonosFavoritePlayer {
       await device.AVTransportService.AddURIToQueue({
         InstanceID: 0,
         EnqueuedURI: uri,
-        EnqueuedURIMetaData: resMd,
+        EnqueuedURIMetaData: metadata,
         DesiredFirstTrackNumberEnqueued: 0,
         EnqueueAsNext: false,
       });
@@ -243,7 +250,7 @@ export class SonosFavoritePlayer {
       streamDeck.logger.info(`${logPrefix} SUCCESS (ResMD-only enqueue).`);
     } catch (enqueueErr) {
       streamDeck.logger.warn(`${logPrefix} ResMD-only enqueue failed (${enqueueErr}) — trying SetAVTransportURI.`);
-      await device.AVTransportService.SetAVTransportURI({ InstanceID: 0, CurrentURI: uri, CurrentURIMetaData: resMd });
+      await device.AVTransportService.SetAVTransportURI({ InstanceID: 0, CurrentURI: uri, CurrentURIMetaData: metadata });
       await device.Play();
       streamDeck.logger.info(`${logPrefix} SUCCESS (ResMD-only SetAVTransportURI).`);
     }
