@@ -276,7 +276,40 @@ export class SonosFavoritePlayer {
             return;
         }
 
-        // --- 3. RADIO / DIRECT URI ---
+        // --- 3. STREAMING-SERVICE CONTAINER (Tidal / Amazon / Apple / Deezer / Spotify albums) ---
+        // A content-provider *container* URI (x-rincon-cpcontainer:) is a playlist/album, not a
+        // playable stream. Handing one to SetAVTransportURI makes Sonos reject it with UPnPError
+        // 714 ("Illegal MIME-Type") — the exact reason the Spotify-playlist branch above enqueues
+        // instead of setting the transport URI. Route every cpcontainer favorite through the queue,
+        // reusing the favorite's own r:resMD as EnqueuedURIMetaData: it is pre-encoded DIDL-Lite
+        // that carries the service-specific <desc id="cdudn"> token, which we cannot synthesise for
+        // non-Spotify services (GuessMetaDataAndTrackUri only knows Spotify/Deezer/Apple). Without
+        // that cached metadata we can't enqueue safely, so fall through to the legacy
+        // SetAVTransportURI path unchanged.
+        if (favorite.TrackUri.startsWith('x-rincon-cpcontainer:')) {
+            const containerMd = sonosFavoritesCache.getResMd(favorite.TrackUri);
+            if (containerMd) {
+                streamDeck.logger.info(`${logPrefix} Content-provider container detected. Enqueuing via r:resMD.`);
+                await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
+                await this.sonosDevice.AVTransportService.AddURIToQueue({
+                    InstanceID: 0,
+                    EnqueuedURI: favorite.TrackUri,
+                    // A string *MetaData field is inserted into the SOAP body verbatim (only an
+                    // object goes through TrackToMetaData); resMD is already HTML-encoded DIDL,
+                    // same as the Spotify path a few lines up and case 4's CurrentURIMetaData.
+                    EnqueuedURIMetaData: containerMd,
+                    DesiredFirstTrackNumberEnqueued: 0,
+                    EnqueueAsNext: false,
+                });
+                await this.sonosDevice.SwitchToQueue();
+                await this.sonosDevice.Play();
+                streamDeck.logger.info(`${logPrefix} SUCCESS (Container Enqueue).`);
+                return;
+            }
+            streamDeck.logger.warn(`${logPrefix} cpcontainer favorite with no cached r:resMD — falling back to SetAVTransportURI.`);
+        }
+
+        // --- 4. RADIO / DIRECT URI ---
         // Use the r:resMD field from the raw Browse response as CurrentURIMetaData.
         // r:resMD is pre-HTML-encoded DIDL-Lite with the correct id, upnp:class, and cdudn.
         // Passing it as a string bypasses TrackToMetaData, which corrupts UpnpClass when the
