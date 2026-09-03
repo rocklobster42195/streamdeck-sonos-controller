@@ -788,7 +788,16 @@ export class SonosDeviceController {
   async initializeSubscriptions(): Promise<void> {
     try {
       this.sonosDevice.Events.on(SonosEvents.SubscriptionError, (err) => {
-        streamDeck.logger.error("Subscribe error", err);
+        if (this.reachable) {
+          streamDeck.logger.error("Subscribe error", err);
+        } else {
+          // Known-unreachable device — e.g. a powered-off Roam a key is still pinned to. The GENA
+          // lib retries the subscription on its own timer and every attempt fails identically
+          // (connect ETIMEDOUT); the unreachable state + key icon already communicate this, so
+          // don't dump a full FetchError stack at error level every ~90s. notePollSuccess()
+          // restores error-level logging when the device comes back.
+          streamDeck.logger.debug(`[${this.deviceIp}] Subscribe error while unreachable (suppressed).`);
+        }
         if (!this.pollInterval) {
           streamDeck.logger.warn(`[${this.deviceIp}] UPnP subscription failed — falling back to 8s polling.`);
           this.startPolling();
