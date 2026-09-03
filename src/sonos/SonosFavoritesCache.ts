@@ -115,8 +115,13 @@ class SonosFavoritesCache {
             const favoritesResponse = await this.deviceForFetching.GetFavorites();
             if (Array.isArray(favoritesResponse.Result)) {
                 // The lib types Result as Track[]; a favorite carries the same fields we read.
-                this.favorites = favoritesResponse.Result as unknown as SonosFavorite[];
+                const all = favoritesResponse.Result as unknown as SonosFavorite[];
+                const dropped = all.filter((f) => SonosFavoritesCache.isUnplayableBrowseCategory(f));
+                this.favorites = all.filter((f) => !SonosFavoritesCache.isUnplayableBrowseCategory(f));
                 this.hasFetchedFavorites = true;
+                if (dropped.length > 0) {
+                    streamDeck.logger.info(`Hiding ${dropped.length} unplayable Sonos browse-category favorite(s): ${dropped.map((f) => f.Title).join(', ')}`);
+                }
                 streamDeck.logger.info(`Successfully cached ${this.favorites.length} favorites.`);
 
                 // Asynchronously process cover art and wait for it to complete.
@@ -131,6 +136,24 @@ class SonosFavoritesCache {
             // Don't reset hasFetchedFavorites, to avoid constant retries on network errors.
             // The periodic refresh will try again later.
         }
+    }
+
+    // Sonos's newer app is known to inject browse-category rows into FV:2 that the user never
+    // added — "Aktuell angesagt" (sd:IE:trending-now), "Sonos präsentiert" (sd:IE:sonos-presents)
+    // and similar (widespread Sonos-side bug, no fix from Sonos — see the favourites threads on
+    // their community forum). They are folders, not content: pressing one plays nothing. Detect
+    // via the <r:resMD> inner item (fav.UpnpClass is useless here — the lib reports every FV:2
+    // entry as the mangled "object.itemobject.item.sonos-favorite"): a bare
+    // <upnp:class>object.container</upnp:class> (no subtype) AND an id pointing at a Sonos Radio
+    // catalog node (".../stations/..."). Deliberately narrow — a real NAS-folder favourite is
+    // object.container too but has a <res> (so TrackUri is set), and TIDAL "Artist Radio" /
+    // "Top Tracks" are object.container.playlistContainer (a subtype) and still play via
+    // SonosFavoritePlayer's resMD path.
+    private static isUnplayableBrowseCategory(fav: SonosFavorite): boolean {
+        if (fav.TrackUri || typeof fav.ResMD !== 'string') return false;
+        const resMd = fav.ResMD.replace(/%2F/gi, '/').replace(/__UNENCODED_SLASH__/g, '/');
+        const cls = resMd.match(/<upnp:class>([^<]+)<\/upnp:class>/)?.[1];
+        return cls === 'object.container' && /<item\b[^>]*\bid="[^"]*\/stations\//.test(resMd);
     }
 
     public getFavorites(): SonosFavorite[] | null {
