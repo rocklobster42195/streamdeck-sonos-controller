@@ -39,23 +39,34 @@ function stripResTag(itemXml: string): string {
 
 /**
  * Plays a Sonos favorite on one device, dispatching on the favorite's URI type (Spotify
- * playlist / music-library folder / radio-direct URI) — extracted verbatim from
- * SonosDeviceController, which now only delegates. Owns all DIDL-Lite metadata building and
- * the custom NAS-folder expansion. Deliberately targets the given device directly (not the
- * group coordinator): Sonos routes queue/transport changes correctly from any member here.
+ * playlist / music-library folder / streaming-service container / radio-direct URI) — extracted
+ * verbatim from SonosDeviceController, which now only delegates. Owns all DIDL-Lite metadata
+ * building and the custom NAS-folder expansion.
+ *
+ * `resolveDevice` MUST return the group COORDINATOR (SonosDeviceController.transportDevice does
+ * this). Queue operations — RemoveAllTracksFromQueue / AddURIToQueue / SwitchToQueue — are
+ * rejected with `UPnPError 800 (Command not supported or not a coordinator)` when sent to a
+ * grouped non-coordinator member; the earlier "any member works" assumption here was wrong and
+ * caused intermittent favorite failures whenever the target speaker happened to be grouped
+ * under another (hardware-confirmed via a user log, 2026-09-03). Resolved per call, not cached,
+ * because groups reform at any time.
  */
 export class SonosFavoritePlayer {
-  constructor(private readonly sonosDevice: SonosDevice) {}
+  constructor(private readonly resolveDevice: () => SonosDevice) {}
 
   private async handleLocalFolder(favorite: SonosFavorite): Promise<boolean> {
       const logPrefix = `[LocalFolder]`;
       streamDeck.logger.info(`${logPrefix} Browsing folder content...`);
 
+      // Group coordinator — Browse can be read from any member, but the queue writes below
+      // (RemoveAllTracksFromQueue / AddURIToQueue / SwitchToQueue) must go to the coordinator.
+      const device = this.resolveDevice();
+
       try {
           let result: any = null;
-          
+
           try {
-             result = await this.sonosDevice.ContentDirectoryService.Browse({
+             result = await device.ContentDirectoryService.Browse({
                 ObjectID: favorite.ItemId ?? '',
                 BrowseFlag: 'BrowseDirectChildren',
                 Filter: '*',
@@ -70,7 +81,7 @@ export class SonosFavoritePlayer {
                if (hashIndex > -1) {
                    const realObjectId = favorite.TrackUri.substring(hashIndex + 1);
                    try {
-                       result = await this.sonosDevice.ContentDirectoryService.Browse({
+                       result = await device.ContentDirectoryService.Browse({
                           ObjectID: realObjectId,
                           BrowseFlag: 'BrowseDirectChildren',
                           Filter: '*',
@@ -81,7 +92,7 @@ export class SonosFavoritePlayer {
                    } catch {
                        try {
                            const encodedId = encodeURIComponent(realObjectId).replace(/%2F/g, '/').replace(/%3A/g, ':');
-                           result = await this.sonosDevice.ContentDirectoryService.Browse({
+                           result = await device.ContentDirectoryService.Browse({
                               ObjectID: encodedId,
                               BrowseFlag: 'BrowseDirectChildren',
                               Filter: '*',
@@ -150,12 +161,12 @@ export class SonosFavoritePlayer {
 
           streamDeck.logger.info(`${logPrefix} Found ${items.length} sorted tracks. Enqueuing...`);
 
-          await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
+          await device.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
 
           let count = 0;
           for (const item of items) {
               try {
-                  await this.sonosDevice.AVTransportService.AddURIToQueue({
+                  await device.AVTransportService.AddURIToQueue({
                       InstanceID: 0,
                       EnqueuedURI: item.uri,
                       // The SDK only XML-escapes *MetaData fields that are passed as an OBJECT
@@ -180,8 +191,8 @@ export class SonosFavoritePlayer {
               count++;
           }
 
-          await this.sonosDevice.SwitchToQueue();
-          await this.sonosDevice.Play();
+          await device.SwitchToQueue();
+          await device.Play();
           return true;
 
       } catch (e) {
@@ -190,11 +201,74 @@ export class SonosFavoritePlayer {
       }
   }
 
+  /**
+   * Best-effort playback for a favorite that arrived with no <res>/TrackUri — only <r:resMD>
+   * (TIDAL track radio / flow, some service playlists). We can't know the exact play URI without
+   * the music service's own getMetadata call, so: (1) log the full favorite shape at ERROR level
+   * so a real occurrence is diagnosable in one shot, (2) derive a URI from the resMD's inner
+   * <item id="…"> — a bare container id → x-rincon-cpcontainer:, anything already carrying a
+   * scheme → used as-is, (3) try the queue first, then SetAVTransportURI, passing the verbatim
+   * resMD (which carries the <desc id="cdudn"> service token) as metadata both times.
+   */
+  private async playResMdOnlyFavorite(favorite: SonosFavorite, device: SonosDevice, logPrefix: string): Promise<void> {
+    const resMd = typeof favorite.ResMD === 'string' && favorite.ResMD.length > 0 ? favorite.ResMD : undefined;
+    streamDeck.logger.error(
+      `${logPrefix} Favorite has no TrackUri (no <res> in FV:2). ItemId=${favorite.ItemId} ` +
+      `ParentId=${favorite.ParentId} UpnpClass=${favorite.UpnpClass} ProtocolInfo=${favorite.ProtocolInfo} ` +
+      `ResMD=${resMd ?? '(none)'}`
+    );
+    if (!resMd) {
+      throw new Error('Favorite has neither TrackUri nor ResMD — cannot play.');
+    }
+
+    const idMatch = resMd.match(/<item\b[^>]*\bid="([^"]+)"/);
+    const rawId = idMatch ? decodeXmlEntities(idMatch[1]) : (favorite.ItemId ?? '');
+    if (!rawId) {
+      throw new Error('ResMD carries no item id — cannot derive a play URI.');
+    }
+    const uri = /^[a-z][a-z0-9+.-]*:/i.test(rawId) ? rawId : `x-rincon-cpcontainer:${rawId}`;
+    streamDeck.logger.info(`${logPrefix} ResMD-only favorite — best-effort. derivedUri="${uri}"`);
+
+    try {
+      await device.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
+      await device.AVTransportService.AddURIToQueue({
+        InstanceID: 0,
+        EnqueuedURI: uri,
+        EnqueuedURIMetaData: resMd,
+        DesiredFirstTrackNumberEnqueued: 0,
+        EnqueueAsNext: false,
+      });
+      await device.SwitchToQueue();
+      await device.Play();
+      streamDeck.logger.info(`${logPrefix} SUCCESS (ResMD-only enqueue).`);
+    } catch (enqueueErr) {
+      streamDeck.logger.warn(`${logPrefix} ResMD-only enqueue failed (${enqueueErr}) — trying SetAVTransportURI.`);
+      await device.AVTransportService.SetAVTransportURI({ InstanceID: 0, CurrentURI: uri, CurrentURIMetaData: resMd });
+      await device.Play();
+      streamDeck.logger.info(`${logPrefix} SUCCESS (ResMD-only SetAVTransportURI).`);
+    }
+  }
+
   async playFavorite(favorite: SonosFavorite): Promise<void> {
     const logPrefix = `[PlayFavorite] [${favorite.Title}]`;
     streamDeck.logger.info(`${logPrefix} START.`);
     
     try {
+        // Group coordinator (see class doc) — every queue/transport call below must target it.
+        const device = this.resolveDevice();
+
+        // --- 0. NO <res>/TrackUri — r:resMD-only favorite ---
+        // Some favorites (confirmed: TIDAL "track radio"/flow, and certain service playlists) come
+        // back from GetFavorites() (FV:2) with NO <res> element. The SDK's ParseDIDLTrack then
+        // leaves TrackUri undefined and only populates ResMD. Every branch below assumes a string
+        // TrackUri (.includes / .startsWith), so without this guard the whole method throws
+        // "Cannot read properties of undefined (reading 'includes')" before any dispatch (seen in
+        // a user log 2026-09-03 for a TIDAL "Titanium Radio" favorite).
+        if (!favorite.TrackUri) {
+            await this.playResMdOnlyFavorite(favorite, device, logPrefix);
+            return;
+        }
+
         // --- 1. SPOTIFY PLAYLIST ---
         if (favorite.TrackUri.includes('spotify:playlist:')) {
             streamDeck.logger.info(`${logPrefix} Spotify Playlist. Using MetadataHelper.`);
@@ -204,16 +278,16 @@ export class SonosFavoritePlayer {
                 const guessedData = MetaDataHelper.GuessMetaDataAndTrackUri(cleanUri);
                 
                 if (guessedData && guessedData.metadata && guessedData.trackUri) {
-                    await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
-                    await this.sonosDevice.AVTransportService.AddURIToQueue({
+                    await device.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
+                    await device.AVTransportService.AddURIToQueue({
                         InstanceID: 0,
                         EnqueuedURI: guessedData.trackUri,
                         EnqueuedURIMetaData: guessedData.metadata,
                         DesiredFirstTrackNumberEnqueued: 0,
                         EnqueueAsNext: false
                     });
-                    await this.sonosDevice.SwitchToQueue();
-                    await this.sonosDevice.Play();
+                    await device.SwitchToQueue();
+                    await device.Play();
                     streamDeck.logger.info(`${logPrefix} SUCCESS (Spotify).`);
                     return;
                 }
@@ -233,7 +307,7 @@ export class SonosFavoritePlayer {
 
             // FALLBACK
             streamDeck.logger.warn(`${logPrefix} Custom expansion failed. Fallback to native Container Queueing.`);
-            await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
+            await device.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
 
             // Same raw-space issue as handleLocalFolder's tracks (see normalizeUri) can appear in
             // the folder-container reference itself — normalize only the part after '#' (the
@@ -254,7 +328,7 @@ export class SonosFavoritePlayer {
                 `</item></DIDL-Lite>`;
 
             try {
-                await this.sonosDevice.AVTransportService.AddURIToQueue({
+                await device.AVTransportService.AddURIToQueue({
                     InstanceID: 0,
                     EnqueuedURI: trackUri,
                     // See handleLocalFolder's identical escapeXml call for why a string
@@ -270,8 +344,8 @@ export class SonosFavoritePlayer {
                 throw e;
             }
 
-            await this.sonosDevice.SwitchToQueue();
-            await this.sonosDevice.Play();
+            await device.SwitchToQueue();
+            await device.Play();
             streamDeck.logger.info(`${logPrefix} SUCCESS (Music Library Fallback).`);
             return;
         }
@@ -290,8 +364,8 @@ export class SonosFavoritePlayer {
             const containerMd = sonosFavoritesCache.getResMd(favorite.TrackUri);
             if (containerMd) {
                 streamDeck.logger.info(`${logPrefix} Content-provider container detected. Enqueuing via r:resMD.`);
-                await this.sonosDevice.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
-                await this.sonosDevice.AVTransportService.AddURIToQueue({
+                await device.AVTransportService.RemoveAllTracksFromQueue({ InstanceID: 0 });
+                await device.AVTransportService.AddURIToQueue({
                     InstanceID: 0,
                     EnqueuedURI: favorite.TrackUri,
                     // A string *MetaData field is inserted into the SOAP body verbatim (only an
@@ -301,8 +375,8 @@ export class SonosFavoritePlayer {
                     DesiredFirstTrackNumberEnqueued: 0,
                     EnqueueAsNext: false,
                 });
-                await this.sonosDevice.SwitchToQueue();
-                await this.sonosDevice.Play();
+                await device.SwitchToQueue();
+                await device.Play();
                 streamDeck.logger.info(`${logPrefix} SUCCESS (Container Enqueue).`);
                 return;
             }
@@ -317,7 +391,7 @@ export class SonosFavoritePlayer {
         const resMd = sonosFavoritesCache.getResMd(favorite.TrackUri);
         streamDeck.logger.info(`${logPrefix} Standard/Radio detected. URI="${favorite.TrackUri}"`);
 
-        await this.sonosDevice.AVTransportService.SetAVTransportURI({
+        await device.AVTransportService.SetAVTransportURI({
             InstanceID: 0,
             CurrentURI: favorite.TrackUri,
             // resMd is the raw pre-encoded DIDL string; the object fallback relies on the
@@ -326,7 +400,7 @@ export class SonosFavoritePlayer {
         });
 
         try {
-            await this.sonosDevice.Play();
+            await device.Play();
         } catch (playError: any) {
             // Confirmed on hardware (2026-07-18): Play() issued immediately after
             // SetAVTransportURI can hit the device mid-transition and get rejected with UPnPError
@@ -337,7 +411,7 @@ export class SonosFavoritePlayer {
             if (playError?.UpnpErrorCode !== 701) throw playError;
             streamDeck.logger.warn(`${logPrefix} Play() hit UPnPError 701 right after SetAVTransportURI — retrying once.`);
             await new Promise((resolve) => setTimeout(resolve, 500));
-            await this.sonosDevice.Play();
+            await device.Play();
         }
         streamDeck.logger.info(`${logPrefix} SUCCESS (Radio).`);
 

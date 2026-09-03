@@ -30,6 +30,12 @@ export interface SonosFavorite {
     AlbumArtUri?: string;
     ProtocolInfo?: string;
     UpnpClass?: string;
+    /**
+     * Pre-encoded DIDL-Lite from the FV:2 item's <r:resMD> (the lib's ParseDIDLTrack fills this).
+     * The only usable metadata for favorites that come back with no <res>/TrackUri — see
+     * SonosFavoritePlayer.playResMdOnlyFavorite.
+     */
+    ResMD?: string;
     /** Synthetic Favorites-Dial entry for the Line-In input — not a real Sonos favorite. */
     isLineIn?: boolean;
     [key: string]: unknown;

@@ -141,7 +141,10 @@ export class SonosDeviceController {
   constructor(deviceIp: string) {
     this.deviceIp = deviceIp;
     this.sonosDevice = new SonosDevice(deviceIp);
-    this.favoritePlayer = new SonosFavoritePlayer(this.sonosDevice);
+    // Pass a getter, not the bare device: favorite playback issues queue commands
+    // (AddURIToQueue/SwitchToQueue) which Sonos only accepts on the group coordinator —
+    // transportDevice resolves that live (falls back to self when ungrouped/standalone).
+    this.favoritePlayer = new SonosFavoritePlayer(() => this.transportDevice);
     this.fadeCoordinator = new GroupFadeCoordinator(
       this,
       () => this.getTransportState(),
