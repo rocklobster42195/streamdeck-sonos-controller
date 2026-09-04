@@ -2,6 +2,15 @@
 
 ---
 
+## [0.4.10] — 2026-09-04
+
+- **Fixed playing favorites from TIDAL** (and other streaming services — Amazon Music, Apple Music, Deezer): playlist and album favorites previously failed to play, and radio-style favorites (e.g. an artist radio) could show an error and do nothing. Both are now fixed.
+- Fixed favorites occasionally failing to play when the target speaker was grouped under a different room (this affected Spotify favorites too).
+- The Play Favorite list now hides a couple of non-playable "browse category" entries Sonos sometimes adds to your favorites on its own (e.g. "Trending Now"), and also picks up radio stations saved to Sonos' separate "My Radio Stations" list.
+- Reduced log noise for a speaker that's known to be offline.
+
+---
+
 ## [0.4.9] — 2026-08-29
 
 - Renamed to "SONOS Controller" — no functional changes from 0.4.8.
