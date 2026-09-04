@@ -77,40 +77,28 @@ class SonosFavoritesCache {
         try {
             streamDeck.logger.info('Refreshing Sonos favorites...');
 
-            // Raw Browse call to extract r:resMD metadata per favorite before the SDK discards it.
-            // GetFavorites() uses BrowseParsedWithDefaults which loses the r:resMD field.
-            const rawResponse = await this.deviceForFetching.ContentDirectoryService.Browse({
-                ObjectID: 'FV:2',
-                BrowseFlag: 'BrowseDirectChildren',
-                Filter: '*',
-                StartingIndex: 0,
-                RequestedCount: 0,
-                SortCriteria: '',
-            });
-            if (typeof rawResponse.Result === 'string') {
-                this.rawMetadataMap.clear();
-                // rawResponse.Result is plain XML (outer SOAP entities decoded). The <r:resMD>
-                // child element contains the already-HTML-encoded DIDL-Lite that SetAVTransportURI
-                // expects — it is stored verbatim and passed as a string to bypass TrackToMetaData.
-                const xml = rawResponse.Result;
-                const itemRe = /<item[\s\S]*?<\/item>/g;
-                // r:resMD text has no actual '<' chars (content is HTML-encoded), so [^<]* is safe.
-                const resMdRe = /<r:resMD>([^<]+)<\/r:resMD>/;
-                // <res> URI is XML-entity + percent-encoded; decode both to match favorite.TrackUri.
-                const resRe = /<res[^>]*>([^<]+)<\/res>/;
-                let m: RegExpExecArray | null;
-                while ((m = itemRe.exec(xml)) !== null) {
-                    const resMdMatch = resMdRe.exec(m[0]);
-                    const resMatch = resRe.exec(m[0]);
-                    if (resMdMatch && resMatch) {
-                        // HTML-decode and URL-decode the raw URI to get the canonical TrackUri.
-                        const trackUri = decodeXmlEntities(resMatch[1])
-                            .replace(/%3A/gi, ':').replace(/%2F/gi, '/').replace(/%20/g, ' ');
-                        this.rawMetadataMap.set(trackUri, resMdMatch[1]);
-                    }
+            // Raw Browse to extract r:resMD metadata per favorite before the SDK discards it —
+            // GetFavorites()/GetFavoriteRadioStations() use BrowseParsedWithDefaults, which loses
+            // the r:resMD field. FV:2 = Sonos Favorites; R:0/0 = the separate "My Radio Stations"
+            // list (a radio favorite the user saved that never made it into FV:2 — the newer Sonos
+            // app splits these; see issue #3). indexResMdFromXml appends, so clear once up front.
+            this.rawMetadataMap.clear();
+            for (const objectId of ['FV:2', 'R:0/0']) {
+                try {
+                    const raw = await this.deviceForFetching.ContentDirectoryService.Browse({
+                        ObjectID: objectId,
+                        BrowseFlag: 'BrowseDirectChildren',
+                        Filter: '*',
+                        StartingIndex: 0,
+                        RequestedCount: 0,
+                        SortCriteria: '',
+                    });
+                    if (typeof raw.Result === 'string') this.indexResMdFromXml(raw.Result);
+                } catch (e) {
+                    streamDeck.logger.debug(`[FavCache] Raw Browse of ${objectId} failed: ${e}`);
                 }
-                streamDeck.logger.debug(`[FavCache] Stored r:resMD metadata for ${this.rawMetadataMap.size} favorites.`);
             }
+            streamDeck.logger.debug(`[FavCache] Stored r:resMD metadata for ${this.rawMetadataMap.size} favorites.`);
 
             const favoritesResponse = await this.deviceForFetching.GetFavorites();
             if (Array.isArray(favoritesResponse.Result)) {
@@ -118,6 +106,14 @@ class SonosFavoritesCache {
                 const all = favoritesResponse.Result as unknown as SonosFavorite[];
                 const dropped = all.filter((f) => SonosFavoritesCache.isUnplayableBrowseCategory(f));
                 this.favorites = all.filter((f) => !SonosFavoritesCache.isUnplayableBrowseCategory(f));
+
+                // Merge in any "My Radio Stations" (R:0/0) entries that aren't already a favorite.
+                const extraRadio = await this.fetchExtraRadioStations(this.favorites);
+                if (extraRadio.length > 0) {
+                    this.favorites = [...this.favorites, ...extraRadio];
+                    streamDeck.logger.info(`Merged ${extraRadio.length} radio station(s) from R:0/0 not in Sonos Favorites: ${extraRadio.map((r) => r.Title).join(', ')}`);
+                }
+
                 this.hasFetchedFavorites = true;
                 if (dropped.length > 0) {
                     streamDeck.logger.info(`Hiding ${dropped.length} unplayable Sonos browse-category favorite(s): ${dropped.map((f) => f.Title).join(', ')}`);
@@ -135,6 +131,53 @@ class SonosFavoritesCache {
             streamDeck.logger.error('Failed to refresh Sonos favorites:', error);
             // Don't reset hasFetchedFavorites, to avoid constant retries on network errors.
             // The periodic refresh will try again later.
+        }
+    }
+
+    // Parse a raw ContentDirectory Browse result and record each item's <r:resMD> (the already
+    // HTML-encoded DIDL-Lite SetAVTransportURI/AddURIToQueue want, kept verbatim to bypass
+    // TrackToMetaData) keyed by its canonical <res> TrackUri. Appends to rawMetadataMap.
+    private indexResMdFromXml(xml: string): void {
+        const itemRe = /<item[\s\S]*?<\/item>/g;
+        // r:resMD text has no actual '<' chars (content is HTML-encoded), so [^<]* is safe.
+        const resMdRe = /<r:resMD>([^<]+)<\/r:resMD>/;
+        // <res> URI is XML-entity + percent-encoded; decode both to match favorite.TrackUri.
+        const resRe = /<res[^>]*>([^<]+)<\/res>/;
+        let m: RegExpExecArray | null;
+        while ((m = itemRe.exec(xml)) !== null) {
+            const resMdMatch = resMdRe.exec(m[0]);
+            const resMatch = resRe.exec(m[0]);
+            if (resMdMatch && resMatch) {
+                const trackUri = decodeXmlEntities(resMatch[1])
+                    .replace(/%3A/gi, ':').replace(/%2F/gi, '/').replace(/%20/g, ' ');
+                this.rawMetadataMap.set(trackUri, resMdMatch[1]);
+            }
+        }
+    }
+
+    // "My Radio Stations" (R:0/0) is a list separate from Sonos Favorites (FV:2). A radio favorite
+    // can live there without being in FV:2 — the newer Sonos app splits "Save to Sonos Favorites"
+    // from radio-station saves / pinned collections (issue #3). Returns the R:0/0 entries that
+    // aren't already represented in `existing` (matched by TrackUri or case-folded title). Best
+    // effort: on any failure returns [] so the FV:2 list still stands.
+    private async fetchExtraRadioStations(existing: SonosFavorite[]): Promise<SonosFavorite[]> {
+        if (!this.deviceForFetching) return [];
+        try {
+            const resp = await this.deviceForFetching.GetFavoriteRadioStations();
+            if (!Array.isArray(resp.Result)) return [];
+            const seen = new Set<string>();
+            for (const f of existing) {
+                if (f.TrackUri) seen.add(f.TrackUri);
+                if (f.Title) seen.add(f.Title.trim().toLowerCase());
+            }
+            return (resp.Result as unknown as SonosFavorite[]).filter((r) => {
+                if (SonosFavoritesCache.isUnplayableBrowseCategory(r)) return false;
+                const title = (r.Title ?? '').trim().toLowerCase();
+                return !(r.TrackUri && seen.has(r.TrackUri)) && !(title && seen.has(title));
+            });
+        } catch (e) {
+            streamDeck.logger.debug(`[FavCache] R:0/0 radio-station fetch failed: ${e}`);
+            return [];
         }
     }
 
