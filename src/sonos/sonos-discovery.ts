@@ -2,6 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import { SonosManager, SonosEventListener, SonosDevice, SonosDeviceDiscovery } from "@svrooij/sonos";
 import { sonosFavoritesCache } from "./SonosFavoritesCache";
 import { withTimeout } from "../utils/with-timeout";
+import { applyListenerHost, eventsBlocked, watchListenerHost } from "./event-listener-host";
 
 // A cached IP that's gone stale (device replaced, moved networks) can otherwise hang for the
 // OS-level TCP connect timeout instead of failing fast — same reasoning as every other
@@ -53,9 +54,6 @@ export function safeDevices(): SonosDevice[] {
         return [];
     }
 }
-
-// Listener host after discovery — module-internal, only used for the startup log below.
-let eventListenerHost: string | undefined;
 
 // A bonded Sonos stereo pair's non-primary speaker (and an HT setup's satellites/sub) reports the
 // SAME room name as its visible partner in sonosManager.Devices, differing only by its own
@@ -287,17 +285,19 @@ async function runDiscovery(): Promise<void> {
         // Resolve a vetted host (cached IP, else SSDP-enumerate + household-filter) BEFORE handing
         // it to sonosManager — which can't un-adopt a household once it has one.
         const host = await resolveHouseholdHost();
+        // Before InitializeFromDevice: that already subscribes to zone topology events, and the
+        // callback address must be one the speakers can reach (see event-listener-host.ts).
+        await applyListenerHost(host);
         await withTimeout(sonosManager.InitializeFromDevice(host), CACHED_IP_TIMEOUT_MS, `InitializeFromDevice (${host})`);
         if (sonosManager.Devices.length === 0) throw new Error('Discovery returned no players');
 
         await pinHouseholdIfUnpinned();
 
-        const listenerStatus = SonosEventListener.DefaultInstance.GetStatus();
-        if (listenerStatus) {
-            eventListenerHost = listenerStatus.host;
-        }
+        watchListenerHost(() => safeDevices()[0]?.Host);
         streamDeck.logger.info(`Sonos device discovery completed. Found ${sonosManager.Devices.length} players.`);
-        streamDeck.logger.info(`Using event listener host: ${eventListenerHost}`);
+        streamDeck.logger.info(eventsBlocked()
+            ? 'UPnP events disabled (speakers cannot reach this PC), polling only'
+            : `Using event listener host: ${SonosEventListener.DefaultInstance.GetStatus().host}`);
         sonosManager.Devices.forEach(d => {
             streamDeck.logger.info(`- ${d.Name} (${d.Host})`);
         });
