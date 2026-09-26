@@ -2,6 +2,7 @@
 // Paths are pulled directly from @mdi/js (pictogrammers.com), MIT licensed.
 
 import {
+    mdiPlay,
     mdiPlayCircle,
     mdiTimerSand,
     mdiSkipNext,
@@ -65,6 +66,22 @@ export function wrapImageWithBadge(imageDataUri: string, overlay: string, size =
     if (!overlay) return imageDataUri;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
         `<image href="${imageDataUri}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice"/>${overlay}</svg>`;
+    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+// Paused/stopped Play/Pause key: the cover stays, dimmed, with a play badge in the middle —
+// instead of dropping to the bare play icon, so the key still shows what's loaded. Ported from
+// Music Assistant Controller (same geometry at half its 144 px size).
+export function renderPausedCover(imageDataUri: string, color = '#CCCCCC', overlay = '', size = 72): string {
+    const c = size / 2;
+    const r = size * 30 / 144;
+    const icon = size / 3;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+        `<image href="${imageDataUri}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice"/>` +
+        `<rect width="${size}" height="${size}" fill="#000" opacity="0.55"/>` +
+        `<circle cx="${c}" cy="${c}" r="${r}" fill="#000" opacity="0.55"/>` +
+        `<path transform="translate(${c - icon / 2} ${c - icon / 2}) scale(${icon / 24})" fill="${color}" d="${mdiPlay}"/>` +
+        `${overlay}</svg>`;
     return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 

@@ -13,7 +13,7 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
-import { generateTransportIcon, renderBatteryBadge, renderProgressBar, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
+import { generateTransportIcon, renderBatteryBadge, renderPausedCover, renderProgressBar, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { parseRelTime } from "../sonos/rel-time";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
@@ -293,9 +293,13 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
                 case "TRANSITIONING":
                     await action.setImage(generateTransportIcon('loading', undefined, badge24));
                     break;
-                default: // PAUSED, STOPPED
-                    await action.setImage(generateTransportIcon('play', undefined, badge24));
+                default: { // PAUSED, STOPPED
+                    const cover = this.currentCover.get(context);
+                    await action.setImage(settings.showCoverArt !== false && cover
+                        ? renderPausedCover(cover, this.dominantColors.get(context), badge72)
+                        : generateTransportIcon('play', undefined, badge24));
                     break;
+                }
             }
         }
     }
