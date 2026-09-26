@@ -652,6 +652,21 @@ export class SonosDeviceController {
     );
     return transportInfo.CurrentTransportState;
   }
+  // True when Play has nothing to resume: the transport points at the (empty) Sonos queue. That's
+  // what Music Assistant leaves behind when it stops (it ends its own cloud-queue session), and
+  // Play then fails with UPnP 701. Errors count as "not empty" so the key keeps its normal look.
+  async hasNothingToPlay(): Promise<boolean> {
+    try {
+      const info = await withTimeout(
+          this.transportDevice.AVTransportService.GetMediaInfo({ InstanceID: 0 }),
+          STARTUP_CALL_TIMEOUT_MS,
+          `GetMediaInfo (${this.deviceIp})`,
+      );
+      return Number(info.NrTracks) === 0 && (!info.CurrentURI || info.CurrentURI.startsWith('x-rincon-queue:'));
+    } catch {
+      return false;
+    }
+  }
   async getPlayMode(): Promise<string> {
     const settings = await this.transportDevice.AVTransportService.GetTransportSettings({ InstanceID: 0 });
     return settings.PlayMode;

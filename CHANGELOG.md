@@ -1,6 +1,6 @@
 <!-- NEXT -->
 
-- Play/Pause key: when paused or stopped it now keeps showing the cover, dimmed, with a play symbol on top, instead of switching to a plain play icon (taken over from Music Assistant Controller).
+- Play/Pause key: when paused or stopped it now keeps showing the cover, dimmed, with a play symbol on top, instead of switching to a plain play icon (taken over from Music Assistant Controller). When there is nothing to resume (e.g. after Music Assistant stopped, which leaves the Sonos queue empty), it shows the plain play icon as before.
 - **Fixed the plugin slowing down other Sonos apps while your PC is on a VPN** (e.g. UniFi Teleport) or on a different network than the speakers. It used to ask the speakers to send live updates to an address they couldn't reach, and the speakers then delivered updates to *every* app (Home Assistant, Music Assistant, …) 20–40 seconds late, sometimes not at all. The plugin now only subscribes with an address on the speakers' own network. Without one it relies on its regular polling, and it switches back to live updates when the network changes.
 
 ---

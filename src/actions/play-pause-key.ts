@@ -294,8 +294,10 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
                     await action.setImage(generateTransportIcon('loading', undefined, badge24));
                     break;
                 default: { // PAUSED, STOPPED
+                    // A dimmed cover says "press to resume" — don't show it when there's nothing to resume.
                     const cover = this.currentCover.get(context);
-                    await action.setImage(settings.showCoverArt !== false && cover
+                    const resumable = !cover || !(await controller.hasNothingToPlay());
+                    await action.setImage(settings.showCoverArt !== false && cover && resumable
                         ? renderPausedCover(cover, this.dominantColors.get(context), badge72)
                         : generateTransportIcon('play', undefined, badge24));
                     break;
