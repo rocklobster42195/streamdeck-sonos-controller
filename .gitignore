@@ -31,3 +31,8 @@ local/
 
 # Claude Skills
 .claude/skills/
+
+# Claude local settings (personal, per-machine)
+.claude/settings.local.json
+# Local assistant context (not part of the repo)
+CLAUDE.md
