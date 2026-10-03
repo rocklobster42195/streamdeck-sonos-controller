@@ -19,10 +19,12 @@ import { DiagnosticsDial } from "./actions/diagnostics-dial";
 import { QueueDial } from "./actions/queue-dial";
 import { MultiControlKey } from "./actions/multi-control-key";
 import { registerGracefulShutdown } from "./utils/graceful-shutdown";
+import { initPiBridge } from "./pi/bridge";
 
 streamDeck.logger.setLevel("info");
 
 // Register the actions that this plugin supports.
+initPiBridge();
 streamDeck.actions.registerAction(new PlayPauseKey());
 streamDeck.actions.registerAction(new VolumeDial());
 streamDeck.actions.registerAction(new PlaybackControlKey());

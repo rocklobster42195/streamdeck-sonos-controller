@@ -31,6 +31,11 @@ export function sendOptions(event: string, items: PiOptionItem[]): void {
  *  still-valid deviceIp just because the device happened to be temporarily unreachable (or, now,
  *  filtered) at the exact moment the PI was opened. */
 export async function sendDeviceList(placeholderKey = '-- Choose device --', currentIp?: string): Promise<void> {
+    sendOptions('get-devices', [{ label: piT(placeholderKey), value: '' }, ...await deviceItems(currentIp)]);
+}
+
+/** The speakers to choose from (also for the kit PI's `<pi-select source="sonos-devices">`). */
+export async function deviceItems(currentIp?: string): Promise<PiOptionItem[]> {
     await discoveryPromise;
     const known = safeDevices();
     const visible = known.filter((d) => !isInvisibleSatellite(d.Host));
@@ -38,7 +43,7 @@ export async function sendDeviceList(placeholderKey = '-- Choose device --', cur
     if (currentIp && !visible.some((d) => d.Host === currentIp)) {
         items.unshift({ label: `${currentIp} ${piT('(offline)')}`, value: currentIp });
     }
-    sendOptions('get-devices', [{ label: piT(placeholderKey), value: '' }, ...items]);
+    return items;
 }
 
 /** Group dropdown ('get-groups') — one entry per current zone group, keyed by coordinator host.
@@ -46,6 +51,11 @@ export async function sendDeviceList(placeholderKey = '-- Choose device --', cur
  *  anchor is a battery speaker currently asleep would otherwise vanish from the list and get
  *  silently reset). */
 export async function sendGroupList(currentIp?: string): Promise<void> {
+    sendOptions('get-groups', [{ label: piT('-- Choose group --'), value: '' }, ...await groupItems(currentIp)]);
+}
+
+/** The groups to choose from, keyed by coordinator host (also for `<pi-select source="sonos-groups">`). */
+export async function groupItems(currentIp?: string): Promise<PiOptionItem[]> {
     await discoveryPromise;
     const known = safeDevices();
     const seen = new Set<string>();
@@ -69,7 +79,7 @@ export async function sendGroupList(currentIp?: string): Promise<void> {
     if (currentIp && !seen.has(currentIp)) {
         items.unshift({ label: `${currentIp} ${piT('(offline)')}`, value: currentIp });
     }
-    sendOptions('get-groups', [{ label: piT('-- Choose group --'), value: '' }, ...items]);
+    return items;
 }
 
 // Re-push both dropdowns to whichever PI is currently open once a delayed discovery succeeds —

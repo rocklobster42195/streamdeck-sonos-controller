@@ -5,6 +5,7 @@
 			"node"
 		],
 		"module": "ES2022",
+		"lib": ["ES2023", "DOM"],
 		"moduleResolution": "Bundler",
 		"noImplicitOverride": true,
 		"resolveJsonModule": true
