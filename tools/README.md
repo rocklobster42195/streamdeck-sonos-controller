@@ -37,3 +37,9 @@ Normal entry point: `npm run ship:patch` / `ship:minor` / `ship:major` / `ship:b
 | `generate-showcase-images.mjs` | `store/` | Marketplace showcase/gallery images (needs `store/lobster_icon.png`). |
 | `generate-banner.mjs` | `assets/` | 1280×640 GitHub social-preview banner. |
 | `generate-bg.mjs` | `assets/` | 1920×1080 particle background used by other asset generators. |
+
+## Simulator and showcase
+
+- `sd-sim/sim.mjs`, `sd-sim/sim-render.mjs` (from Music Assistant Controller): run the real plugin against a fake Stream Deck app and render keys and dial strips to PNG.
+- `sd-sim/fake-sonos.mjs`: a stand-in Sonos system on loopback (127.0.0.2–4, port 1400) — invented rooms, queue, favorites, generated covers, its own household (pinned by the simulator, so the plugin never adopts a real system).
+- `npm run showcase` (`sd-sim/showcase.mjs [outDir] [scene]`): staged deck pictures into `sim-out/showcase/`. Plays nothing, touches no real speaker.

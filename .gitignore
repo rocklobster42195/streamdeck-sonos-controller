@@ -39,3 +39,4 @@ CLAUDE.md
 *.sdPlugin/ui/pi.js.map
 *.sdPlugin/ui/pi-theme.css
 *.sdPlugin/ui/locales.generated.js
+sim-out/
