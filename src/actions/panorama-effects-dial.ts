@@ -21,7 +21,7 @@ import type { EffectInstance } from "../effects/types";
 import type { ParticlesEffectSettings } from "../effects/particles";
 import { piT } from "../utils/pi-i18n";
 import { sendDeviceList, sendOptions } from "./pi-options";
-import { measureArialWidth, truncateToWidth } from "../utils/text-width";
+import { measureArialWidth, truncateToWidth } from "@rocklobster42195/streamdeck-kit";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 
 type ParticlesSettings = {

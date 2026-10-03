@@ -26,7 +26,7 @@ import { sendDeviceList, sendVizOptions, sendOptions } from "./pi-options";
 import { ControllerLease } from "./ControllerLease";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
-import { measureArialWidth } from "../utils/text-width";
+import { measureArialWidth } from "@rocklobster42195/streamdeck-kit";
 
 type QueueDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;

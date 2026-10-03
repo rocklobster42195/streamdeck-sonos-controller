@@ -1,0 +1,341 @@
+[
+  {
+    "id": "multi-control-key-0",
+    "action": "multi-control-key",
+    "controller": "Keypad",
+    "page": "p2",
+    "pos": "0,0",
+    "settings": {
+      "controlFunction": "line-in",
+      "deviceIp": "192.0.2.10",
+      "fadeDuration": "2",
+      "hasBattery": false,
+      "hasLineIn": true
+    }
+  },
+  {
+    "id": "play-pause-key-1",
+    "action": "play-pause-key",
+    "controller": "Keypad",
+    "page": "p2",
+    "pos": "0,1",
+    "settings": {
+      "batteryDisplayMode": "full",
+      "deviceIp": "192.0.2.11",
+      "hasBattery": true,
+      "showCoverArt": true,
+      "showProgress": true,
+      "showTrackTitle": true
+    }
+  },
+  {
+    "id": "multi-control-key-2",
+    "action": "multi-control-key",
+    "controller": "Keypad",
+    "page": "p2",
+    "pos": "1,0",
+    "settings": {
+      "controlFunction": "battery",
+      "deviceIp": "192.0.2.11",
+      "fadeDuration": "2",
+      "hasBattery": true,
+      "hasLineIn": false
+    }
+  },
+  {
+    "id": "play-favorite-key-3",
+    "action": "play-favorite-key",
+    "controller": "Keypad",
+    "page": "p2",
+    "pos": "2,0",
+    "settings": {
+      "deviceIp": "192.0.2.10",
+      "fadeDuration": "2",
+      "favorite": "{\"AlbumArtUri\":\"example:AlbumArtUri:1\",\"Title\":\"Favorite 1\",\"UpnpClass\":\"object.itemobject.item.sonos-favorite\",\"ItemId\":\"FV:2/19\",\"ParentId\":\"FV:2\",\"TrackUri\":\"example:TrackUri:1\",\"ProtocolInfo\":\"x-rincon-cpcontainer:*:*:*\",\"ResMD\":\"<DIDL-Lite xmlns=\\\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\\\"><item id=\\\"example-1\\\" restricted=\\\"true\\\"><dc:title xmlns:dc=\\\"http://purl.org/dc/elements/1.1/\\\">Favorite</dc:title></item></DIDL-Lite>\"}"
+    }
+  },
+  {
+    "id": "play-favorite-key-4",
+    "action": "play-favorite-key",
+    "controller": "Keypad",
+    "page": "p2",
+    "pos": "2,1",
+    "settings": {
+      "deviceIp": "192.0.2.10",
+      "fadeDuration": "2",
+      "favorite": "{\"AlbumArtUri\":\"example:AlbumArtUri:2\",\"Title\":\"Favorite 2\",\"UpnpClass\":\"object.itemobject.item.sonos-favorite\",\"ItemId\":\"FV:2/21\",\"ParentId\":\"FV:2\",\"TrackUri\":\"example:TrackUri:2\",\"ProtocolInfo\":\"x-rincon-cpcontainer:*:*:*\",\"ResMD\":\"<DIDL-Lite xmlns=\\\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\\\"><item id=\\\"example-2\\\" restricted=\\\"true\\\"><dc:title xmlns:dc=\\\"http://purl.org/dc/elements/1.1/\\\">Favorite</dc:title></item></DIDL-Lite>\"}"
+    }
+  },
+  {
+    "id": "play-favorite-key-5",
+    "action": "play-favorite-key",
+    "controller": "Keypad",
+    "page": "p2",
+    "pos": "3,0",
+    "settings": {
+      "deviceIp": "192.0.2.10",
+      "favorite": "{\"AlbumArtUri\":\"example:AlbumArtUri:3\",\"Title\":\"Favorite 3\",\"UpnpClass\":\"object.itemobject.item.sonos-favorite\",\"ItemId\":\"FV:2/12\",\"ParentId\":\"FV:2\",\"TrackUri\":\"example:TrackUri:3\",\"ProtocolInfo\":\"x-rincon-cpcontainer:*:*:*\",\"ResMD\":\"<DIDL-Lite xmlns=\\\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\\\"><item id=\\\"example-3\\\" restricted=\\\"true\\\"><dc:title xmlns:dc=\\\"http://purl.org/dc/elements/1.1/\\\">Favorite</dc:title></item></DIDL-Lite>\"}"
+    }
+  },
+  {
+    "id": "play-favorite-key-6",
+    "action": "play-favorite-key",
+    "controller": "Keypad",
+    "page": "p2",
+    "pos": "3,1",
+    "settings": {
+      "deviceIp": "192.0.2.10",
+      "fadeDuration": "2",
+      "favorite": "{\"AlbumArtUri\":\"example:AlbumArtUri:4\",\"Title\":\"Favorite 4\",\"UpnpClass\":\"object.itemobject.item.sonos-favorite\",\"ItemId\":\"FV:2/16\",\"ParentId\":\"FV:2\",\"TrackUri\":\"example:TrackUri:4\",\"ProtocolInfo\":\"x-sonosapi-radio:*:audio/x-sonosapi-radio:*\",\"ResMD\":\"<DIDL-Lite xmlns=\\\"urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/\\\"><item id=\\\"example-4\\\" restricted=\\\"true\\\"><dc:title xmlns:dc=\\\"http://purl.org/dc/elements/1.1/\\\">Favorite</dc:title></item></DIDL-Lite>\"}"
+    }
+  },
+  {
+    "id": "queue-dial-7",
+    "action": "queue-dial",
+    "controller": "Encoder",
+    "page": "p2",
+    "pos": "0,0",
+    "settings": {
+      "coverPosition": "left",
+      "deviceIp": "192.0.2.10",
+      "landColor": "#87AE73",
+      "oceanColor": "#1C3E6C",
+      "primaryColor": "#87AE73",
+      "queueTimeoutSeconds": 5,
+      "savedDensity": 28,
+      "savedSpeed": 0.25,
+      "secondaryColor": "#FFFFFF",
+      "visualizerMode": "boing-globe"
+    }
+  },
+  {
+    "id": "panorama-effects-dial-8",
+    "action": "panorama-effects-dial",
+    "controller": "Encoder",
+    "page": "p2",
+    "pos": "1,0",
+    "settings": {
+      "deviceIp": "192.0.2.10",
+      "effectId": "boing-globe",
+      "landColor": "#87AE73",
+      "oceanColor": "#1C3E6C",
+      "primaryColor": "#87AE73",
+      "savedDensity": 28,
+      "savedSpeed": 3.0701754385964906,
+      "secondaryColor": "#FFFFFF"
+    }
+  },
+  {
+    "id": "track-control-dial-9",
+    "action": "track-control-dial",
+    "controller": "Encoder",
+    "page": "p2",
+    "pos": "2,0",
+    "settings": {
+      "batteryDisplayMode": "warning",
+      "deviceIp": "192.0.2.10",
+      "hasBattery": false,
+      "landColor": "#87AE73",
+      "oceanColor": "#1C3E6C",
+      "primaryColor": "#87AE73",
+      "savedDensity": 28,
+      "savedSpeed": 0.25,
+      "secondaryColor": "#FFFFFF",
+      "visualizerMode": "boing-globe"
+    }
+  },
+  {
+    "id": "favorites-dial-10",
+    "action": "favorites-dial",
+    "controller": "Encoder",
+    "page": "p2",
+    "pos": "3,0",
+    "settings": {
+      "align": "center",
+      "deviceIp": "192.0.2.10",
+      "hasLineIn": true,
+      "includeLineIn": true,
+      "visualizerMode": "mosaic"
+    }
+  },
+  {
+    "id": "play-pause-key-11",
+    "action": "play-pause-key",
+    "controller": "Keypad",
+    "page": "p3",
+    "pos": "2,1",
+    "settings": {
+      "deviceIp": "192.0.2.10",
+      "hasBattery": false,
+      "showCoverArt": true,
+      "showProgress": true,
+      "showTrackTitle": true
+    }
+  },
+  {
+    "id": "playback-control-key-12",
+    "action": "playback-control-key",
+    "controller": "Keypad",
+    "page": "p3",
+    "pos": "3,1",
+    "settings": {
+      "command": "next",
+      "deviceIp": "192.0.2.10"
+    }
+  },
+  {
+    "id": "volume-dial-13",
+    "action": "volume-dial",
+    "controller": "Encoder",
+    "page": "p3",
+    "pos": "1,0",
+    "settings": {
+      "align": "center",
+      "deviceIp": "192.0.2.10",
+      "savedDensity": 28,
+      "savedSpeed": 0.25,
+      "showText": false,
+      "visualizerMode": "particles"
+    }
+  },
+  {
+    "id": "favorites-dial-14",
+    "action": "favorites-dial",
+    "controller": "Encoder",
+    "page": "p3",
+    "pos": "2,0",
+    "settings": {
+      "align": "center",
+      "deviceIp": "192.0.2.10",
+      "fadeDuration": "2",
+      "hasLineIn": true,
+      "includeLineIn": false,
+      "savedDensity": 28,
+      "savedSpeed": 1.15,
+      "visualizerMode": "particles"
+    }
+  },
+  {
+    "id": "playback-control-key-15",
+    "action": "playback-control-key",
+    "controller": "Keypad",
+    "page": "p4",
+    "pos": "0,1",
+    "settings": {
+      "command": "previous",
+      "deviceIp": "192.0.2.10"
+    }
+  },
+  {
+    "id": "play-pause-key-16",
+    "action": "play-pause-key",
+    "controller": "Keypad",
+    "page": "p4",
+    "pos": "1,1",
+    "settings": {
+      "deviceIp": "192.0.2.10",
+      "fontColor": "#ffffff",
+      "hasBattery": false,
+      "showCoverArt": true,
+      "showProgress": true,
+      "showTrackTitle": true
+    }
+  },
+  {
+    "id": "playback-control-key-17",
+    "action": "playback-control-key",
+    "controller": "Keypad",
+    "page": "p4",
+    "pos": "2,1",
+    "settings": {
+      "command": "next",
+      "deviceIp": "192.0.2.10"
+    }
+  },
+  {
+    "id": "playback-control-key-18",
+    "action": "playback-control-key",
+    "controller": "Keypad",
+    "page": "p4",
+    "pos": "3,0",
+    "settings": {
+      "command": "repeat",
+      "deviceIp": "192.0.2.10"
+    }
+  },
+  {
+    "id": "playback-control-key-19",
+    "action": "playback-control-key",
+    "controller": "Keypad",
+    "page": "p4",
+    "pos": "3,1",
+    "settings": {
+      "command": "shuffle",
+      "deviceIp": "192.0.2.10"
+    }
+  },
+  {
+    "id": "group-volume-dial-20",
+    "action": "group-volume-dial",
+    "controller": "Encoder",
+    "page": "p4",
+    "pos": "1,0",
+    "settings": {
+      "groupIp": "192.0.2.10",
+      "presetMemberVolumes": {
+        "192.0.2.10": 50,
+        "192.0.2.12": 6,
+        "192.0.2.13": 6,
+        "192.0.2.14": 6,
+        "192.0.2.15": 6,
+        "192.0.2.16": 6
+      },
+      "savedDensity": 28,
+      "savedSpeed": 0.95,
+      "showText": true,
+      "visualizerMode": "particles"
+    }
+  },
+  {
+    "id": "panorama-effects-dial-21",
+    "action": "panorama-effects-dial",
+    "controller": "Encoder",
+    "page": "p4",
+    "pos": "2,0",
+    "settings": {
+      "deviceIp": "192.0.2.10",
+      "effectId": "particles",
+      "savedDensity": 28,
+      "savedSpeed": 0.25,
+      "showTrackInfo": true
+    }
+  },
+  {
+    "id": "favorites-dial-22",
+    "action": "favorites-dial",
+    "controller": "Encoder",
+    "page": "p4",
+    "pos": "3,0",
+    "settings": {
+      "align": "center",
+      "deviceIp": "192.0.2.10",
+      "fadeDuration": "2",
+      "hasLineIn": true,
+      "includeLineIn": true,
+      "savedDensity": 28,
+      "savedSpeed": 0.25,
+      "visualizerMode": "particles"
+    }
+  },
+  {
+    "id": "play-pause-key-23",
+    "action": "play-pause-key",
+    "controller": "Keypad",
+    "page": "p5",
+    "pos": "0,0",
+    "settings": {
+      "deviceIp": "192.0.2.10",
+      "hasBattery": false
+    }
+  }
+]

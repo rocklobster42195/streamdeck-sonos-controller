@@ -16,7 +16,7 @@ import { titleAnimator } from "../utils/TitleAnimator";
 import { marqueeAnimator } from "../utils/MarqueeAnimator";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
-import { measureArialWidth } from "../utils/text-width";
+import { measureArialWidth } from "@rocklobster42195/streamdeck-kit";
 import { parseRelTime, formatRelTime } from "../sonos/rel-time";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { TrackInfo } from "../sonos/SonosTypes";

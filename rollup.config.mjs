@@ -54,7 +54,10 @@ const config = {
 		nodeResolve({
 			browser: false,
 			exportConditions: ["node"],
-			preferBuiltins: true
+			preferBuiltins: true,
+			// One Stream Deck SDK: the kit (a peer of it) must use the plugin's copy, also when it
+			// is linked from a local checkout that has its own
+			dedupe: ["@elgato/streamdeck", "@elgato/utils"]
 		}),
 		commonjs(),
 		!isWatching && terser(),
