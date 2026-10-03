@@ -4,6 +4,7 @@
 //
 // Replaces the plugin's own PanoramaOrchestrator. The dials keep calling the helpers at the bottom
 // (same names as the orchestrator's), so their drawing code didn't have to change.
+import { socCovers } from "../bus/soc-covers";
 import { ActionsState } from "@rocklobster42195/streamdeck-kit/bus";
 import { PanoramaEngine, PanoramaRows, rowStateFromSettings, SharedPanorama, type RowDialState } from "@rocklobster42195/streamdeck-kit";
 
@@ -19,7 +20,8 @@ export function shareActionsTo(fn: (key: string, value: unknown) => void): void 
 
 export const panorama = new SharedPanorama(new PanoramaEngine({ defaultColor: "#404040" }), socActions);
 
-export const panoramaRows = new PanoramaRows(panorama, { name: "SO-C", actions: socActions });
+/** One effect per row, with the row's colour (the cover of a speaker from SO-C's or another plugin's "covers" on deckbus). */
+export const panoramaRows = new PanoramaRows(panorama, { name: "SO-C", actions: socActions, covers: socCovers });
 
 /** Stream Deck sends {} for a dial that was just placed and never configured. */
 export function isFresh(settings: object): boolean {
@@ -67,9 +69,3 @@ export function getPanoramaSliceOffset(_context: string): number {
     return 0;
 }
 
-/** Live values for the effect from a dial (e.g. the cover's colour): `groupEffects.get(key)?.onSettingsChange({ color })`. */
-export const groupEffects = {
-    get(key: string) {
-        return { onSettingsChange: (live: Record<string, unknown>) => panorama.updateLive(key, live) };
-    },
-};

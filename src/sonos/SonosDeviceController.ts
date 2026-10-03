@@ -125,6 +125,8 @@ export class SonosDeviceController {
   private lastBatteryStatus: SonosBatteryStatus | undefined;
   private hasBatteryStatus = false;
   private lastPolledTransportState = '';
+  /** The last transport state seen (PLAYING, PAUSED_PLAYBACK, …; '' before the first). */
+  public get transportState(): string { return this.lastPolledTransportState; }
   private isInitialized = false;
 
   // Internal state

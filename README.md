@@ -254,8 +254,7 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 | Setting | Description |
 |---------|-------------|
-| Device | The speaker whose cover tints the effect and whose track the text shows (or none) |
-| Colour without a speaker | The effect's colour when no speaker is chosen |
+| Device | The speaker whose track the text shows (or none) |
 | Show track info | Title and artist across the Panorama Effects dials next to each other |
 | Panorama | The row's effect, its dials and its settings (in "More settings …") |
 
@@ -263,7 +262,7 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 <img src="assets/readme/dials-panorama.png" width="800" alt="Four Panorama Effects dials with Particles and the track across them"/>
 
-All dials of a Stream Deck form a row with **one** effect and one set of settings. Choose it in any dial's Panorama section (short line in the panel, everything else in "More settings …"): the effect, which dials of the row show it (a tick per dial), and its settings. A dial without a tick shows its normal view; the effect runs on behind it. The row also spans the dials of other plugins that use it (see [Works with other plugins](#works-with-other-plugins-deckbus)): for example Music Assistant Controller's dials next to yours share the effect.
+All dials of a Stream Deck form a row with **one** effect and one set of settings. Choose it in any dial's Panorama section (short line in the panel, everything else in "More settings …"): the effect, which dials of the row show it (a tick per dial), its **colour** — **Cover** (the colour of what the active speaker plays, or of one chosen speaker), a **fixed** colour, or the effect's own — and its settings. A dial without a tick shows its normal view; the effect runs on behind it. Sonos Controller shares its speakers' cover colours with the other plugins, so a row of only other plugins' dials can follow the cover too. The row also spans the dials of other plugins that use it (see [Works with other plugins](#works-with-other-plugins-deckbus)): for example Music Assistant Controller's dials next to yours share the effect.
 
 > **Note on background CPU usage:** an active effect renders continuously for as long as it's running — Stream Deck panels have no animation hardware of their own, so the plugin has to keep pushing a freshly-drawn frame for every tick. That's inherent to how the SDK works, not a bug. Expect a modest but constant background CPU cost while any Panorama Effects group is active (roughly 10–20% of one CPU core for a 4-panel group in our own testing, depending on the effect and your hardware) — it drops back to near zero once no group is running. Particles and Matrix Rain run at 10 fps; Boing Ball and Boing Globe run at 20 fps (their bounce motion needs the extra smoothness).
 

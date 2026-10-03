@@ -16,7 +16,7 @@ import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
 import { measureArialWidth } from "@rocklobster42195/streamdeck-kit";
 import { parseRelTime, formatRelTime } from "../sonos/rel-time";
-import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/panorama";
+import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/panorama";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { syncCapabilityFlag } from "./capability-flag";
@@ -132,11 +132,6 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
                 const s = this.states.get(context);
                 if (!s) return;
                 s.dominantColor = color;
-                const visibleColor = ensureVisibleColor(color);
-                const pk = panoramaContextGroupKey.get(context);
-                if (isPanoramaEffectActive(pk)) {
-                    groupEffects.get(pk!)?.onSettingsChange?.({ color: visibleColor });
-                }
                 void this.renderDial(context);
             }).catch(() => {});
         }
@@ -324,11 +319,6 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
                     const s = this.states.get(context);
                     if (!s) return;
                     s.dominantColor = c;
-                    const visibleColor = ensureVisibleColor(c);
-                    const pk = panoramaContextGroupKey.get(context);
-                    if (isPanoramaEffectActive(pk)) {
-                        groupEffects.get(pk!)?.onSettingsChange?.({ color: visibleColor });
-                    }
                     void this.renderDial(context);
                 }).catch(() => {});
 

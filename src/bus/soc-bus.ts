@@ -1,6 +1,7 @@
 // SO-C on deckbus (the kit's docs/deckbus-protocol.md): shares the Panorama with other plugins'
 // dials in the same row (one effect per row, agreed between the plugins), tells them where its
 // actions are, and whether it found Sonos speakers. Local only; SO-C works on without the bus.
+import { socCovers } from "./soc-covers";
 import streamDeck from "@elgato/streamdeck";
 import { DeckBus } from "@rocklobster42195/streamdeck-kit/bus";
 import { panorama, panoramaRows, shareActionsTo, socActions } from "../effects/panorama";
@@ -18,6 +19,8 @@ export async function startSocBus(): Promise<void> {
     // One Panorama with other plugins' dials next to SO-C's (stays local while nobody is there)
     panorama.connect(b);
     panoramaRows.connect(b);
+    // The speakers' cover colours for every plugin's Panorama rows (and later keys)
+    socCovers.connect(b);
     if (!(await b.start())) return;
     streamDeck.logger.info(`[deckbus] SO-C in slot ${b.slot}`);
     onDevicesChanged(shareStatus);

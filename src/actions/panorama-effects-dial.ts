@@ -9,13 +9,12 @@ import streamDeck, {
     WillDisappearEvent,
 } from "@elgato/streamdeck";
 import { mdiScatterPlotOutline, mdiSpeedometer, mdiWeatherPouring } from "@mdi/js";
-import { effectRegistry, measureArialWidth, truncateToWidth } from "@rocklobster42195/streamdeck-kit";
+import { measureArialWidth, ROW_COLOR_KEY, truncateToWidth } from "@rocklobster42195/streamdeck-kit";
 import { panorama, panoramaRows, socRowState } from "../effects/panorama";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { ControllerLease } from "./ControllerLease";
-import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
 import { ACCENT_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
@@ -23,9 +22,9 @@ import { piT } from "../utils/pi-i18n";
 type PanoramaEffectsSettings = {
     // The old per-dial effect choice — taken over into the row once (socRowState), then the row's.
     effectId?: string;
-    // The speaker whose cover tints the effect and whose track the text shows.
+    // The speaker whose track the text shows (its cover was the effect's colour before the row's colour).
     deviceIp?: string;
-    // Colour without a speaker.
+    // Colour without a speaker — taken over into the row's colour once (rowColorTaken), then the row's.
     staticColor?: string;
     showTrackInfo?: boolean;
     [key: string]: JsonValue | undefined;
@@ -36,8 +35,6 @@ type Instance = {
     deviceId: string;
     column: number;
     track?: { title: string; artist: string };
-    color?: string;
-    colorFor?: string;
     /** Which of the effect's values turning changes (index into panoramaRows.tunables). */
     fn: number;
     /** Until when the function badge shows at the top. */
@@ -57,8 +54,8 @@ const CONTROL_ICONS: Record<string, string> = { count: mdiScatterPlotOutline, sp
  * The "Panorama Effects" dial: the row's effect (the kit's Panorama, one effect per row of dials)
  * with nothing else on it — or, with "Show track info", title and artist of its speaker across the
  * Panorama Effects dials next to each other. Rotate tunes the effect (speed, density, …), press
- * switches what turning changes; the values become the row's. Tinted with the speaker's cover
- * colour, or the static colour without a speaker.
+ * switches what turning changes; the values become the row's. The colour is the row's (the
+ * Panorama section: a speaker's cover, fixed, or the effect's own).
  */
 @action({ UUID: "de.boriskemper.sonos-controller.panorama-effects-dial" })
 export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings> {
@@ -92,8 +89,15 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
             },
             redraw: () => void this.renderDial(id),
         });
+        // Before the row had a colour: no speaker → the static colour (default Sage) becomes the row's
+        const s = ev.payload.settings;
+        if (s.rowColorTaken !== true && Object.keys(s).length > 0) {
+            if (!s.deviceIp) panoramaRows.setRow(ev.action.device.id, { settings: { [ROW_COLOR_KEY]: s.staticColor || "#87AE73" } });
+            const inst = this.instances.get(id)!;
+            inst.settings = { ...inst.settings, rowColorTaken: true };
+            void ev.action.setSettings(inst.settings);
+        }
         await this.followDevice(id);
-        this.pushLive(id);
     }
 
     override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<PanoramaEffectsSettings>): Promise<void> {
@@ -103,7 +107,6 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
         inst.settings = ev.payload.settings;
         panoramaRows.changed(ev.action.id);
         if (before.deviceIp !== inst.settings.deviceIp) await this.followDevice(ev.action.id);
-        this.pushLive(ev.action.id);
         void this.renderDial(ev.action.id);
     }
 
@@ -190,8 +193,6 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
         const inst = this.instances.get(id);
         if (!inst) return;
         inst.track = undefined;
-        inst.color = undefined;
-        inst.colorFor = undefined;
         const ip = inst.settings.deviceIp;
         if (!ip) return;
         try {
@@ -208,28 +209,7 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
         const inst = this.instances.get(id);
         if (!inst) return;
         inst.track = ti.Title ? { title: ti.Title, artist: ti.Artist ?? "" } : undefined;
-        const cover = ti.albumArtDataUri;
-        if (cover && cover !== inst.colorFor) {
-            inst.colorFor = cover;
-            getDominantColor(cover).then((c) => {
-                const now = this.instances.get(id);
-                if (!now) return;
-                now.color = ensureVisibleColor(c);
-                this.pushLive(id);
-            }).catch(() => {});
-        }
         this.renderOwnRun(id);
-    }
-
-    /** The colour as a live value: it wins over the row's colours (the cover, or the static colour). */
-    private pushLive(id: string): void {
-        const inst = this.instances.get(id);
-        const effect = panoramaRows.effectOf(id);
-        if (!inst || !effect) return;
-        const color = inst.settings.deviceIp ? inst.color : inst.settings.staticColor;
-        if (!color) return panorama.updateLive(id, {});
-        const fields = new Set((effectRegistry.get(effect)?.settingsSchema ?? []).map((f) => f.key));
-        panorama.updateLive(id, { color, ...(fields.has("primaryColor") ? { primaryColor: color } : {}), ...(fields.has("landColor") ? { landColor: color } : {}) });
     }
 
     // ---- drawing ------------------------------------------------------------------------------

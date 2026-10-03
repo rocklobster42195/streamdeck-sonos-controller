@@ -18,9 +18,9 @@ import { isBrowsableQueue, QueueState, TrackInfo } from "../sonos/SonosTypes";
 import { ACCENT_COLOR, buildUnconfiguredDialSvg } from "../utils/icons";
 import { QueueCoverArtCache } from "./QueueCoverArtCache";
 import { piT } from "../utils/pi-i18n";
-import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, groupEffects } from "../effects/panorama";
+import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/panorama";
 import { ControllerLease } from "./ControllerLease";
-import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
+import { getDominantColor } from "../utils/color-extract";
 
 type QueueDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
@@ -42,10 +42,6 @@ interface QueueDialState {
     liveTrackIndex: number; // 0-based; -1 = unknown/not applicable
     dominantColor: string;
     lastColorUri?: string;
-    // Which dominantColor value has already been pushed into a live panorama effect — renderDial
-    // retries the push on every tick until it lands (the group can finish forming just after the
-    // color was extracted, and nothing re-triggers the extraction for an unchanged cover).
-    colorPushedFor?: string;
     // AVTransport's LastChange event bundles ALL fields on every fire, so the play-mode callback
     // fires on every track change too — the last value tells a real shuffle/repeat toggle apart.
     lastPlayMode?: string;
@@ -383,7 +379,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
             return;
         }
 
-        const backdrop = this.effectBackdrop(context, settings, state);
+        const backdrop = this.effectBackdrop(context);
         let image: string;
         let indicator = { value: 0, enabled: false };
         const total = state.queueItems.length;
@@ -442,15 +438,10 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         return { title: item.Title ?? '', subtitle: item.Artist || undefined, image: cover, icon: mdiMusicNote, active: i === state.liveTrackIndex };
     }
 
-    /** The row's Panorama effect under the dial, darkened for the text ('' without one); also feeds it the cover's colour. */
-    private effectBackdrop(context: string, settings: QueueDialSettings, state: QueueDialState): string {
+    /** The row's Panorama effect under the dial, darkened for the text ('' without one). */
+    private effectBackdrop(context: string): string {
         const key = panoramaContextGroupKey.get(context);
         if (!isPanoramaEffectActive(key)) return '';
-        // Retried on every render until it lands — see colorPushedFor
-        if (state.colorPushedFor !== state.dominantColor) {
-            groupEffects.get(key!)?.onSettingsChange?.({ color: ensureVisibleColor(state.dominantColor) });
-            state.colorPushedFor = state.dominantColor;
-        }
         return renderPanoramaEffectSlice(key!, getPanoramaSliceOffset(context)) + '<rect width="200" height="100" fill="#000" opacity="0.45"/>';
     }
 
