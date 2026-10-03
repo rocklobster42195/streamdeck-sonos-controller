@@ -6,7 +6,7 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCapableDialAction";
 import { VolumeInfo } from "../sonos/SonosTypes";
-import { VolumeDisplay } from "@rocklobster42195/streamdeck-kit";
+import { arc, openRing, VolumeDisplay } from "@rocklobster42195/streamdeck-kit";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/panorama";
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
@@ -34,6 +34,8 @@ export interface VolumePieController {
 export type VolumePieDialSettings = PanoramaCapableSettings & {
     align?: 'left' | 'center' | 'right';
     showText?: boolean;
+    // How the volume is drawn: the pie (default, as always), the kit's ring, or its open ring
+    gauge?: 'pie' | 'ring' | 'open';
 };
 
 interface PieDialState {
@@ -233,7 +235,7 @@ export abstract class VolumePieDialAction<
 
     // --- Rendering ---
 
-    private buildPieParts(cx: number, cy: number, volume: number, isMuted: boolean, color: string): string[] {
+    private buildPieParts(cx: number, cy: number, volume: number, isMuted: boolean, color: string, gauge: VolumePieDialSettings['gauge'] = 'pie'): string[] {
         const rOuter = 38;
         const rInner = 30;
 
@@ -244,6 +246,9 @@ export abstract class VolumePieDialAction<
         }
 
         const percent = Math.max(0, Math.min(volume, 100));
+        // The family's other looks, from the kit
+        if (gauge === 'ring') return arc(cx, cy, 34, percent / 100, color, { width: 8 });
+        if (gauge === 'open') return openRing({ cx, cy, r: 34, width: 8, min: 0, max: 100, value: percent, zones: [{ from: -Infinity, color }] });
         const parts: string[] = [
             `<circle cx="${cx}" cy="${cy}" r="${rOuter}" stroke="${color}" stroke-width="6" fill="none"/>`,
         ];
@@ -338,7 +343,7 @@ export abstract class VolumePieDialAction<
         const showSavedFlash = (this.presetSavedUntil.get(context) ?? 0) > Date.now();
         const pieParts = showSavedFlash
             ? this.buildSavedIcon(cx, cy)
-            : this.buildPieParts(cx, cy, displayVolume, isMuted, '#CCCCCC');
+            : this.buildPieParts(cx, cy, displayVolume, isMuted, '#CCCCCC', settings.gauge);
         const textParts = this.buildTextParts(cx, cy, volume, isMuted, displayName, align, showText);
 
         const rawPanoramaKey = panoramaContextGroupKey.get(context);

@@ -1,5 +1,12 @@
 <!-- NEXT -->
 
+- **New settings panels** (the family's panel kit, as in Music Assistant Controller): shorter, with tiles and switches instead of dropdowns, in English, German and Spanish. The "Speaker not showing up?" field only appears while no speaker is chosen. Dials with a Panorama effect get a settings window for it ("More settings …").
+- **One Panorama per row of dials:** a row has one effect with one set of settings, chosen in any dial's Panorama section; each dial has a tick whether it shows the effect. Your existing effects are taken over (the Panorama Effects dial's effect wins its row). **Changed:** two different effects side by side in one row become one effect for the row.
+- **Favorites and Queue dials as a scrolling list:** entries stacked with the selected one in the middle, gliding one entry per click of the dial; what is playing in green with a small wave. The Queue dial rests on the playing track and follows it. New switch "Show covers".
+- **Favorites dial when idle:** a card with what is playing and where it comes from (the favorite, or the playlist, album or station Sonos reports); when that isn't known (e.g. music from Music Assistant) the heart as before. Replaces the cover mosaic.
+- **Volume as pie, ring or open ring** on the Volume and Group Volume dials and the Volume key (default: the pie as before).
+- Smoother scrolling text, more robust cover loading and the volume display come from the shared kit now.
+
 - Play/Pause key: when paused or stopped it now keeps showing the cover, dimmed, with a play symbol on top, instead of switching to a plain play icon (taken over from Music Assistant Controller). When there is nothing to resume (e.g. after Music Assistant stopped, which leaves the Sonos queue empty), it shows the plain play icon as before.
 - **Fixed the plugin slowing down other Sonos apps while your PC is on a VPN** (e.g. UniFi Teleport) or on a different network than the speakers. It used to ask the speakers to send live updates to an address they couldn't reach, and the speakers then delivered updates to *every* app (Home Assistant, Music Assistant, …) 20–40 seconds late, sometimes not at all. The plugin now only subscribes with an address on the speakers' own network. Without one it relies on its regular polling, and it switches back to live updates when the network changes.
 

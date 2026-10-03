@@ -1,123 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Favorites Dial Settings</title>
-  <script src="i18n.js" defer></script>
-  <script src="sdpi-components.js" defer></script>
-  <script src="effect-fields.js" defer></script>
-  <script src="battery-capability.js" defer></script>
-  <style>
-    :root { color-scheme: dark; }
-    .hidden { display: none !important; }
-    .hint { font-size: 11px; color: #888; line-height: 1.4; }
-    #bt-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-    #btRange { flex: 1; min-width: 0; }
-    #btNumber {
-        width: 46px;
-        background: var(--sdpi-background, #1e1e1e);
-        color: var(--sdpi-color, #ccc);
-        border: 1px solid var(--sdpi-borderColor, #555);
-        border-radius: 3px;
-        padding: 3px 4px;
-        text-align: center;
-        font-size: 12px;
-        font-family: inherit;
-    }
-    #btNumber:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
-    .manual-ip-fallback summary { cursor: pointer; font-family: "Segoe UI", Arial, Roboto, Helvetica, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif; font-size: 11px; color: #888; margin: 6px 0 2px; }
-  </style>
+  <title>Favorites dial</title>
+  <link rel="stylesheet" href="pi-theme.css" />
+  <link rel="stylesheet" href="soc.css" />
+  <script src="locales.generated.js"></script>
+  <script src="pi.js"></script>
 </head>
-<body>
-  <sdpi-item label="SONOS device" data-i18n="sonos_device">
-    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
-    </sdpi-select>
-  </sdpi-item>
-  <details class="manual-ip-fallback">
-    <summary data-i18n-html="manual_ip_summary">Speaker not showing up?</summary>
-    <sdpi-item label="Speaker IP" data-i18n="manual_ip_label">
-      <sdpi-textfield setting="lastKnownDeviceIp" global placeholder="192.168.1.42"></sdpi-textfield>
-    </sdpi-item>
-    <sdpi-item>
-      <sdpi-item-value class="hint" data-i18n-html="manual_ip_hint">
-        If your speaker isn't showing up in the list (e.g. it's on a different VLAN), enter the IP address of any one reachable Sonos speaker here. This only needs to be done once, in a single spot — every speaker in your household will then be found everywhere in the plugin. Afterwards, still pick your device from the dropdown above as usual.
-      </sdpi-item-value>
-    </sdpi-item>
-  </details>
 
-  <sdpi-item label="Browse timeout" data-i18n="browse_timeout">
-    <div id="bt-row">
-      <sdpi-range id="btRange" setting="browseTimeout" min="1" max="10" step="1" value="3"></sdpi-range>
-      <input type="number" id="btNumber" min="1" max="10" step="1" title="Browse timeout">
+<body hidden>
+  <pi-section title="pi.sonos_device">
+    <pi-select setting="deviceIp" source="sonos-devices" with="device" placeholder="pi.choose_device"></pi-select>
+    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
+    <div data-show-when="deviceIp=">
+      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
     </div>
-  </sdpi-item>
-
-  <!-- Options come from the plugin (get-fade-options) like every other working select in this
-       plugin — a static <option> list left the control stuck/unopenable in the SD webview. -->
-  <sdpi-item label="Fade out" data-i18n="fade_out">
-    <sdpi-select setting="fadeDuration" datasource="get-fade-options"></sdpi-select>
-  </sdpi-item>
-
-  <sdpi-item>
-    <sdpi-item-value class="hint" data-i18n-html="fade_hint">
-      Fades the whole group out before starting the chosen favorite, then restores each speaker's volume.
-    </sdpi-item-value>
-  </sdpi-item>
-
-  <sdpi-item label="Background" data-i18n="background">
-    <sdpi-select id="vizSelect" setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
-  </sdpi-item>
-  <sdpi-item id="alignItem" label="Alignment" data-i18n="alignment">
-    <sdpi-select setting="align" datasource="get-align-options"></sdpi-select>
-  </sdpi-item>
-  <div id="effectFieldsContainer"></div>
-
-  <sdpi-item>
-    <sdpi-item-value class="hint" data-i18n-html="fav_hint">
-      Rotate to browse all your Sonos favorites.<br>
-      Press to play. Touch or wait to return to now playing.
-    </sdpi-item-value>
-  </sdpi-item>
-
-  <!-- Only offered when the configured device actually has a Line-In input — hidden by default,
-       shown via wireBatteryCapability (generic despite the name: whole-item hide/show driven by a
-       hidden settings-synced checkbox, see battery-capability.js). -->
-  <sdpi-item id="lineInItem" class="hidden" label="Append Line-In" data-i18n="append_line_in">
-    <sdpi-checkbox setting="includeLineIn"></sdpi-checkbox>
-  </sdpi-item>
-  <sdpi-checkbox id="hasLineInCheckbox" setting="hasLineIn" class="hidden"></sdpi-checkbox>
-
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        window.wireBatteryCapability(document.getElementById('hasLineInCheckbox'), document.getElementById('lineInItem'));
-    });
-  </script>
-
-  <script>
-    var btRange = document.getElementById('btRange');
-    var btNumber = document.getElementById('btNumber');
-
-    btRange.addEventListener('valuechange', function (e) {
-        btNumber.value = e.target.value;
-    });
-
-    btNumber.addEventListener('change', function () {
-        var n = Math.max(1, Math.min(10, parseInt(btNumber.value) || 3));
-        btNumber.value = n;
-        btRange.value = n;
-        btRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
-    });
-
-    // 'mosaic' has no icon to align and no effect fields — hide both extras for it.
-    var vizSelect = document.getElementById('vizSelect');
-    var alignItem = document.getElementById('alignItem');
-    var effectFieldsContainer = document.getElementById('effectFieldsContainer');
-    vizSelect.addEventListener('valuechange', function () {
-        var isIconMode = vizSelect.value && vizSelect.value !== 'mosaic';
-        alignItem.hidden = !isIconMode;
-        window.renderEffectFields(effectFieldsContainer, vizSelect.value);
-    });
-  </script>
+  </pi-section>
+  <pi-section title="pi.list">
+    <pi-toggle setting="showCovers" label="pi.show_covers" data-default="true"></pi-toggle>
+    <div data-show-when="hasLineIn=true">
+      <pi-toggle setting="includeLineIn" label="pi.include_line_in"></pi-toggle>
+    </div>
+    <pi-range setting="browseTimeout" min="1" max="10" step="1" default="3" unit=" s" label="pi.back_after_idle"></pi-range>
+  </pi-section>
+  <pi-section title="pi.fade">
+    <pi-choice setting="fadeDuration" default="0" columns="5" label="pi.fade" data-options='[
+      {"value":"0","label":"pi.fade_off"},
+      {"value":"2","label":"2 s"},
+      {"value":"3","label":"3 s"},
+      {"value":"5","label":"5 s"},
+      {"value":"8","label":"8 s"}
+    ]'></pi-choice>
+    <div class="pi-hint" data-i18n="pi.fade_hint"></div>
+  </pi-section>
+  <pi-section title="pi.heart_position">
+    <pi-choice setting="align" default="center" columns="3" data-options='[
+      {"value":"left","label":"pi.align_left","icon":"alignLeft"},
+      {"value":"center","label":"pi.align_center","icon":"alignCenter"},
+      {"value":"right","label":"pi.align_right","icon":"alignRight"}
+    ]'></pi-choice>
+    <div class="pi-hint" data-i18n="pi.heart_hint"></div>
+  </pi-section>
+  <pi-panorama class="pi-win"></pi-panorama>
+  <pi-panorama class="pi-pi-only" summary></pi-panorama>
+  <pi-more></pi-more>
+  <div class="pi-footer"><span data-plugin-version></span></div>
 </body>
+
 </html>

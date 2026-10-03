@@ -10,6 +10,8 @@ initSettingsWindow({ name: "SO-C" });
 // in the list while that speaker is offline
 registerSelectParams("device", () => ({ deviceIp: String(sd.settings.deviceIp ?? "") }));
 registerSelectParams("group", () => ({ groupIp: String(sd.settings.groupIp ?? "") }));
+// What the speaker has (written into the settings by the key), for the Multi-Control functions
+registerSelectParams("caps", () => ({ hasLineIn: String(sd.settings.hasLineIn ?? ""), hasBattery: String(sd.settings.hasBattery ?? "") }));
 
 // Components render translated text, so wait until Stream Deck told us the language.
 sd.onReady(() => {

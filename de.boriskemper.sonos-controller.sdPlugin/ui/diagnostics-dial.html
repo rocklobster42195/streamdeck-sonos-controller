@@ -1,53 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SONOS Diagnostics Dial Settings</title>
-    <script src="i18n.js" defer></script>
-    <script src="sdpi-components.js" defer></script>
-    <style>
-        :root { color-scheme: dark; }
-        .manual-ip-fallback summary { cursor: pointer; font-family: "Segoe UI", Arial, Roboto, Helvetica, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif; font-size: 11px; color: #888; margin: 6px 0 2px; }
-    </style>
-  </head>
 
-  <body>
-    <sdpi-item label="SONOS device" data-i18n="sonos_device">
-        <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
-        </sdpi-select>
-    </sdpi-item>
-    <details class="manual-ip-fallback">
-        <summary data-i18n-html="manual_ip_summary">Speaker not showing up?</summary>
-        <sdpi-item label="Speaker IP" data-i18n="manual_ip_label">
-            <sdpi-textfield setting="lastKnownDeviceIp" global placeholder="192.168.1.42"></sdpi-textfield>
-        </sdpi-item>
-        <sdpi-item>
-            <sdpi-item-value style="font-size:11px; color:#888; line-height:1.4" data-i18n-html="manual_ip_hint">
-                If your speaker isn't showing up in the list (e.g. it's on a different VLAN), enter the IP address of any one reachable Sonos speaker here. This only needs to be done once, in a single spot — every speaker in your household will then be found everywhere in the plugin. Afterwards, still pick your device from the dropdown above as usual.
-            </sdpi-item-value>
-        </sdpi-item>
-    </details>
-    <sdpi-item>
-        <sdpi-item-value style="font-size:11px; color:#888; line-height:1.4">
-            Rotate or press the dial to scroll through metrics, tap to refresh now.
-        </sdpi-item-value>
-    </sdpi-item>
-    <sdpi-item>
-        <sdpi-item-value style="font-size:11px; color:#888; line-height:1.5">
-            <b style="color:#5DADE2">Latency</b> — response time of the diagnostic query, a rough
-            stand-in for how responsive the speaker's WiFi link is right now. Consistently high or
-            spiky values: move the speaker closer to the router/access point, reduce interference
-            (other 2.4/5 GHz devices, microwaves), or check for a firmware update.<br><br>
-            <b style="color:#E67E22">PHY Errors</b> — radio-layer errors counted since the last
-            poll. The occasional low count is normal; a clearly rising trend points to interference
-            or a weak signal — same fixes as above.<br><br>
-            <b style="color:#58D68D">Noise Floor</b> — background radio noise in dBm. More
-            negative is quieter/better (roughly -90 to -110 is healthy); values near 0 are
-            unusually loud, or mean the radio simply hasn't measured yet. If it stays near 0 or
-            keeps climbing, look for a nearby interference source, or consider a wired connection
-            for that speaker.
-        </sdpi-item-value>
-    </sdpi-item>
-  </body>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Diagnostics dial</title>
+  <link rel="stylesheet" href="pi-theme.css" />
+  <link rel="stylesheet" href="soc.css" />
+  <script src="locales.generated.js"></script>
+  <script src="pi.js"></script>
+</head>
+
+<body hidden>
+  <pi-section title="pi.sonos_device">
+    <pi-select setting="deviceIp" source="sonos-devices" with="device" placeholder="pi.choose_device"></pi-select>
+    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
+    <div data-show-when="deviceIp=">
+      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
+    </div>
+  </pi-section>
+  <div class="pi-hint" data-i18n="pi.diagnostics_hint"></div>
+  <div class="pi-footer"><span data-plugin-version></span></div>
+</body>
+
 </html>

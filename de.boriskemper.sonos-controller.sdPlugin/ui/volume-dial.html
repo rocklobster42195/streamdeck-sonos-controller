@@ -1,100 +1,46 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SONOS Dial Volume Settings</title>
-    <script src="i18n.js" defer></script>
-    <script src="sdpi-components.js" defer></script>
-    <script src="effect-fields.js" defer></script>
-    <style>
-        :root { color-scheme: dark; }
-        #pv-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-        #pvRange { flex: 1; min-width: 0; }
-        .num-field {
-            width: 46px;
-            background: var(--sdpi-background, #1e1e1e);
-            color: var(--sdpi-color, #ccc);
-            border: 1px solid var(--sdpi-borderColor, #555);
-            border-radius: 3px;
-            padding: 3px 4px;
-            text-align: center;
-            font-size: 12px;
-            font-family: inherit;
-        }
-        .num-field:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
-        .hint { font-size: 11px; color: #888; line-height: 1.4; }
-        .manual-ip-fallback summary { cursor: pointer; font-family: "Segoe UI", Arial, Roboto, Helvetica, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif; font-size: 11px; color: #888; margin: 6px 0 2px; }
-    </style>
-  </head>
 
-  <body>
-    <sdpi-item label="SONOS device" data-i18n="sonos_device">
-        <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
-        </sdpi-select>
-    </sdpi-item>
-    <details class="manual-ip-fallback">
-        <summary data-i18n-html="manual_ip_summary">Speaker not showing up?</summary>
-        <sdpi-item label="Speaker IP" data-i18n="manual_ip_label">
-            <sdpi-textfield setting="lastKnownDeviceIp" global placeholder="192.168.1.42"></sdpi-textfield>
-        </sdpi-item>
-        <sdpi-item>
-            <sdpi-item-value class="hint" data-i18n-html="manual_ip_hint">
-                If your speaker isn't showing up in the list (e.g. it's on a different VLAN), enter the IP address of any one reachable Sonos speaker here. This only needs to be done once, in a single spot — every speaker in your household will then be found everywhere in the plugin. Afterwards, still pick your device from the dropdown above as usual.
-            </sdpi-item-value>
-        </sdpi-item>
-    </details>
-    <sdpi-item label="Preset Volume" data-i18n="preset_volume">
-        <div id="pv-row">
-            <sdpi-range id="pvRange" setting="presetVolume" min="0" max="100" step="1"></sdpi-range>
-            <input type="number" id="pvNumber" class="num-field" min="0" max="100" step="1" title="Preset Volume">
-        </div>
-    </sdpi-item>
-    <sdpi-item label="Show text" data-i18n="show_text">
-        <sdpi-checkbox id="showTextCheckbox" setting="showText"></sdpi-checkbox>
-    </sdpi-item>
-    <sdpi-item label="Alignment" data-i18n="alignment">
-        <sdpi-select setting="align" datasource="get-align-options"></sdpi-select>
-    </sdpi-item>
-    <sdpi-item label="Background" data-i18n="background">
-        <sdpi-select id="vizSelect" setting="visualizerMode" datasource="get-viz-options"></sdpi-select>
-    </sdpi-item>
-    <div id="effectFieldsContainer"></div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Volume dial</title>
+  <link rel="stylesheet" href="pi-theme.css" />
+  <link rel="stylesheet" href="soc.css" />
+  <script src="locales.generated.js"></script>
+  <script src="pi.js"></script>
+</head>
 
-    <script>
-        var pvRange     = document.getElementById('pvRange');
-        var pvNumber    = document.getElementById('pvNumber');
+<body hidden>
+  <pi-section title="pi.sonos_device">
+    <pi-select setting="deviceIp" source="sonos-devices" with="device" placeholder="pi.choose_device"></pi-select>
+    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
+    <div data-show-when="deviceIp=">
+      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
+    </div>
+  </pi-section>
+  <pi-section title="pi.volume">
+    <pi-range setting="presetVolume" min="0" max="100" step="1" default="50" unit="%" label="pi.preset_volume" hint="pi.preset_volume_hint"></pi-range>
+  </pi-section>
+  <pi-section title="pi.gauge">
+    <pi-choice setting="gauge" default="pie" columns="3" data-options='[
+      {"value":"pie","label":"pi.gauge_pie","icon":"gaugePie"},
+      {"value":"ring","label":"pi.gauge_ring","icon":"gaugeRing"},
+      {"value":"open","label":"pi.gauge_open","icon":"gaugeOpen"}
+    ]'></pi-choice>
+  </pi-section>
+  <pi-section title="pi.display">
+    <pi-toggle setting="showText" label="pi.show_text" data-default="true"></pi-toggle>
+    <pi-choice setting="align" default="left" columns="3" data-options='[
+      {"value":"left","label":"pi.align_left","icon":"alignLeft"},
+      {"value":"center","label":"pi.align_center","icon":"alignCenter"},
+      {"value":"right","label":"pi.align_right","icon":"alignRight"}
+    ]'></pi-choice>
+  </pi-section>
+  <pi-panorama class="pi-win"></pi-panorama>
+  <pi-panorama class="pi-pi-only" summary></pi-panorama>
+  <pi-more></pi-more>
+  <div class="pi-footer"><span data-plugin-version></span></div>
+</body>
 
-        function wireSlider(range, number) {
-            range.addEventListener('valuechange', function (e) { number.value = e.target.value; });
-            number.addEventListener('change', function () {
-                var min = +number.min, max = +number.max;
-                var n = Math.max(min, Math.min(max, parseInt(number.value) || min));
-                number.value = n;
-                range.value = n;
-                range.dispatchEvent(new InputEvent('input', { bubbles: true }));
-            });
-        }
-
-        wireSlider(pvRange, pvNumber);
-
-        // `value` is set as a JS property, not an HTML attribute — sdpi-components' setting-
-        // binding mixin declares `value` with `attribute: false`, so a plain HTML attribute has
-        // no effect. Pre-seeds the "unset" (brand new tile, no saved showText yet) case to match
-        // this dial's own render default (`settings?.showText ?? true` in volume-dial.ts) —
-        // without this the PI checkbox showed unchecked while the dial itself already rendered
-        // the % text, since a checkbox's own unset default is unchecked/false. A previously saved
-        // value (true or false) still overrides this once the real settings sync arrives.
-        document.getElementById('showTextCheckbox').value = true;
-
-        // sdpi-components fires the non-bubbling "valuechange" event directly on the element
-        // whenever its .value is set — both from user interaction AND from the initial settings
-        // sync on PI load — so this single listener covers first render and every later switch.
-        var vizSelect = document.getElementById('vizSelect');
-        var effectFieldsContainer = document.getElementById('effectFieldsContainer');
-        vizSelect.addEventListener('valuechange', function () {
-            window.renderEffectFields(effectFieldsContainer, vizSelect.value);
-        });
-    </script>
-  </body>
 </html>

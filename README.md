@@ -216,7 +216,7 @@ Browse and play your saved Sonos favorites. Rotate to scroll through the list; t
 
 ### Panorama Effects *(Stream Deck+ only)*
 
-Ambient visual effect animation that spans multiple adjacent LCD panels as one continuous scene. Place two or more side by side to connect them into a seamless panorama. Pick from several built-in effects, or see [CONTRIBUTING_EFFECTS.md](CONTRIBUTING_EFFECTS.md) if you want to add your own.
+Ambient visual effect animation that spans multiple adjacent LCD panels as one continuous scene. Place two or more side by side to connect them into a seamless panorama. Pick from several built-in effects, or see the [streamdeck-kit](https://github.com/rocklobster42195/streamdeck-kit) (where the effects live now) if you want to add your own.
 
 **Particles**
 A drifting network of glowing particles that connect with lines as they pass close to each other.

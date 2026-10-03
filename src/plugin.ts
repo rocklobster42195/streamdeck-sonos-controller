@@ -4,7 +4,6 @@ import "./sonos/sonos-discovery"; // This will start the discovery process
 // import { sonosDeviceManager } from "./sonos/SonosDeviceManager";
 // import { marqueeAnimator } from "./utils/MarqueeAnimator";
 // import { titleAnimator } from "./utils/TitleAnimator";
-// import { panoramaDebugSummary } from "./effects/PanoramaOrchestrator";
 
 import { PlayPauseKey } from "./actions/play-pause-key";
 import { VolumeDial } from "./actions/volume-dial";

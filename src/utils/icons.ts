@@ -1,6 +1,7 @@
 // SVG icon generators — 24×24 viewBox, returned as base64 data URIs.
 // Paths are pulled directly from @mdi/js (pictogrammers.com), MIT licensed.
 
+import { arc, openRing } from "@rocklobster42195/streamdeck-kit";
 import {
     mdiPlay,
     mdiPlayCircle,
@@ -315,7 +316,7 @@ export function generateUnreachableKeyIcon(): string {
 // --- Volume fader pie (Volume Control Key's 'mute' command) ---
 // Lived in the cover-art loader module historically; moved here with the other SVG builders.
 
-export function generateFaderSvg(levelPercent: number, isMuted: boolean, color: string): string {
+export function generateFaderSvg(levelPercent: number, isMuted: boolean, color: string, gauge: 'pie' | 'ring' | 'open' = 'pie'): string {
     const percent = Math.max(0.0, Math.min(levelPercent, 100.0));
 
     // Dimensions leave breathing room to the edge of the 24px box.
@@ -350,6 +351,9 @@ export function generateFaderSvg(levelPercent: number, isMuted: boolean, color: 
         }
 
         innerContent = `<circle cx="${cx}" cy="${cy}" r="${rOuter}" stroke="${color}" stroke-width="1.5" fill="none"/>${path}`;
+        // The family's other looks, from the kit (same as the dials)
+        if (gauge === 'ring') innerContent = arc(cx, cy, 8, percent / 100, color, { width: 2.4, track: '#3a3a3a' }).join('');
+        if (gauge === 'open') innerContent = openRing({ cx, cy, r: 8, width: 2.4, min: 0, max: 100, value: percent, zones: [{ from: -Infinity, color }] }).join('');
     }
 
     const svgRaw = `

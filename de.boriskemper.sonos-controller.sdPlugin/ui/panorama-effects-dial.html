@@ -1,84 +1,34 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Panorama Effects Settings</title>
-    <script src="i18n.js" defer></script>
-    <script src="sdpi-components.js" defer></script>
-    <script src="effect-fields.js" defer></script>
-    <style>
-      :root { color-scheme: dark; }
-      .hidden { display: none !important; }
-      .hint { font-size: 11px; color: #888; line-height: 1.4; }
-      .manual-ip-fallback summary { cursor: pointer; font-family: "Segoe UI", Arial, Roboto, Helvetica, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif; font-size: 11px; color: #888; margin: 6px 0 2px; }
-    </style>
-  </head>
 
-  <body>
-    <sdpi-item id="deviceItem" label="SONOS device" data-i18n="sonos_device">
-      <sdpi-select id="deviceSelect" setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
-      </sdpi-select>
-    </sdpi-item>
-    <details class="manual-ip-fallback">
-      <summary data-i18n-html="manual_ip_summary">Speaker not showing up?</summary>
-      <sdpi-item label="Speaker IP" data-i18n="manual_ip_label">
-        <sdpi-textfield setting="lastKnownDeviceIp" global placeholder="192.168.1.42"></sdpi-textfield>
-      </sdpi-item>
-      <sdpi-item>
-        <sdpi-item-value class="hint" data-i18n-html="manual_ip_hint">
-          If your speaker isn't showing up in the list (e.g. it's on a different VLAN), enter the IP address of any one reachable Sonos speaker here. This only needs to be done once, in a single spot — every speaker in your household will then be found everywhere in the plugin. Afterwards, still pick your device from the dropdown above as usual.
-        </sdpi-item-value>
-      </sdpi-item>
-    </details>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Panorama effects dial</title>
+  <link rel="stylesheet" href="pi-theme.css" />
+  <link rel="stylesheet" href="soc.css" />
+  <script src="locales.generated.js"></script>
+  <script src="pi.js"></script>
+</head>
 
-    <sdpi-item label="Effect" data-i18n="effect">
-      <sdpi-select id="effectSelect" setting="effectId" datasource="get-effects"></sdpi-select>
-    </sdpi-item>
+<body hidden>
+  <pi-section title="pi.sonos_device">
+    <pi-select setting="deviceIp" source="sonos-devices" with="device" placeholder="pi.no_device_static"></pi-select>
+    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
+    <div data-show-when="deviceIp=">
+      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
+    </div>
+  </pi-section>
+  <pi-section title="pi.display">
+    <pi-toggle setting="showTrackInfo" label="pi.show_track_info" hint="pi.show_track_info_hint"></pi-toggle>
+    <div data-show-when="deviceIp=">
+      <pi-color setting="staticColor" default="#87AE73" label="pi.static_color"></pi-color>
+    </div>
+  </pi-section>
+  <pi-panorama class="pi-win"></pi-panorama>
+  <pi-panorama class="pi-pi-only" summary></pi-panorama>
+  <pi-more></pi-more>
+  <div class="pi-footer"><span data-plugin-version></span></div>
+</body>
 
-    <!-- Particles-specific settings -->
-    <sdpi-item id="colorItem" label="Particle color" data-i18n="particle_color">
-      <sdpi-color setting="staticColor"></sdpi-color>
-    </sdpi-item>
-
-    <sdpi-item id="trackInfoItem" label="Track info" data-i18n="track_info">
-      <sdpi-checkbox setting="showTrackInfo"></sdpi-checkbox>
-    </sdpi-item>
-
-    <!-- Generic controls for whichever effect is selected (color/range/checkbox/select fields
-         from that effect's settingsSchema) — see ui/effect-fields.js. Replaces this file's former
-         hand-wired Boing-Ball-only color fields; also the first time Boing Globe/Matrix Rain's
-         own fields (previously not configurable here at all) get PI controls. -->
-    <div id="effectFieldsContainer"></div>
-
-    <script>
-      var colorItem = document.getElementById('colorItem');
-      var effectSelect = document.getElementById('effectSelect');
-      var deviceSelect = document.getElementById('deviceSelect');
-      var effectFieldsContainer = document.getElementById('effectFieldsContainer');
-
-      var currentEffectId = 'particles';
-      var currentDeviceIp = '';
-
-      function updateVisibility() {
-        var isParticles = currentEffectId === 'particles' || !currentEffectId;
-        // Particle color only makes sense when there's no device driving the ambient color.
-        colorItem.classList.toggle('hidden', !isParticles || !!currentDeviceIp);
-      }
-
-      // sdpi-components elements fire a non-bubbling "valuechange" event directly on themselves
-      // whenever their .value is set — both from user interaction AND from the initial settings
-      // sync on PI load — so listening here (rather than for a bubbled "change"/"settingsDidChange"
-      // on document, which this library never dispatches) is what actually keeps this in sync.
-      effectSelect.addEventListener('valuechange', () => {
-        currentEffectId = effectSelect.value || 'particles';
-        updateVisibility();
-        window.renderEffectFields(effectFieldsContainer, currentEffectId);
-      });
-      deviceSelect.addEventListener('valuechange', () => {
-        currentDeviceIp = deviceSelect.value || '';
-        updateVisibility();
-      });
-    </script>
-  </body>
 </html>

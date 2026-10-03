@@ -4,118 +4,44 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SONOS Volume Settings</title>
-  <script src="i18n.js" defer></script>
-  <script src="sdpi-components.js" defer></script>
-  <style>
-    :root { color-scheme: dark; }
-    .hidden { display: none !important; }
-    .hint { font-size: 11px; color: #888; line-height: 1.4; }
-    .manual-ip-fallback summary { cursor: pointer; font-family: "Segoe UI", Arial, Roboto, Helvetica, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif; font-size: 11px; color: #888; margin: 6px 0 2px; }
-    #pv-row { display: flex; align-items: center; gap: 8px; width: 100%; }
-    #pvRange { flex: 1; min-width: 0; }
-    #pvNumber {
-        width: 46px;
-        background: var(--sdpi-background, #1e1e1e);
-        color: var(--sdpi-color, #ccc);
-        border: 1px solid var(--sdpi-borderColor, #555);
-        border-radius: 3px;
-        padding: 3px 4px;
-        text-align: center;
-        font-size: 12px;
-        font-family: inherit;
-    }
-    #pvNumber:focus { outline: none; border-color: var(--sdpi-focusColor, #888); }
-</style>
+  <title>Volume control key</title>
+  <link rel="stylesheet" href="pi-theme.css" />
+  <link rel="stylesheet" href="soc.css" />
+  <script src="locales.generated.js"></script>
+  <script src="pi.js"></script>
 </head>
 
-<body>
-
-  <sdpi-item label="SONOS device" data-i18n="sonos_device">
-    <sdpi-select setting="deviceIp" datasource="get-devices" loading="Fetching devices…" data-i18n-loading="fetching_devices" hot-reload>
-      <option value="" data-i18n="choose_device">-- Choose Device --</option>
-    </sdpi-select>
-  </sdpi-item>
-  <details class="manual-ip-fallback">
-    <summary data-i18n-html="manual_ip_summary">Speaker not showing up?</summary>
-    <sdpi-item label="Speaker IP" data-i18n="manual_ip_label">
-      <sdpi-textfield setting="lastKnownDeviceIp" global placeholder="192.168.1.42"></sdpi-textfield>
-    </sdpi-item>
-    <sdpi-item>
-      <sdpi-item-value class="hint" data-i18n-html="manual_ip_hint">
-        If your speaker isn't showing up in the list (e.g. it's on a different VLAN), enter the IP address of any one reachable Sonos speaker here. This only needs to be done once, in a single spot — every speaker in your household will then be found everywhere in the plugin. Afterwards, still pick your device from the dropdown above as usual.
-      </sdpi-item-value>
-    </sdpi-item>
-  </details>
-
-  <sdpi-item label="Command" data-i18n="command">
-    <sdpi-select setting="command" datasource="get-command-options"></sdpi-select>
-  </sdpi-item>
-
-  <sdpi-item label="Preset Volume" data-i18n="preset_volume">
-    <div id="pv-row">
-      <sdpi-range id="pvRange" setting="presetVolume" min="0" max="100" step="1"></sdpi-range>
-      <input type="number" id="pvNumber" min="0" max="100" step="1" title="Preset Volume">
+<body hidden>
+  <pi-section title="pi.sonos_device">
+    <pi-select setting="deviceIp" source="sonos-devices" with="device" placeholder="pi.choose_device"></pi-select>
+    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
+    <div data-show-when="deviceIp=">
+      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
     </div>
-  </sdpi-item>
-  <sdpi-item label="Show preset" data-i18n="show_preset">
-    <sdpi-checkbox setting="showPreset"></sdpi-checkbox>
-  </sdpi-item>
-
-  <div id="show-volume-wrapper" class="hidden">
-    <sdpi-item label="Show volume" data-i18n="show_volume">
-      <sdpi-checkbox setting="showVolume"></sdpi-checkbox>
-    </sdpi-item>
-  </div>
-
-  <script>
-    var pvRange              = document.getElementById('pvRange');
-    var pvNumber             = document.getElementById('pvNumber');
-    var showShowVolumeWrap   = document.getElementById('show-volume-wrapper');
-    var showPresetCheckbox   = document.querySelector('sdpi-checkbox[setting="showPreset"]');
-    var showVolumeCheckbox   = document.querySelector('sdpi-checkbox[setting="showVolume"]');
-    var relevantCommands     = ['mute', 'vol-up', 'vol-down'];
-    var currentCommand       = '';
-
-    pvRange.addEventListener('valuechange', function (e) {
-        pvNumber.value = e.target.value;
-    });
-
-    pvNumber.addEventListener('change', function () {
-        var n = Math.max(0, Math.min(100, parseInt(pvNumber.value) || 0));
-        pvNumber.value = n;
-        pvRange.value = n;
-        pvRange.dispatchEvent(new InputEvent('input', { bubbles: true }));
-    });
-
-    function applyVisibility(command) {
-      showShowVolumeWrap.classList.toggle('hidden', !relevantCommands.includes(command));
-    }
-
-    document.querySelector('sdpi-select[setting="command"]').addEventListener('valuechange', function(e) {
-        var command = e.target.value;
-        currentCommand = command;
-        applyVisibility(command);
-        if (relevantCommands.includes(command) && showPresetCheckbox.value && showVolumeCheckbox.value) {
-            showVolumeCheckbox.value = false;
-            showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
-        }
-    });
-
-    showPresetCheckbox.addEventListener('valuechange', function (event) {
-      if (relevantCommands.includes(currentCommand) && event.target.value) {
-        showVolumeCheckbox.value = false;
-        showVolumeCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
-      }
-    });
-
-    showVolumeCheckbox.addEventListener('valuechange', function (event) {
-      if (relevantCommands.includes(currentCommand) && event.target.value) {
-        showPresetCheckbox.value = false;
-        showPresetCheckbox.dispatchEvent(new InputEvent('input', { bubbles: true }));
-      }
-    });
-  </script>
+  </pi-section>
+  <pi-section title="pi.command">
+    <pi-choice setting="command" columns="4" data-options='[
+      {"value":"mute","label":"pi.cmd_mute","icon":"volumeOff"},
+      {"value":"vol-down","label":"pi.cmd_vol_down","icon":"volumeDown"},
+      {"value":"vol-up","label":"pi.cmd_vol_up","icon":"volumeUp"},
+      {"value":"vol-preset","label":"pi.cmd_vol_preset","icon":"volumeMedium"}
+    ]'></pi-choice>
+  </pi-section>
+  <pi-section title="pi.volume" data-show-when="command=mute,vol-preset">
+    <pi-range setting="presetVolume" min="0" max="100" step="1" default="20" unit="%" label="pi.preset_volume"></pi-range>
+  </pi-section>
+  <pi-section data-show-when="command=mute,vol-preset" title="pi.gauge">
+    <pi-choice setting="gauge" default="pie" columns="3" data-options='[
+      {"value":"pie","label":"pi.gauge_pie","icon":"gaugePie"},
+      {"value":"ring","label":"pi.gauge_ring","icon":"gaugeRing"},
+      {"value":"open","label":"pi.gauge_open","icon":"gaugeOpen"}
+    ]'></pi-choice>
+  </pi-section>
+  <pi-section title="pi.display">
+    <pi-toggle setting="showVolume" label="pi.show_volume"></pi-toggle>
+    <pi-toggle setting="showPreset" label="pi.show_preset"></pi-toggle>
+  </pi-section>
+  <div class="pi-footer"><span data-plugin-version></span></div>
 </body>
 
 </html>

@@ -6,7 +6,6 @@
         "lint": "eslint src",
         "lint:fix": "eslint src --fix",
         "test": "vitest run",
-        "effects:preview": "node tools/run-effects-preview.mjs",
         "pi:preview": "node tools/pi-preview.mjs",
         "diagnose": "node tools/diagnose-lag.mjs",
         "diagnose:stereo": "node tools/diagnose-stereo-pairs.mjs",

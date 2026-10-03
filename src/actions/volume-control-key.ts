@@ -26,6 +26,8 @@ type SonosKeyVolumeSettings = {
     presetVolume?: number;
     showVolume?: boolean;
     showPreset?: boolean;
+    // How the mute key's volume is drawn: the pie (default), the kit's ring or open ring
+    gauge?: 'pie' | 'ring' | 'open';
 };
 
 type VolumeCommand = SonosKeyVolumeSettings['command'];
@@ -33,6 +35,7 @@ type VolumeCommand = SonosKeyVolumeSettings['command'];
 // What the icon/title updaters actually need from an action — structural, so `ev.action` fits
 // without fighting the SDK's KeyAction/DialAction union generics.
 type KeySurface = {
+    readonly id: string;
     setImage(image?: string): Promise<void>;
     setTitle(title?: string): Promise<void>;
 };
@@ -56,6 +59,11 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     private longPressExecuted: Map<string, boolean> = new Map();
     private actionRefs: Map<string, KeySurface> = new Map();
     private keyStates: Map<string, KeyState> = new Map();
+    private gauges: Map<string, SonosKeyVolumeSettings['gauge']> = new Map();
+
+    private gaugeOf(action: KeySurface): SonosKeyVolumeSettings['gauge'] {
+        return this.gauges.get(action.id) ?? 'pie';
+    }
 
     private newKeyState(context: string, volume: number, isMuted: boolean, command: VolumeCommand): KeyState {
         const state: KeyState = {
@@ -85,7 +93,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
 
         switch (command) {
             case 'mute':
-                iconFile = generateFaderSvg(volume, isMuted, "#CCCCCC");
+                iconFile = generateFaderSvg(volume, isMuted, "#CCCCCC", this.gaugeOf(action));
                 break;
             case 'vol-up':
                 iconFile = generateVolumeButtonIcon('up');
@@ -137,6 +145,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         this.setupRetry.cancel(context);
         const { deviceIp, command, showVolume, showPreset, volume, presetVolume } = payload.settings;
         const settings = payload.settings;
+        this.gauges.set(context, settings.gauge);
 
         this.actionRefs.set(context, action);
 

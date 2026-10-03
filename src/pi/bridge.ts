@@ -4,6 +4,8 @@
 import { piBridge, trackActions } from "@rocklobster42195/streamdeck-kit/bridge";
 import { panoramaRows, socActions } from "../effects/panorama";
 import { deviceItems, groupItems } from "../actions/pi-options";
+import { sonosFavoritesCache } from "../sonos/sonos-discovery";
+import { piT } from "../utils/pi-i18n";
 
 /** Call before streamDeck.connect(), so no willAppear is missed (the Panorama needs every dial's place). */
 export function initPiBridge(): void {
@@ -14,4 +16,13 @@ export function initPiBridge(): void {
     // `deviceIp`/`groupIp`: the action's current choice, kept in the list while it is offline
     piBridge.registerOptions("sonos-devices", ({ deviceIp }) => deviceItems(deviceIp || undefined));
     piBridge.registerOptions("sonos-groups", ({ groupIp }) => groupItems(groupIp || undefined));
+    // Play Favorite: the value is the whole favorite as JSON (what the key always stored)
+    piBridge.registerOptions("sonos-favorites", () =>
+        (sonosFavoritesCache.getFavorites() ?? []).map((fav) => ({ value: JSON.stringify(fav), label: fav.Title })),
+    );
+    // Multi-Control: only what the speaker has (the key writes hasLineIn/hasBattery into its settings)
+    piBridge.registerOptions("sonos-functions", ({ hasLineIn, hasBattery }) => [
+        ...(hasLineIn === "true" ? [{ value: "line-in", label: piT("Line-In") }] : []),
+        ...(hasBattery === "true" ? [{ value: "battery", label: piT("Battery") }] : []),
+    ]);
 }
