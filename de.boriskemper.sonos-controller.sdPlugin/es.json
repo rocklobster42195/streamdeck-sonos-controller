@@ -156,6 +156,11 @@
             "gauge_ring": "Anillo",
             "gauge_open": "Anillo abierto",
             "diagnostics_hint": "Muestra cómo responde el altavoz (para diagnóstico)."
-        }
+        },
+        "Particle density": "Densidad de partículas",
+        "Particle speed": "Velocidad de partículas",
+        "Rain density": "Densidad de lluvia",
+        "Ball speed": "Velocidad de la bola",
+        "Drift speed": "Velocidad de giro"
     }
 }

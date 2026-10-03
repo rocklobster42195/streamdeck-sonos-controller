@@ -157,6 +157,11 @@
             "gauge_ring": "Ring",
             "gauge_open": "Open ring",
             "diagnostics_hint": "Shows how the speaker answers (for troubleshooting)."
-        }
+        },
+        "Particle density": "Particle density",
+        "Particle speed": "Particle speed",
+        "Rain density": "Rain density",
+        "Ball speed": "Ball speed",
+        "Drift speed": "Drift speed"
     }
 }

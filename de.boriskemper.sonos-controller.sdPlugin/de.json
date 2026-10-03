@@ -156,6 +156,11 @@
             "gauge_ring": "Ring",
             "gauge_open": "Offener Ring",
             "diagnostics_hint": "Zeigt, wie der Lautsprecher antwortet (zur Fehlersuche)."
-        }
+        },
+        "Particle density": "Partikeldichte",
+        "Particle speed": "Partikel-Tempo",
+        "Rain density": "Regendichte",
+        "Ball speed": "Ball-Tempo",
+        "Drift speed": "Drehtempo"
     }
 }

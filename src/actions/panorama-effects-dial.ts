@@ -8,6 +8,7 @@ import streamDeck, {
     WillAppearEvent,
     WillDisappearEvent,
 } from "@elgato/streamdeck";
+import { mdiScatterPlotOutline, mdiSpeedometer, mdiWeatherPouring } from "@mdi/js";
 import { effectRegistry, measureArialWidth, truncateToWidth } from "@rocklobster42195/streamdeck-kit";
 import { panorama, panoramaRows, socRowState } from "../effects/panorama";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
@@ -16,6 +17,7 @@ import { TrackInfo } from "../sonos/SonosTypes";
 import { ControllerLease } from "./ControllerLease";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
+import { ACCENT_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
 
 type PanoramaEffectsSettings = {
@@ -29,9 +31,27 @@ type PanoramaEffectsSettings = {
     [key: string]: JsonValue | undefined;
 };
 
-type Instance = { settings: PanoramaEffectsSettings; deviceId: string; column: number; track?: { title: string; artist: string }; color?: string; colorFor?: string };
+type Instance = {
+    settings: PanoramaEffectsSettings;
+    deviceId: string;
+    column: number;
+    track?: { title: string; artist: string };
+    color?: string;
+    colorFor?: string;
+    /** Which of the effect's values turning changes (index into panoramaRows.tunables). */
+    fn: number;
+    /** Until when the function badge shows at the top. */
+    badgeUntil?: number;
+    /** Ticks not yet applied to the row (sent at most every TUNE_MS). */
+    pendingTicks: number;
+    tuneTimer?: ReturnType<typeof setTimeout>;
+};
 
-const PERSIST_MS = 800;
+const BADGE_MS = 1500;
+const BADGE_FADE_MS = 300;
+const TUNE_MS = 100;
+/** Icons of what turning changes (as on MA-C's Panorama dial). */
+const CONTROL_ICONS: Record<string, string> = { count: mdiScatterPlotOutline, speed: mdiSpeedometer, density: mdiWeatherPouring };
 
 /**
  * The "Panorama Effects" dial: the row's effect (the kit's Panorama, one effect per row of dials)
@@ -43,7 +63,6 @@ const PERSIST_MS = 800;
 @action({ UUID: "de.boriskemper.sonos-controller.panorama-effects-dial" })
 export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings> {
     private readonly instances = new Map<string, Instance>();
-    private readonly persistTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private readonly lastImage = new Map<string, string>();
     private lease = new ControllerLease<SonosDeviceController>(
         (ip) => sonosDeviceManager.getController(ip),
@@ -54,7 +73,7 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
         if (!ev.action.isDial()) return;
         const id = ev.action.id;
         const column = "coordinates" in ev.payload && ev.payload.coordinates ? ev.payload.coordinates.column : 0;
-        this.instances.set(id, { settings: ev.payload.settings, deviceId: ev.action.device.id, column });
+        this.instances.set(id, { settings: ev.payload.settings, deviceId: ev.action.device.id, column, fn: 0, pendingTicks: 0 });
         panoramaRows.add(id, {
             device: ev.action.device.id,
             column,
@@ -90,24 +109,78 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
 
     override async onWillDisappear(ev: WillDisappearEvent<PanoramaEffectsSettings>): Promise<void> {
         const id = ev.action.id;
-        clearTimeout(this.persistTimers.get(id));
-        this.persistTimers.delete(id);
+        clearTimeout(this.instances.get(id)?.tuneTimer);
         this.lease.release(id);
         this.instances.delete(id);
         this.lastImage.delete(id);
         panoramaRows.remove(id);
     }
 
+    // Rotate turns the chosen value of the row's effect (density, speed, ...). It goes through the
+    // row, so it works also while another plugin's dial runs the effect (this one follows).
     override async onDialRotate(ev: DialRotateEvent<PanoramaEffectsSettings>): Promise<void> {
-        panorama.rotate(ev.action.id, ev.payload.ticks);
-        this.persistRuntime(ev.action.id);
+        const inst = this.instances.get(ev.action.id);
+        if (!inst || !panoramaRows.tunables(ev.action.id).length) return;
+        inst.pendingTicks += ev.payload.ticks;
+        if (!inst.tuneTimer) inst.tuneTimer = setTimeout(() => this.applyTicks(ev.action.id), TUNE_MS);
+        this.showBadge(ev.action.id);
     }
 
-    // Press switches what turning changes (e.g. particle count and speed)
+    // Press switches what turning changes
     override async onDialDown(ev: DialDownEvent<PanoramaEffectsSettings>): Promise<void> {
-        panorama.press(ev.action.id);
-        this.persistRuntime(ev.action.id);
-        void this.renderDial(ev.action.id);
+        const inst = this.instances.get(ev.action.id);
+        const list = panoramaRows.tunables(ev.action.id);
+        if (!inst || list.length < 2) return this.showBadge(ev.action.id);
+        inst.fn = (inst.fn + 1) % list.length;
+        this.showBadge(ev.action.id);
+    }
+
+    private applyTicks(id: string): void {
+        const inst = this.instances.get(id);
+        if (!inst) return;
+        inst.tuneTimer = undefined;
+        const ticks = inst.pendingTicks;
+        inst.pendingTicks = 0;
+        const fn = panoramaRows.tunables(id)[inst.fn];
+        if (fn && ticks) panoramaRows.tune(id, fn.key, ticks);
+        void this.renderDial(id);
+    }
+
+    private showBadge(id: string): void {
+        const inst = this.instances.get(id);
+        if (!inst) return;
+        inst.badgeUntil = Date.now() + BADGE_MS;
+        void this.renderDial(id);
+        // Redraw while it fades and once it's gone (the effect redraws too, but may be paused)
+        for (const ms of [BADGE_MS - BADGE_FADE_MS / 2, BADGE_MS + 20]) setTimeout(() => void this.renderDial(id), ms);
+    }
+
+    /** The function badge at the top: icon, name and how far the value is turned. */
+    private badge(id: string): string {
+        const inst = this.instances.get(id);
+        const left = (inst?.badgeUntil ?? 0) - Date.now();
+        if (!inst || left <= 0) return "";
+        const list = panoramaRows.tunables(id);
+        const fn = list[inst.fn % Math.max(1, list.length)];
+        if (!fn) return "";
+        const opacity = left < BADGE_FADE_MS ? left / BADGE_FADE_MS : 1;
+        const name = piT(fn.label);
+        const textW = measureArialWidth(name, 12, true);
+        const barW = 44;
+        const w = 8 + 16 + 6 + textW + 8 + barW + 10;
+        const x = 100 - w / 2;
+        const level = (fn.value - fn.min) / Math.max(1e-9, fn.max - fn.min);
+        const bx = x + 30 + textW + 8;
+        const icon = CONTROL_ICONS[fn.control ?? ""] ?? mdiSpeedometer;
+        return [
+            `<g opacity="${opacity.toFixed(2)}">`,
+            `<rect x="${x.toFixed(1)}" y="0" width="${w.toFixed(1)}" height="22" rx="8" fill="#000" opacity="0.7"/>`,
+            `<path transform="translate(${(x + 8).toFixed(1)} 3) scale(${16 / 24})" fill="${ACCENT_COLOR}" d="${icon}"/>`,
+            `<text x="${(x + 30).toFixed(1)}" y="15.5" fill="#ffffff" font-family="Arial,sans-serif" font-size="12" font-weight="bold">${escapeXml(name)}</text>`,
+            `<rect x="${bx.toFixed(1)}" y="9" width="${barW}" height="4" rx="2" fill="#3a3a40"/>`,
+            `<rect x="${bx.toFixed(1)}" y="9" width="${Math.max(4, barW * level).toFixed(1)}" height="4" rx="2" fill="${ACCENT_COLOR}"/>`,
+            "</g>",
+        ].join("");
     }
 
     // ---- the speaker: track text and cover colour --------------------------------------------
@@ -159,16 +232,6 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
         panorama.updateLive(id, { color, ...(fields.has("primaryColor") ? { primaryColor: color } : {}), ...(fields.has("landColor") ? { landColor: color } : {}) });
     }
 
-    private persistRuntime(id: string): void {
-        clearTimeout(this.persistTimers.get(id));
-        this.persistTimers.set(id, setTimeout(() => {
-            const inst = this.instances.get(id);
-            const runtime = panorama.runtimeSettings(id);
-            // Turning tunes the row's effect: stored with every dial of the row
-            if (inst && runtime) panoramaRows.setRow(inst.deviceId, { settings: runtime });
-        }, PERSIST_MS));
-    }
-
     // ---- drawing ------------------------------------------------------------------------------
 
     /** The Panorama Effects dials right next to each other on this device (this one included). */
@@ -218,11 +281,14 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
             text(anchorX, 72, 20, "#fff", "500", title),
             artistW ? `<rect x="${anchorX - artistW - 4}" y="77" width="${artistW + 8}" height="20" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : "",
             text(anchorX, 93, 15, "#aaa", "", artist),
+            this.badge(id),
             "</svg>",
         ].join("");
         const image = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
         if (image === this.lastImage.get(id)) return;
         this.lastImage.set(id, image);
-        await sdAction.setFeedback({ "full-canvas": image, "icon": "", "title": "", "indicator": { value: panorama.indicator(id) ?? 0 } }).catch(() => {});
+        const fn = panoramaRows.tunables(id)[inst.fn];
+        const indicator = fn ? Math.round(((fn.value - fn.min) / Math.max(1e-9, fn.max - fn.min)) * 100) : 0;
+        await sdAction.setFeedback({ "full-canvas": image, "icon": "", "title": "", "indicator": { value: indicator } }).catch(() => {});
     }
 }
