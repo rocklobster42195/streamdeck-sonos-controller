@@ -39,6 +39,14 @@ wss.on("connection", (ws) => {
             case "sendToPlugin":
                 if (msg.payload?.event === "pi-ready") {
                     reply({ event: "sendToPropertyInspector", payload: { event: "effects", effects: listEffects() } });
+                    // An invented row for the Panorama section (the plugin's PanoramaRows sends this)
+                    const dials = [
+                        { column: 0, plugin: "SO-C", label: "Queue", member: true, self: false },
+                        { column: 1, plugin: "SO-C", label: "Living Room", member: true, self: true },
+                        { column: 2, plugin: "MA-C", label: "Kitchen", member: false, self: false },
+                        { column: 3, plugin: "SO-C", label: "Panorama", member: true, self: false },
+                    ];
+                    reply({ event: "sendToPropertyInspector", payload: { event: "panorama-row", device: "dev", effect: "particles", settings: {}, effects: listEffects(), dials } });
                 } else if (msg.payload?.event === "options") {
                     const { requestId, source, params } = msg.payload;
                     const items = optionLists[source]?.(params ?? {}) ?? [];
