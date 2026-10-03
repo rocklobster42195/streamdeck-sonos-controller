@@ -1,5 +1,6 @@
 <!-- NEXT -->
 
+- **Requires Stream Deck 7.1 or later** and runs on Node.js 24 (Node 20 is out of support), like the other Rocklobster plugins.
 - **New settings panels** (the family's panel kit, as in Music Assistant Controller): shorter, with tiles and switches instead of dropdowns, in English, German and Spanish. The "Speaker not showing up?" field only appears while no speaker is chosen. Dials with a Panorama effect get a settings window for it ("More settings …").
 - **One Panorama per row of dials:** a row has one effect with one set of settings, chosen in any dial's Panorama section; each dial has a tick whether it shows the effect. Your existing effects are taken over (the Panorama Effects dial's effect wins its row). **Changed:** two different effects side by side in one row become one effect for the row.
 - **Favorites and Queue dials as a scrolling list:** entries stacked with the selected one in the middle, gliding one entry per click of the dial; what is playing in green with a small wave. The Queue dial rests on the playing track and follows it. New switch "Show covers".

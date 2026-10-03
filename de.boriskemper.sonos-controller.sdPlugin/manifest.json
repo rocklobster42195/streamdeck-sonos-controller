@@ -248,16 +248,16 @@
 	"Category": "SONOS Controller",
 	"CategoryIcon": "imgs/plugin/lobster",
 	"CodePath": "bin/plugin.js",
-	"Description": "Control your SONOS system with your StreamDeck+\nThis plugin is not connected to SONOS.\n\nThis plugin uses SONOS-TS by Stephan van Rooij (https://sonos-ts.svrooij.io/), licensed under MIT License.\n\nIcons by\nhttps://pictogrammers.com\n\nsdpi-components by GeekyEggo\nhttps://github.com/geekyeggo/sdpi-components",
+	"Description": "Control your SONOS system with your StreamDeck+\nThis plugin is not connected to SONOS.\n\nThis plugin uses SONOS-TS by Stephan van Rooij (https://sonos-ts.svrooij.io/), licensed under MIT License.\n\nIcons by\nhttps://pictogrammers.com",
 	"Icon": "imgs/plugin/lobster",
 	"SDKVersion": 3,
 	"Software": {
-		"MinimumVersion": "6.9"
+		"MinimumVersion": "7.1"
 	},
 	"OS": [
 		{
 			"Platform": "mac",
-			"MinimumVersion": "10.15"
+			"MinimumVersion": "12"
 		},
 		{
 			"Platform": "windows",
@@ -265,7 +265,7 @@
 		}
 	],
 	"Nodejs": {
-		"Version": "20"
+		"Version": "24"
 	},
 	"UUID": "de.boriskemper.sonos-controller"
 }

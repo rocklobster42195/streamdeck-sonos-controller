@@ -262,7 +262,7 @@ deckbus stays on your computer. It uses local pipes (Windows) or sockets (macOS)
 ## Requirements
 
 - **Elgato Stream Deck** — any model for key actions; **Stream Deck+** required for dial actions (developed and tested on the 4-dial Stream Deck+; hardware with more dials per row, e.g. a 6-dial Stream Deck+ XL, is untested)
-- **Stream Deck software** — version 6.9 or later
+- **Stream Deck software** — version 7.1 or later
 - **Sonos system** — any Sonos speaker on the same local network as your computer
 - **Network** — plugin and speaker should be on the same subnet; automatic discovery does not cross router or VLAN boundaries, though a manual IP fallback (see [Troubleshooting](#troubleshooting)) can work around this in most VLAN setups
 
@@ -331,4 +331,3 @@ Built with:
 - [Elgato Stream Deck SDK](https://developer.elgato.com/documentation/stream-deck/) (`@elgato/streamdeck`)
 - [Sonos TypeScript SDK](https://github.com/svrooij/node-sonos-ts) (`@svrooij/sonos`) by Stephan van Rooij — MIT license
 - [Material Design Icons](https://pictogrammers.com/library/mdi/) (`@mdi/js`) — MIT license
-- [sdpi-components](https://github.com/geekyeggo/sdpi-components) by GeekyEggo — MIT license
