@@ -5,7 +5,14 @@ import { Track } from "@svrooij/sonos/lib/models";
  * (AVTransport's EnqueuedTransportURI / EnqueuedTransportURIMetaData). Undefined when Sonos knows
  * none, e.g. a stream another app (Music Assistant) sends straight to the speaker.
  */
-export type PlaybackSource = { title: string; upnpClass?: string; uri?: string };
+export type PlaybackSource = {
+    title: string;
+    upnpClass?: string;
+    uri?: string;
+    /** From the local API: the music service (e.g. "Spotify") and the container's id there. */
+    service?: string;
+    objectId?: string;
+};
 
 export type TrackInfo = Track & {
     albumArtDataUri?: string;

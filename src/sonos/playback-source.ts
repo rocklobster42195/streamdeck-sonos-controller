@@ -16,3 +16,16 @@ export function parseSource(meta: unknown, uri: unknown): PlaybackSource | undef
   if (!title) return undefined;
   return { title, upnpClass, uri: typeof uri === 'string' && uri ? uri : undefined };
 }
+
+/**
+ * The source from an AVTransport event: EnqueuedTransportURI where the firmware still sends it,
+ * else — when not playing from the queue (a station, Line-In) — what AVTransportURI names. Null
+ * for queue playback without either (the local API may know more).
+ */
+export function upnpSourceOf(data: Record<string, unknown>): PlaybackSource | null {
+  const enqueued = parseSource(data.EnqueuedTransportURIMetaData, data.EnqueuedTransportURI);
+  if (enqueued) return enqueued;
+  const uri = typeof data.AVTransportURI === 'string' ? data.AVTransportURI : '';
+  if (uri && !uri.startsWith('x-rincon-queue:')) return parseSource(data.AVTransportURIMetaData, uri) ?? null;
+  return null;
+}

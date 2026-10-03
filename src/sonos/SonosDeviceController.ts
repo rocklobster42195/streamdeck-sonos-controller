@@ -7,7 +7,8 @@ import { loadImageFromUri } from "./cover-art-loader";
 import { normalizeBrowseResult } from "./queue-utils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
 import { PlaybackSource, SonosFavorite, TrackInfo, VolumeInfo } from "./SonosTypes";
-import { parseSource } from "./playback-source";
+import { upnpSourceOf } from "./playback-source";
+import { SonosLocalApiWatcher } from "./sonos-local-api";
 import { withTimeout } from "../utils/with-timeout";
 import { parseRelTime } from "./rel-time";
 import { isRadioAlbumArtUri, upsizeSonosImageProxyUrl, looksLikeRawStreamFilename } from "./track-metadata";
@@ -85,6 +86,11 @@ export class SonosDeviceController {
   private sourceCallbacks: Map<string, (source: PlaybackSource | undefined) => void> = new Map();
   // undefined = not reported yet; null = Sonos reported no source (e.g. a stream from another app)
   private currentSource: PlaybackSource | null | undefined;
+  // The two places a source comes from: UPnP (a station, or EnqueuedTransportURI where the
+  // firmware still sends it) wins; the local API covers queue playback (playlists, albums).
+  private upnpSource: PlaybackSource | null | undefined;
+  private apiSource: PlaybackSource | null | undefined;
+  private localApi?: SonosLocalApiWatcher;
   private batteryCallbacks: Map<string, (battery: SonosBatteryStatus | undefined) => void> = new Map();
   private reachabilityCallbacks: Map<string, (reachable: boolean) => void> = new Map();
 
@@ -321,6 +327,8 @@ export class SonosDeviceController {
     this.playModeCallbacks.clear();
     this.trackInfoCallbacks.clear();
     this.sourceCallbacks.clear();
+    this.localApi?.stop();
+    this.localApi = undefined;
     this.batteryCallbacks.clear();
     this.reachabilityCallbacks.clear();
   }
@@ -706,9 +714,30 @@ export class SonosDeviceController {
   /** What the music was started from (fires right away once known, then on every change). */
   registerSourceCallback(id: string, callback: (source: PlaybackSource | undefined) => void): void {
     this.sourceCallbacks.set(id, callback);
+    // The local API watcher runs only while someone wants the source
+    if (!this.localApi) {
+      this.localApi = new SonosLocalApiWatcher(this.deviceIp, (source) => {
+        this.apiSource = source ?? null;
+        this.updateSource();
+      });
+    }
     if (this.currentSource !== undefined) callback(this.currentSource ?? undefined);
   }
-  unregisterSourceCallback(id: string): void { this.sourceCallbacks.delete(id); }
+  unregisterSourceCallback(id: string): void {
+    this.sourceCallbacks.delete(id);
+    if (!this.sourceCallbacks.size) {
+      this.localApi?.stop();
+      this.localApi = undefined;
+    }
+  }
+
+  private updateSource(): void {
+    // A grouped member gets its source from the coordinator (see syncCoordinatorSubscription)
+    if (this.isGroupedMember) return;
+    const source = this.upnpSource || this.apiSource || null;
+    if (this.upnpSource === undefined && this.apiSource === undefined) return;
+    this.setSource(source);
+  }
 
   private setSource(source: PlaybackSource | null): void {
     const prev = this.currentSource;
@@ -855,8 +884,9 @@ export class SonosDeviceController {
           // a stale member-sourced event arriving between poll ticks kept flipping the dial back
           // to "playing" (e.g. the EQ visualizer), fighting the poll's correct value.
           if (this.isGroupedMember) return;
-          if ('EnqueuedTransportURIMetaData' in data || 'EnqueuedTransportURI' in data) {
-            this.setSource(parseSource(data.EnqueuedTransportURIMetaData, data.EnqueuedTransportURI) ?? null);
+          if ('EnqueuedTransportURIMetaData' in data || 'EnqueuedTransportURI' in data || 'AVTransportURI' in data) {
+            this.upnpSource = upnpSourceOf(data);
+            this.updateSource();
           }
           if (typeof data.TransportState === 'string') this.transportStateCallbacks.forEach(cb => cb(data.TransportState));
           if (typeof data.CurrentPlayMode === 'string') this.playModeCallbacks.forEach(cb => cb(data.CurrentPlayMode));

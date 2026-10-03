@@ -18,3 +18,31 @@ describe('parseSource', () => {
         expect(parseSource(undefined, undefined)).toBeUndefined();
     });
 });
+
+describe('upnpSourceOf', () => {
+    it('takes a station from AVTransportURI when not playing from the queue', async () => {
+        const { upnpSourceOf } = await import('./playback-source');
+        expect(upnpSourceOf({ AVTransportURI: 'x-sonosapi-hls:station', AVTransportURIMetaData: { Title: 'Some Radio', UpnpClass: 'object.item.audioItem.audioBroadcast' } }))
+            .toEqual({ title: 'Some Radio', upnpClass: 'object.item.audioItem.audioBroadcast', uri: 'x-sonosapi-hls:station' });
+    });
+
+    it('knows nothing for queue playback without EnqueuedTransportURI (current firmware)', async () => {
+        const { upnpSourceOf } = await import('./playback-source');
+        expect(upnpSourceOf({ AVTransportURI: 'x-rincon-queue:RINCON_X#0', AVTransportURIMetaData: '0' })).toBeNull();
+    });
+
+    it('prefers EnqueuedTransportURI where it is still sent', async () => {
+        const { upnpSourceOf } = await import('./playback-source');
+        expect(upnpSourceOf({ AVTransportURI: 'x-rincon-queue:RINCON_X#0', EnqueuedTransportURI: 'x-rincon-cpcontainer:1', EnqueuedTransportURIMetaData: { Title: 'Evening' } })?.title).toBe('Evening');
+    });
+});
+
+describe('sourceFromContainer (local API)', () => {
+    it('maps the container type and keeps service and id', async () => {
+        const { sourceFromContainer } = await import('./sonos-local-api');
+        expect(sourceFromContainer({ name: 'Spotify playlist', type: 'playlist', id: { objectId: 'spotify:playlist:abc' }, service: { name: 'Spotify' } }))
+            .toEqual({ title: 'Spotify playlist', upnpClass: 'object.container.playlistContainer', service: 'Spotify', objectId: 'spotify:playlist:abc' });
+        expect(sourceFromContainer({ type: 'playlist' })).toBeUndefined();
+        expect(sourceFromContainer(undefined)).toBeUndefined();
+    });
+});

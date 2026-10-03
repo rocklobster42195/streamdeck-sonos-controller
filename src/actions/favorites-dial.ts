@@ -135,12 +135,15 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         this.queueRender(context);
     }
 
-    // The playing favorite: the one the music was started from (Sonos's source), else one named
-    // like the current track or artist (stations report their name there).
+    // The playing favorite: the one the music was started from (Sonos's source — by its id at the
+    // music service, then by name), else one named like the current track or artist (stations
+    // report their name there).
     private matchPlayingFavorite(context: string, state: FavDialState): void {
         const favs = this.getFavorites(context);
         const t = state.currentTrack;
-        const match = (state.source && favs.find((f) => f.Title === state.source!.title))
+        const src = state.source;
+        const match = (src?.objectId && favs.find((f) => favoriteMentions(f, src.objectId!)))
+            ?? (src && favs.find((f) => f.Title === src.title))
             ?? favs.find((f) => !!f.Title && (f.Title === t?.Title || f.Title === t?.Artist));
         if (match) state.playingFav = { Title: match.Title, AlbumArtUri: match.AlbumArtUri, isLineIn: match.isLineIn };
         else if (!state.playingFav?.isLineIn) state.playingFav = undefined;
@@ -456,11 +459,12 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         // sends to the speaker): the heart, filled while playing.
         const fav = state.playingFav;
         const source = state.source;
-        const backdrop = this.effectBackdrop(context, settings);
         if (!fav && !source) {
-            await send(heartStrip(state.transportState === 'PLAYING', settings.align ?? 'center', backdrop));
+            // The heart needs no darkening behind it, unlike the card's text
+            await send(heartStrip(state.transportState === 'PLAYING', settings.align ?? 'center', this.effectBackdrop(context, settings, false)));
             return;
         }
+        const backdrop = this.effectBackdrop(context, settings);
         const track = state.currentTrack;
         const trackLine = [track?.Title, track?.Artist].filter(Boolean).join(' · ');
         const cover = (fav?.AlbumArtUri ? sonosFavoritesCache.getCoverArt(fav.AlbumArtUri) : undefined)
@@ -471,18 +475,19 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             title: track?.Title || piT('Nothing playing'),
             source: fav
                 ? { kind: piT('Favorite'), name: fav.Title, track: trackLine }
-                : { kind: sourceKind(source!.upnpClass), name: source!.title, track: trackLine },
+                : { kind: [sourceKind(source!.upnpClass), source!.service].filter(Boolean).join(' · '), name: source!.title, track: trackLine },
             hint: piT('Rotate to browse'),
             backdrop,
         }));
     }
 
-    /** The row's Panorama effect under this dial, darkened so the card stays readable ('' without one). */
-    private effectBackdrop(context: string, settings: FavoritesDialSettings): string {
+    /** The row's Panorama effect under this dial, darkened (`dim`) so text stays readable ('' without one). */
+    private effectBackdrop(context: string, settings: FavoritesDialSettings, dim = true): string {
         if (!this.isEffectMode(settings.visualizerMode)) return '';
         const key = panoramaContextGroupKey.get(context);
         if (!isPanoramaEffectActive(key)) return '';
-        return renderPanoramaEffectSlice(key!, getPanoramaSliceOffset(context)) + '<rect width="200" height="100" fill="#000" opacity="0.45"/>';
+        const slice = renderPanoramaEffectSlice(key!, getPanoramaSliceOffset(context));
+        return dim ? slice + '<rect width="200" height="100" fill="#000" opacity="0.45"/>' : slice;
     }
 
     private listRow(fav: SonosFavorite | undefined, playingTitle: string | undefined): ListRow | undefined {
@@ -494,6 +499,17 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             active: !!playingTitle && fav.Title === playingTitle,
         };
     }
+}
+
+/** Does a Sonos favorite point at this container id (e.g. "spotify:playlist:…")? */
+function favoriteMentions(fav: SonosFavorite, objectId: string): boolean {
+    const id = objectId.toLowerCase();
+    return [fav.TrackUri, fav.ResMD, fav.ItemId].some((v) => {
+        if (typeof v !== 'string' || !v) return false;
+        let text = v;
+        try { text = decodeURIComponent(v); } catch { /* keep as is */ }
+        return text.toLowerCase().includes(id);
+    });
 }
 
 /** The kind of a source for the card's first line (from its UPnP class). */
