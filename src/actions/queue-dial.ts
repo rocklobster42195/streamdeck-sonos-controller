@@ -35,6 +35,8 @@ interface QueueDialState {
     trackInfo?: TrackInfo;
     transportState: string;
     playbackKind: 'queue' | 'radio' | 'unknown';
+    // false while the speaker doesn't play from its queue (e.g. Music Assistant streams to it)
+    queueActive?: boolean;
     queueItems: Track[];
     liveTrackIndex: number; // 0-based; -1 = unknown/not applicable
     dominantColor: string;
@@ -117,6 +119,17 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
             // Radio -> queue: fetch the whole queue; otherwise only the cheap live position
             void this.refreshQueueContext(context, controller, wasRadio && state.playbackKind === 'queue');
         }
+        void this.renderDial(context);
+    }
+
+    private onQueueActiveChanged(context: string, active: boolean): void {
+        const state = this.states.get(context);
+        if (!state) return;
+        state.queueActive = active;
+        if (!active && state.browsing) this.stopBrowsing(state);
+        const controller = this.lease.get(context);
+        // Back on the queue: its content may have changed meanwhile
+        if (active && controller) void this.refreshQueueContext(context, controller, true);
         void this.renderDial(context);
     }
 
@@ -241,11 +254,13 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
                     // Fires immediately with cached state (incl. isRadio) if a track is already known.
                     controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
                     controller.registerPlayModeCallback(context, (pm) => this.onPlayModeChanged(context, pm));
+                    controller.registerQueueActiveCallback(context, (active) => this.onQueueActiveChanged(context, active));
                 }
                 return [
                     () => controller.unregisterTransportStateCallback(context),
                     () => controller.unregisterTrackInfoCallback(context),
                     () => controller.unregisterPlayModeCallback(context),
+                    () => controller.unregisterQueueActiveCallback(context),
                     () => controller.unregisterReachabilityCallback(context),
                 ];
             });
@@ -303,7 +318,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         const context = ev.action.id;
         const state = this.states.get(context);
         if (!state) return;
-        if (state.playbackKind !== 'queue' || state.queueItems.length === 0) return;
+        if (state.playbackKind !== 'queue' || state.queueItems.length === 0 || state.queueActive === false) return;
         state.browsing = true;
         state.list.setLength(state.queueItems.length);
         state.list.rotate(ev.payload.ticks);
@@ -369,7 +384,11 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         let image: string;
         let indicator = { value: 0, enabled: false };
         const total = state.queueItems.length;
-        if (state.playbackKind === 'queue' && total > 0) {
+        if (state.queueActive === false) {
+            // The speaker doesn't play from its queue (another app streams to it, or a station):
+            // nothing to show but the row's effect
+            image = `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100"><rect width="200" height="100" fill="#0a0a0a"/>${backdrop ? panoramaContextGroupKey.get(context) ? renderPanoramaEffectSlice(panoramaContextGroupKey.get(context)) : '' : ''}</svg>`).toString('base64')}`;
+        } else if (state.playbackKind === 'queue' && total > 0) {
             if (!state.list.length) {
                 state.list.reset(total, Math.max(0, state.liveTrackIndex));
                 state.followed = state.liveTrackIndex;
