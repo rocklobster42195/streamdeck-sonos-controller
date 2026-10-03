@@ -5,6 +5,7 @@
 - **Favorites and Queue dials as a scrolling list:** entries stacked with the selected one in the middle, gliding one entry per click of the dial; what is playing in green with a small wave. The Queue dial rests on the playing track and follows it. New switch "Show covers".
 - **Favorites dial when idle:** a card with what is playing and where it comes from (the favorite, or the playlist, album or station Sonos reports); when that isn't known (e.g. music from Music Assistant) the heart as before. Replaces the cover mosaic.
 - **Volume as pie, ring or open ring** on the Volume and Group Volume dials and the Volume key (default: the pie as before).
+- **Works with other plugins (deckbus):** the Panorama spans the dials of other plugins in the same row (e.g. Music Assistant Controller); local only, see the README.
 - Smoother scrolling text, more robust cover loading and the volume display come from the shared kit now.
 
 - Play/Pause key: when paused or stopped it now keeps showing the cover, dimmed, with a play symbol on top, instead of switching to a plain play icon (taken over from Music Assistant Controller). When there is nothing to resume (e.g. after Music Assistant stopped, which leaves the Sonos queue empty), it shows the plain play icon as before.

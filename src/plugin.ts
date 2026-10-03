@@ -19,6 +19,7 @@ import { QueueDial } from "./actions/queue-dial";
 import { MultiControlKey } from "./actions/multi-control-key";
 import { registerGracefulShutdown } from "./utils/graceful-shutdown";
 import { initPiBridge } from "./pi/bridge";
+import { startSocBus } from "./bus/soc-bus";
 
 streamDeck.logger.setLevel("info");
 
@@ -40,6 +41,8 @@ streamDeck.actions.registerAction(new MultiControlKey());
 // Finally, connect to the Stream Deck immediately.
 streamDeck.connect();
 streamDeck.logger.info('Stream Deck plugin connected. Discovery running in background.');
+// deckbus: the Panorama with other plugins' dials, where SO-C's actions are (works on without it)
+void startSocBus();
 
 // UNSUBSCRIBE all UPnP subscriptions in the grace window when Stream Deck stops/restarts the
 // plugin (websocket close) or the process is signalled — see graceful-shutdown.ts for why.

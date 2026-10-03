@@ -247,6 +247,18 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 ---
 
+## Works with other plugins (deckbus)
+
+SONOS Controller talks to other Stream Deck plugins on your computer through **deckbus**, a small open bus between plugins. You don't need to set anything up: when the plugins run, they find each other.
+
+**Offers:** the Panorama: dials of SONOS Controller and of other plugins in the same row share one effect (for example Music Assistant Controller's dials next to yours). Also where its actions are and whether it found Sonos speakers.
+
+**Uses:** the Panorama of the other plugins' dials in the same row.
+
+**Only with your permission:** nothing.
+
+deckbus stays on your computer. It uses local pipes (Windows) or sockets (macOS), plugins must know a key stored in your user profile, and nothing goes over the network. The protocol is open: [deckbus protocol](https://github.com/rocklobster42195/streamdeck-kit/blob/main/docs/deckbus-protocol.md).
+
 ## Requirements
 
 - **Elgato Stream Deck** — any model for key actions; **Stream Deck+** required for dial actions (developed and tested on the 4-dial Stream Deck+; hardware with more dials per row, e.g. a 6-dial Stream Deck+ XL, is untested)

@@ -1,14 +1,21 @@
 // The plugin's one Panorama, from the kit: effects spanning neighbouring dials, one effect per row
-// of dials (the kit's PanoramaRows), chosen in the PI's Panorama section. Local for now (no
-// deckbus yet — see the migration notes); the kit tracks where the dials are.
+// of dials (the kit's PanoramaRows), chosen in the PI's Panorama section. Shared over deckbus with
+// other plugins' dials in the same row (src/bus/soc-bus.ts); the kit tracks where the dials are.
 //
 // Replaces the plugin's own PanoramaOrchestrator. The dials keep calling the helpers at the bottom
 // (same names as the orchestrator's), so their drawing code didn't have to change.
 import { ActionsState } from "@rocklobster42195/streamdeck-kit/bus";
 import { PanoramaEngine, PanoramaRows, rowStateFromSettings, SharedPanorama, type RowDialState } from "@rocklobster42195/streamdeck-kit";
 
-/** Where the plugin's dials are (fed by the kit's trackActions, see plugin.ts). */
-export const socActions = new ActionsState({ setState: () => {} });
+let sink: ((key: string, value: unknown) => void) | undefined;
+
+/** Where the plugin's actions are (fed by the kit's trackActions), shared on deckbus once it runs. */
+export const socActions = new ActionsState({ setState: (key, value) => sink?.(key, value) });
+
+/** The bus takes over the "actions" state (called once it exists). */
+export function shareActionsTo(fn: (key: string, value: unknown) => void): void {
+    sink = fn;
+}
 
 export const panorama = new SharedPanorama(new PanoramaEngine({ defaultColor: "#404040" }), socActions);
 
