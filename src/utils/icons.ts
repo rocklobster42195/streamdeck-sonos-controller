@@ -259,6 +259,8 @@ export function generateBatteryKeyIcon(battery: { percent: number; charging: boo
 // (#CCCCCC), so none of these ever read as an operable button. Tuned on hardware in two rounds:
 // #252525 was too dark to make out at all, #3A3A3A still a touch too dark.
 export const INACTIVE_ICON_COLOR = '#454545';
+/** SO-C's colour (Sage, the company colour): what is playing in lists, folder icons. */
+export const ACCENT_COLOR = '#87AE73';
 
 // "Operable but currently off" (e.g. Shuffle/Repeat disengaged): the middle tier of the icon
 // state scale — brighter than INACTIVE_ICON_COLOR (pressing this DOES something), well below
