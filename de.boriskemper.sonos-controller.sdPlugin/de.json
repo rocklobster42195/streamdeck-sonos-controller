@@ -86,6 +86,22 @@
         "-- Select Function --": "-- Funktion wählen --",
         "-- No function available for this device --": "-- Keine Funktion für dieses Gerät verfügbar --",
         "Line-In": "Line-In",
-        "Battery": "Akku"
+        "Battery": "Akku",
+        "pi": {
+            "sonos_device": "SONOS-Gerät",
+            "choose_device": "Gerät wählen",
+            "preset_volume": "Lautstärke-Preset",
+            "show_text": "Text anzeigen",
+            "alignment": "Ausrichtung",
+            "align_left": "Links",
+            "align_center": "Mitte",
+            "align_right": "Rechts",
+            "manual_ip_summary": "Speaker wird nicht gefunden?",
+            "manual_ip_label": "Speaker-IP",
+            "manual_ip_hint": "Falls dein Speaker nicht in der Liste erscheint (z. B. weil er in einem anderen VLAN steht), gib hier die IP-Adresse eines beliebigen erreichbaren Sonos-Lautsprechers ein. Das genügt einmalig, an einer einzigen Stelle — danach werden alle Lautsprecher deines Haushalts überall im Plugin gefunden. Wähle dein Gerät anschließend wie gewohnt oben im Dropdown aus.",
+            "display": "Anzeige",
+            "preset_volume_hint": "Drücken springt auf diese Lautstärke",
+            "volume": "Lautstärke"
+        }
     }
 }

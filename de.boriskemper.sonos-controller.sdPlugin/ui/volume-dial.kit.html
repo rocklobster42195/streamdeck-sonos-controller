@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Volume dial</title>
+  <link rel="stylesheet" href="pi-theme.css" />
+  <script src="locales.generated.js"></script>
+  <script src="pi.js"></script>
+</head>
+
+<body hidden>
+  <pi-section title="pi.sonos_device">
+    <pi-select setting="deviceIp" source="sonos-devices" with="device" placeholder="pi.choose_device"></pi-select>
+  </pi-section>
+
+  <pi-section title="pi.volume">
+    <pi-range setting="presetVolume" min="0" max="100" step="1" default="20" unit="%" label="pi.preset_volume" hint="pi.preset_volume_hint"></pi-range>
+  </pi-section>
+
+  <pi-section title="pi.display">
+    <pi-toggle setting="showText" label="pi.show_text" data-default="true"></pi-toggle>
+    <pi-choice setting="align" default="center" columns="3" data-options='[
+      {"value":"left","label":"pi.align_left","icon":"alignLeft"},
+      {"value":"center","label":"pi.align_center","icon":"alignCenter"},
+      {"value":"right","label":"pi.align_right","icon":"alignRight"}
+    ]'></pi-choice>
+  </pi-section>
+
+  <pi-panorama class="pi-win"></pi-panorama>
+  <pi-panorama class="pi-pi-only" summary></pi-panorama>
+
+  <pi-section class="pi-win" title="pi.manual_ip_summary">
+    <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_label" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
+  </pi-section>
+
+  <pi-more></pi-more>
+
+  <div class="pi-footer"><span data-plugin-version></span></div>
+</body>
+
+</html>

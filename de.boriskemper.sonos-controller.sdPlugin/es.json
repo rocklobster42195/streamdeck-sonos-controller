@@ -86,6 +86,22 @@
         "-- Select Function --": "-- Seleccionar función --",
         "-- No function available for this device --": "-- Ninguna función disponible para este dispositivo --",
         "Line-In": "Line-In",
-        "Battery": "Batería"
+        "Battery": "Batería",
+        "pi": {
+            "sonos_device": "Dispositivo SONOS",
+            "choose_device": "Elegir dispositivo",
+            "preset_volume": "Volumen preestablecido",
+            "show_text": "Mostrar texto",
+            "alignment": "Alineación",
+            "align_left": "Izquierda",
+            "align_center": "Centro",
+            "align_right": "Derecha",
+            "manual_ip_summary": "¿No se encuentra el altavoz?",
+            "manual_ip_label": "IP del altavoz",
+            "manual_ip_hint": "Si tu altavoz no aparece en la lista (por ejemplo, por estar en una VLAN distinta), introduce aquí la dirección IP de cualquier altavoz Sonos accesible. Basta con hacerlo una vez, en un solo sitio — a partir de ahí se encontrarán todos los altavoces de tu hogar en todo el plugin. Después, elige tu dispositivo como de costumbre en la lista de arriba.",
+            "display": "Pantalla",
+            "preset_volume_hint": "Pulsa el dial para saltar a este volumen",
+            "volume": "Volumen"
+        }
     }
 }

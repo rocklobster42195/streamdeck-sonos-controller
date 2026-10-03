@@ -87,6 +87,22 @@
         "-- No function available for this device --": "-- No function available for this device --",
         "Line-In": "Line-In",
         "Battery": "Battery",
-        "no_function_available_hint": "No Multi-Control function is available for this device."
+        "no_function_available_hint": "No Multi-Control function is available for this device.",
+        "pi": {
+            "sonos_device": "Sonos device",
+            "choose_device": "Choose a speaker",
+            "preset_volume": "Preset volume",
+            "show_text": "Show text",
+            "alignment": "Alignment",
+            "align_left": "Left",
+            "align_center": "Center",
+            "align_right": "Right",
+            "manual_ip_summary": "Speaker not showing up?",
+            "manual_ip_label": "Speaker IP",
+            "manual_ip_hint": "If your speaker isn’t in the list (e.g. it’s on a different VLAN), enter the IP address of any reachable Sonos speaker here. This only needs to be done once, in one place — every speaker in your household is then found everywhere in the plugin.",
+            "display": "Display",
+            "preset_volume_hint": "Press the dial to jump to this volume",
+            "volume": "Volume"
+        }
     }
 }
