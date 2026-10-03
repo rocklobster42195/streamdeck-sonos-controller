@@ -1,10 +1,8 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, { 
     action, 
     KeyDownEvent, 
     SingletonAction, 
-    WillAppearEvent, 
-    SendToPluginEvent, 
+    WillAppearEvent,  
     DidReceiveSettingsEvent, 
     WillDisappearEvent 
 } from "@elgato/streamdeck";
@@ -16,7 +14,6 @@ import { titleAnimator } from "../utils/TitleAnimator";
 import { generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { SonosFavorite } from "../sonos/SonosTypes";
-import { sendDeviceList, sendFadeOptions, sendOptions } from "./pi-options";
 
 type SonosFavoriteSettings = {
     deviceIp?: string;
@@ -163,24 +160,4 @@ export class PlayFavoriteKey extends SingletonAction<SonosFavoriteSettings> {
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosFavoriteSettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        switch ((ev.payload as any).event) {
-            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
-            case 'get-fade-options': sendFadeOptions(); break;
-            case 'get-favorites': {
-                if (!sonosFavoritesCache.areFavoritesLoaded()) {
-                    sendOptions('get-favorites', [{ label: "Loading...", value: "" }]);
-                    return;
-                }
-                const favorites = sonosFavoritesCache.getFavorites() || [];
-                const favoriteItems = favorites.map((fav) => ({
-                    label: fav.Title,
-                    value: JSON.stringify(fav)
-                }));
-                sendOptions('get-favorites', [{ label: "-- Select Favorite --", value: "" }, ...favoriteItems]);
-                break;
-            }
-        }
-    }
 }

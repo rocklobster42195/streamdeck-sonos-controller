@@ -1,10 +1,8 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     DialRotateEvent,
     WillAppearEvent,
     DialDownEvent,
-    SendToPluginEvent,
     DidReceiveSettingsEvent,
     TouchTapEvent
 } from "@elgato/streamdeck";
@@ -21,7 +19,6 @@ import { escapeXml } from "../utils/xml";
 import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { syncCapabilityFlag } from "./capability-flag";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/panorama";
-import { sendDeviceList, sendFadeOptions, sendVizOptions, sendAlignOptions } from "./pi-options";
 import { ControllerLease } from "./ControllerLease";
 
 type FavoritesDialSettings = PanoramaCapableSettings & {
@@ -305,7 +302,6 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
 
             this.matchPlayingFavorite(context, state);
 
-
             await this.renderDial(context);
         } catch (e) {
             streamDeck.logger.error(`[FavDial ${context}] Setup error:`, e);
@@ -399,17 +395,6 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             this.startFadeThroughBlack(context);
         } else {
             this.queueRender(context);
-        }
-    }
-
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, FavoritesDialSettings>): Promise<void> {
-        const payload = ev.payload;
-        if (typeof payload !== 'object' || payload === null || !('event' in payload)) return;
-        switch ((payload as any).event) {
-            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
-            case 'get-fade-options': sendFadeOptions(); break;
-            case 'get-viz-options': sendVizOptions({ label: piT('None'), value: 'mosaic' }); break;
-            case 'get-align-options': sendAlignOptions(); break;
         }
     }
 

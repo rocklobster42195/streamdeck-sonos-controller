@@ -1,14 +1,10 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     TouchTapEvent,
-    SendToPluginEvent,
 } from "@elgato/streamdeck";
 import { VolumePieDialAction, VolumePieDialSettings } from "./VolumePieDialAction";
 import { sonosGroupManager } from "../sonos/SonosGroupManager";
 import { SonosGroupController } from "../sonos/SonosGroupController";
-import { piT } from "../utils/pi-i18n";
-import { sendGroupList, sendAlignOptions, sendVizOptions } from "./pi-options";
 
 type GroupVolumeDialSettings = VolumePieDialSettings & {
     groupIp?: string;
@@ -125,12 +121,4 @@ export class GroupVolumeDial extends VolumePieDialAction<SonosGroupController, G
         if (preset) await controller.recallMemberVolumes(preset);
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, GroupVolumeDialSettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        switch (ev.payload.event) {
-            case 'get-groups': await sendGroupList((await ev.action.getSettings()).groupIp); break;
-            case 'get-align-options': sendAlignOptions(); break;
-            case 'get-viz-options': sendVizOptions({ label: piT('None'), value: 'none' }); break;
-        }
-    }
 }

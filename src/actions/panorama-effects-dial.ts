@@ -4,7 +4,6 @@ import streamDeck, {
     DialDownEvent,
     DialRotateEvent,
     DidReceiveSettingsEvent,
-    SendToPluginEvent,
     SingletonAction,
     WillAppearEvent,
     WillDisappearEvent,
@@ -18,7 +17,6 @@ import { ControllerLease } from "./ControllerLease";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
 import { piT } from "../utils/pi-i18n";
-import { sendDeviceList, sendOptions } from "./pi-options";
 
 type PanoramaEffectsSettings = {
     // The old per-dial effect choice — taken over into the row once (socRowState), then the row's.
@@ -110,16 +108,6 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
         panorama.press(ev.action.id);
         this.persistRuntime(ev.action.id);
         void this.renderDial(ev.action.id);
-    }
-
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, PanoramaEffectsSettings>): Promise<void> {
-        if (typeof ev.payload !== "object" || ev.payload === null || !("event" in ev.payload)) return;
-        switch (ev.payload.event) {
-            case "get-devices": await sendDeviceList("-- No device (static color) --", (await ev.action.getSettings()).deviceIp); break;
-            case "get-effects":
-                sendOptions("get-effects", [...effectRegistry.values()].map((def) => ({ label: piT(def.displayName), value: def.id })));
-                break;
-        }
     }
 
     // ---- the speaker: track text and cover colour --------------------------------------------

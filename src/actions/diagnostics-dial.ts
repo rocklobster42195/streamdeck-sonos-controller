@@ -1,4 +1,3 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     DialRotateEvent,
@@ -6,13 +5,11 @@ import streamDeck, {
     SingletonAction,
     DialDownEvent,
     TouchTapEvent,
-    SendToPluginEvent,
     DidReceiveSettingsEvent,
     WillDisappearEvent,
 } from "@elgato/streamdeck";
 import { fetchDiagnosticsSample } from "../sonos/SonosDiagnostics";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
-import { sendDeviceList } from "./pi-options";
 import { piT } from "../utils/pi-i18n";
 
 // Nerdy power-user tool built while tracking down a real flaky-speaker issue — see
@@ -200,11 +197,6 @@ export class DiagnosticsDial extends SingletonAction<SonosDiagnosticsSettings> {
         if (step === 0) return;
         state.metricIndex = (state.metricIndex + step + METRICS.length) % METRICS.length;
         void this.renderDial(context);
-    }
-
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosDiagnosticsSettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        if (ev.payload.event === 'get-devices') await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp);
     }
 
     private async renderDial(context: string): Promise<void> {

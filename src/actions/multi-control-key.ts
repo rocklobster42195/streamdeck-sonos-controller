@@ -1,10 +1,8 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     KeyDownEvent,
     SingletonAction,
     WillAppearEvent,
-    SendToPluginEvent,
     DidReceiveSettingsEvent,
     WillDisappearEvent
 } from "@elgato/streamdeck";
@@ -16,8 +14,6 @@ import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { generateLineInIcon, generateBatteryKeyIcon, generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
-import { piT } from "../utils/pi-i18n";
-import { sendDeviceList, sendFadeOptions, sendOptions } from "./pi-options";
 
 // MS1 scope so far: Line-In (one-shot source switch, optional fade beforehand) and Battery
 // (full-key status display, key press = manual refresh). Night Mode/Speech Enhancement/Sleep
@@ -59,20 +55,6 @@ function isFunctionValid(fn: MultiControlFunction, hasBattery: boolean | undefin
     if (fn === 'line-in') return hasLineIn === true;
     if (fn === 'battery') return hasBattery === true;
     return true;
-}
-
-// Empty (no function valid for this device) is surfaced via the placeholder's own text rather
-// than silently leaving a nearly-empty dropdown — see also noFunctionAvailableItem in the PI,
-// which shows a fuller explanatory hint for the same condition.
-function functionOptionItems(hasBattery: boolean | undefined, hasLineIn: boolean | undefined): { label: string; value: string }[] {
-    const validFns = (['line-in', 'battery'] as const).filter((fn) => isFunctionValid(fn, hasBattery, hasLineIn));
-    if (validFns.length === 0) {
-        return [{ label: piT('-- No function available for this device --'), value: '' }];
-    }
-    return [
-        { label: piT('-- Select Function --'), value: '' },
-        ...validFns.map((fn) => ({ label: piT(fn === 'line-in' ? 'Line-In' : 'Battery'), value: fn })),
-    ];
 }
 
 @action({ UUID: "de.boriskemper.sonos-controller.multi-control-key" })
@@ -189,7 +171,6 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
             // moments later.
             const hasBattery = hasBatteryResult ?? settings.hasBattery ?? this.hasBatteryByContext.get(context) ?? false;
             const hasLineIn = hasLineInResult ?? settings.hasLineIn ?? this.hasLineInByContext.get(context) ?? false;
-            const changed = this.hasBatteryByContext.get(context) !== hasBattery || this.hasLineInByContext.get(context) !== hasLineIn;
             this.hasBatteryByContext.set(context, hasBattery);
             this.hasLineInByContext.set(context, hasLineIn);
 
@@ -206,12 +187,6 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
             if (settings.hasBattery !== hasBattery || settings.hasLineIn !== hasLineIn || staleFunction) {
                 settings = { ...settings, hasBattery, hasLineIn, ...(staleFunction ? { controlFunction: undefined } : {}) };
                 await action.setSettings(settings);
-            }
-            if (changed) {
-                // Re-render the actual dropdown list, not just the settings-synced warning hint —
-                // the PI may already have the (stale) list loaded from before these were known,
-                // e.g. right after the device dropdown changed while the PI was still open.
-                sendOptions('get-function-options', functionOptionItems(hasBattery, hasLineIn));
             }
         }
 
@@ -317,14 +292,4 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, MultiControlSettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        switch ((ev.payload as any).event) {
-            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
-            case 'get-function-options':
-                sendOptions('get-function-options', functionOptionItems(this.hasBatteryByContext.get(ev.action.id), this.hasLineInByContext.get(ev.action.id)));
-                break;
-            case 'get-fade-options': sendFadeOptions(); break;
-        }
-    }
 }

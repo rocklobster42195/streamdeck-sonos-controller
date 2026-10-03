@@ -1,10 +1,8 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     KeyDownEvent,
     SingletonAction,
     WillAppearEvent,
-    SendToPluginEvent,
     DidReceiveSettingsEvent,
     WillDisappearEvent
 } from "@elgato/streamdeck";
@@ -14,8 +12,6 @@ import { discoveryPromise } from "../sonos/sonos-discovery";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { generatePlaybackIcon, generateUnreachableKeyIcon, INACTIVE_ICON_COLOR, OFF_ICON_COLOR } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
-import { piT } from "../utils/pi-i18n";
-import { sendDeviceList, sendOptions } from "./pi-options";
 import { ControllerLease } from "./ControllerLease";
 
 type SonosPlaybackSettings = {
@@ -193,19 +189,4 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosPlaybackSettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
-            case 'get-command-options':
-                sendOptions('get-command-options', [
-                    { label: piT('-- Select Command --'), value: '' },
-                    { label: piT('Next Track'), value: 'next' },
-                    { label: piT('Previous Track'), value: 'previous' },
-                    { label: piT('Toggle Shuffle'), value: 'shuffle' },
-                    { label: piT('Toggle Repeat'), value: 'repeat' },
-                ]);
-                break;
-        }
-    }
 }

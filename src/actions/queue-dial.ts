@@ -1,9 +1,7 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     WillAppearEvent,
     DidReceiveSettingsEvent,
-    SendToPluginEvent,
     DialRotateEvent,
     DialDownEvent,
     TouchTapEvent,
@@ -21,7 +19,6 @@ import { ACCENT_COLOR, buildUnconfiguredDialSvg } from "../utils/icons";
 import { QueueCoverArtCache } from "./QueueCoverArtCache";
 import { piT } from "../utils/pi-i18n";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, groupEffects } from "../effects/panorama";
-import { sendDeviceList, sendVizOptions, sendOptions } from "./pi-options";
 import { ControllerLease } from "./ControllerLease";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 
@@ -343,20 +340,6 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
     // Touch glides back to the playing track.
     override async onTouchTap(ev: TouchTapEvent<QueueDialSettings>): Promise<void> {
         this.backToLive(ev.action.id);
-    }
-
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, QueueDialSettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
-            case 'get-cover-position-options':
-                sendOptions('get-cover-position-options', [
-                    { label: piT('Left'), value: 'left' },
-                    { label: piT('Right'), value: 'right' },
-                ]);
-                break;
-            case 'get-viz-options': sendVizOptions({ label: piT('None'), value: 'none' }); break;
-        }
     }
 
     protected async renderDial(context: string): Promise<void> {

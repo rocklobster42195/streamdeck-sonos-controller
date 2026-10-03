@@ -1,14 +1,10 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     TouchTapEvent,
-    SendToPluginEvent,
 } from "@elgato/streamdeck";
 import { VolumePieDialAction, VolumePieDialSettings } from "./VolumePieDialAction";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { piT } from "../utils/pi-i18n";
-import { sendDeviceList, sendAlignOptions, sendVizOptions } from "./pi-options";
 
 type VolumeDialSettings = VolumePieDialSettings & {
     deviceIp?: string;
@@ -119,12 +115,4 @@ export class VolumeDial extends VolumePieDialAction<SonosDeviceController, Volum
         await controller.setVolume(ev.payload.settings.presetVolume ?? 50);
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, VolumeDialSettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
-            case 'get-align-options': sendAlignOptions(); break;
-            case 'get-viz-options': sendVizOptions({ label: piT('None'), value: 'none' }); break;
-        }
-    }
 }

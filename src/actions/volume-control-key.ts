@@ -1,11 +1,9 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     KeyDownEvent,
     KeyUpEvent,
     SingletonAction,
     WillAppearEvent,
-    SendToPluginEvent,
     DidReceiveSettingsEvent,
     WillDisappearEvent
 } from "@elgato/streamdeck";
@@ -15,8 +13,6 @@ import { discoveryPromise } from "../sonos/sonos-discovery";
 import { VolumeDisplay } from "@rocklobster42195/streamdeck-kit";
 import { generateFaderSvg, generateVolumeButtonIcon, generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
-import { piT } from "../utils/pi-i18n";
-import { sendDeviceList, sendOptions } from "./pi-options";
 import { ControllerLease } from "./ControllerLease";
 
 type SonosKeyVolumeSettings = {
@@ -369,19 +365,4 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, SonosKeyVolumeSettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
-            case 'get-command-options':
-                sendOptions('get-command-options', [
-                    { label: piT('-- Select Command --'), value: '' },
-                    { label: piT('Mute / Preset'), value: 'mute' },
-                    { label: piT('Volume Up'), value: 'vol-up' },
-                    { label: piT('Volume Down'), value: 'vol-down' },
-                    { label: piT('Volume Preset'), value: 'vol-preset' },
-                ]);
-                break;
-        }
-    }
 }

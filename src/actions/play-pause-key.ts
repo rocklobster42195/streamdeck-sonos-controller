@@ -1,10 +1,8 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     KeyDownEvent,
     SingletonAction,
     WillAppearEvent,
-    SendToPluginEvent,
     DidReceiveSettingsEvent,
     WillDisappearEvent
 } from "@elgato/streamdeck";
@@ -18,7 +16,6 @@ import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { parseRelTime } from "../sonos/rel-time";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { syncCapabilityFlag } from "./capability-flag";
-import { sendDeviceList, sendBatteryModeOptions } from "./pi-options";
 import { ControllerLease } from "./ControllerLease";
 
 /**
@@ -464,11 +461,4 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         }
     }
 
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, PlayPauseKeySettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
-            case 'get-battery-mode-options': sendBatteryModeOptions(); break;
-        }
-    }
 }

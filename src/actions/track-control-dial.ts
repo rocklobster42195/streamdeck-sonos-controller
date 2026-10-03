@@ -1,10 +1,8 @@
-import { type JsonValue } from "@elgato/utils";
 import streamDeck, {
     action,
     DialRotateEvent,
     WillAppearEvent,
     DialDownEvent,
-    SendToPluginEvent,
     DidReceiveSettingsEvent,
     TouchTapEvent
 } from "@elgato/streamdeck";
@@ -23,7 +21,6 @@ import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { syncCapabilityFlag } from "./capability-flag";
 import { piT } from "../utils/pi-i18n";
-import { sendDeviceList, sendVizOptions, sendBatteryModeOptions } from "./pi-options";
 import { buildUnconfiguredDialSvg, renderBatteryBadge } from "../utils/icons";
 import { ControllerLease } from "./ControllerLease";
 
@@ -409,20 +406,6 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
             });
         } catch (e) {
             streamDeck.logger.warn('Seek failed', e);
-        }
-    }
-
-    override async onSendToPlugin(ev: SendToPluginEvent<JsonValue, TrackControlDialSettings>): Promise<void> {
-        if (typeof ev.payload !== 'object' || ev.payload === null || !('event' in ev.payload)) return;
-        switch (ev.payload.event) {
-            case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
-            case 'get-viz-options':
-                sendVizOptions(
-                    { label: piT('None (track info only)'), value: 'none' },
-                    { label: piT('EQ Effect'), value: 'eq' },
-                );
-                break;
-            case 'get-battery-mode-options': sendBatteryModeOptions(); break;
         }
     }
 
