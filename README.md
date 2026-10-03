@@ -19,12 +19,12 @@ Available on the [Elgato Marketplace](https://marketplace.elgato.com/product/son
 
 | Key Actions | Dial Actions *(Stream Deck+ only)* |
 |---|---|
-| [**Play / Pause**](#play--pause) — cover art · scrolling title · progress | [**Track Control**](#track-control-stream-deck-only) — cover art · title · progress · EQ Effect |
-| [**Playback Control**](#playback-control) — next · previous · shuffle · repeat | [**Queue**](#queue-stream-deck-only) — browse & jump within the current queue |
-| [**Volume Control**](#volume-control) — up · down · mute · preset | [**Volume**](#volume-stream-deck-only) — pie chart · mute · preset |
+| [**Play / Pause**](#play--pause) — cover art · scrolling title · progress | [**Track Control**](#track-control-stream-deck-only) — cover art · title · progress · EQ or Panorama |
+| [**Playback Control**](#playback-control) — next · previous · shuffle · repeat | [**Queue**](#queue-stream-deck-only) — the queue as a scrolling list · jump to any track |
+| [**Volume Control**](#volume-control) — up · down · mute · preset | [**Volume**](#volume-stream-deck-only) — pie, ring or open ring · mute · preset |
 | [**Play Favorite**](#play-favorite) — one tap to play a saved favorite | [**Group Volume**](#group-volume-stream-deck-only) — control a whole Sonos group's volume together |
-| [**Multi-Control**](#multi-control) — Line-In switching (optional fade) or a live Battery display | [**Favorites**](#favorites-stream-deck-only) — browse & play your favorites list · cover mosaic or effect + heart icon |
-| | [**Panorama Effects**](#panorama-effects-stream-deck-only) — ambient art spanning multiple panels |
+| [**Multi-Control**](#multi-control) — Line-In switching (optional fade) or a live Battery display | [**Favorites**](#favorites-stream-deck-only) — your favorites as a scrolling list · what is playing and where it comes from |
+| | [**Panorama Effects**](#panorama-effects-stream-deck-only) — ambient art spanning a row of dials, also other plugins' |
 
 ---
 
@@ -66,7 +66,8 @@ Also handy for quickly auditioning a playlist: rotate to scrub within the curren
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
-| Background | `None` (track info only), `EQ Effect` (animated bars), or any Panorama effect |
+| Look | Without an effect: `Track info` or `Equalizer` (animated bars) |
+| Panorama | Whether this dial shows its row's effect — see [Panorama](#panorama-one-effect-per-row) |
 | Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon in the corner for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
 
 ---
@@ -86,20 +87,20 @@ Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim a
 
 ### Queue *(Stream Deck+ only)*
 
-Browse and jump within the currently playing queue without interrupting playback. Rotate to preview upcoming or previous tracks — the LCD shows the previewed title with its neighbors above and below; press to jump playback there, touch or wait to cancel and return to now playing. For radio, shows a simple now-playing card since there's no queue to browse.
+The queue as a list that scrolls smoothly, one track per click of the dial, with the selected track in the middle. It rests on the track that is playing (green, with a small wave) and follows it when the next one starts. Push plays the selected track; touch, or a few seconds without input, glides back to the playing one. When the speaker doesn't play from its own queue — a radio station, or music another app streams to it (e.g. Music Assistant) — the dial shows only the row's Panorama effect.
 
 | Interaction | Effect |
 |-------------|--------|
-| Rotate | Preview a track in the queue (playback keeps running until you press) |
-| Press | Jump playback to the previewed track |
-| Touch | Cancel the preview and return to now playing |
+| Rotate | Scroll through the queue (playback keeps running until you push) |
+| Push | Play the selected track |
+| Touch | Back to the playing track |
 
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
-| Cover position | `Left` or `Right` |
-| Background | `None` or any Panorama effect, shown behind the now-playing view |
-| Return timeout | Seconds of inactivity before returning to now playing (`0` = never — only Touch returns you) |
+| Show covers | Off: icons only |
+| Back to the playing track after | Seconds without input (`0` = stays until touched) |
+| Panorama | Whether this dial shows its row's effect |
 
 ---
 
@@ -116,12 +117,13 @@ Increase, decrease, mute, or set a preset volume with a single key press.
 | Preset Volume | Target volume for the preset command |
 | Show preset | Display the preset value on the key |
 | Show volume | Display the current volume level on the key after adjusting it (`Volume Up`/`Volume Down`/`Mute`, not shown for `Volume Preset`) |
+| Volume as | *(Mute / Preset)* `Pie` (default), `Ring` or `Open ring` |
 
 ---
 
 ### Volume *(Stream Deck+ only)*
 
-Dedicated volume control with a live pie chart showing the current level. When muted, a volume-off icon replaces the pie.
+Dedicated volume control showing the current level as a pie (default), a ring or an open ring. When muted, a volume-off icon replaces it.
 
 <img src="assets/volume_dial_demo.gif" width="200" alt="Volume"/>
 
@@ -136,9 +138,10 @@ Dedicated volume control with a live pie chart showing the current level. When m
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Preset Volume | Target volume for touch |
+| Volume as | `Pie`, `Ring` or `Open ring` |
 | Show text | Show/hide the volume percentage and device name on the dial |
-| Alignment | Position of the pie: `Left`, `Center`, or `Right` |
-| Background | `None` or any Panorama effect |
+| Alignment | Position of the gauge: `Left`, `Center`, or `Right` |
+| Panorama | Whether this dial shows its row's effect |
 
 ---
 
@@ -156,9 +159,10 @@ Controls the volume of an entire Sonos group — all speakers currently grouped 
 | Setting | Description |
 |---------|-------------|
 | Group | Which Sonos group to control (selected by any of its member speakers) |
+| Volume as | `Pie`, `Ring` or `Open ring` |
 | Show text | Show/hide the volume percentage on the dial |
-| Alignment | Position of the pie: `Left`, `Center`, or `Right` |
-| Background | `None` or any Panorama effect |
+| Alignment | Position of the gauge: `Left`, `Center`, or `Right` |
+| Panorama | Whether this dial shows its row's effect |
 
 ---
 
@@ -193,24 +197,23 @@ With **Fade out** enabled on Line-In, the currently playing music fades down acr
 
 ### Favorites *(Stream Deck+ only)*
 
-Browse and play your saved Sonos favorites. Rotate to scroll through the list; the LCD shows the cover art, title, and position indicator for the highlighted item. Outside of browsing, the display shows either a cover-art mosaic of your favorites (default) or — if a Panorama effect is selected as the background — the animated effect with a centered heart icon, filled while playing and outlined while paused.
-
-<img src="assets/favorites_dial_demo.gif" width="200" alt="Favorites browsing the list"/>
+Browse and play your saved Sonos favorites. Rotate and the favorites become a list that scrolls smoothly, one entry per click of the dial, the selected one in the middle and the playing favorite in green with a small wave. When idle, the dial shows a card with what is playing and where it comes from: the favorite, or the playlist, album or station Sonos reports (e.g. "Playlist · Spotify"). When nothing is known about it — for example music Music Assistant streams to the speaker — it shows a heart, filled while playing. With a Panorama effect in the row, the card and the heart sit on top of it.
 
 | Interaction | Effect |
 |-------------|--------|
 | Rotate | Scroll through favorites |
-| Press | Play the highlighted favorite |
-| Touch | Return to now playing |
+| Push | Play the selected favorite |
+| Touch | Back to the card |
 
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
-| Browse timeout | Seconds of inactivity before returning to now playing |
-| Fade out | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
-| Append Line-In | Add Line-In as a final entry in the rotation, shown with an icon instead of cover art — only offered when the selected speaker actually has a Line-In input |
-| Alignment | Position of the heart icon in effect mode: `Left`, `Center`, or `Right` |
-| Background | `Cover mosaic` (default) or any Panorama effect, shown for idle and now-playing with a centered heart icon |
+| Show covers | Off: icons only |
+| Line-In as the last entry | Add Line-In to the list — only offered when the selected speaker has a Line-In input |
+| Back to "now playing" after | Seconds without input |
+| Fade | Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
+| Heart position | Where the heart sits: `Left`, `Center`, or `Right` |
+| Panorama | Whether this dial shows its row's effect |
 
 ---
 
@@ -240,8 +243,19 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 | Interaction | Effect |
 |-------------|--------|
-| Rotate | Tweak the active effect (particle count/speed, ball/globe drift speed, rain density, ...) |
-| Press | Trigger the effect's built-in action (toggle mode, poke a bounce, restart the rain, ...) |
+| Rotate | Change the effect's value (particle density or speed, rain density, ball/globe speed) — for the whole row; a badge at the top shows which one and how far |
+| Push | Switch which value turning changes |
+
+| Setting | Description |
+|---------|-------------|
+| Device | The speaker whose cover tints the effect and whose track the text shows (or none) |
+| Colour without a speaker | The effect's colour when no speaker is chosen |
+| Show track info | Title and artist across the Panorama Effects dials next to each other |
+| Panorama | The row's effect, its dials and its settings (in "More settings …") |
+
+### Panorama: one effect per row
+
+All dials of a Stream Deck form a row with **one** effect and one set of settings. Choose it in any dial's Panorama section (short line in the panel, everything else in "More settings …"): the effect, which dials of the row show it (a tick per dial), and its settings. A dial without a tick shows its normal view; the effect runs on behind it. The row also spans the dials of other plugins that use it (see [Works with other plugins](#works-with-other-plugins-deckbus)): for example Music Assistant Controller's dials next to yours share the effect.
 
 > **Note on background CPU usage:** an active effect renders continuously for as long as it's running — Stream Deck panels have no animation hardware of their own, so the plugin has to keep pushing a freshly-drawn frame for every tick. That's inherent to how the SDK works, not a bug. Expect a modest but constant background CPU cost while any Panorama Effects group is active (roughly 10–20% of one CPU core for a 4-panel group in our own testing, depending on the effect and your hardware) — it drops back to near zero once no group is running. Particles and Matrix Rain run at 10 fps; Boing Ball and Boing Globe run at 20 fps (their bounce motion needs the extra smoothness).
 
