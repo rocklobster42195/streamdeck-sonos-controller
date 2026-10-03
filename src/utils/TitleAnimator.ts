@@ -1,7 +1,7 @@
-import streamDeck from '@elgato/streamdeck';
-import * as opentype from 'opentype.js';
-import * as path from 'path';
-import * as fs from 'fs';
+// The keys' title animation (band fades in, title scrolls and fades, band fades out, pause) with the
+// kit's TitleFader as the state machine — this file keeps what the keys draw around it: the cover
+// (with its own crossfade), the battery badge and the progress bar, at 72 px.
+import { measureArialWidth, TitleFader, type TitleFaderConfig } from '@rocklobster42195/streamdeck-kit';
 import { renderProgressBar } from './icons';
 
 export interface AnimationOptions {
@@ -9,101 +9,60 @@ export interface AnimationOptions {
     backgroundImage?: string;
     fontSize?: number;
     fontColor?: string;
+    /** Pixels per tick. */
     speed?: number;
+    /** Ticks a short title stands still, and the pause between loops. */
     pauseDuration?: number;
+    /** Tick interval (ms). */
     interval?: number;
     // Pre-rendered SVG fragment (e.g. from utils/icons.ts renderBatteryBadge) composited on top,
     // independent of text/backgroundImage changes — see setBatteryBadge().
     batteryBadge?: string;
     // 0-1 playback progress to draw the bar for, or undefined when the current source has no
-    // known duration (radio) — renderProgressBar skips drawing entirely in that case. textY is a
-    // fixed constant regardless (see renderSvg), so the text row never jumps between radio and
-    // tracks with a real duration.
+    // known duration (radio) — renderProgressBar skips drawing entirely in that case.
     progress?: number;
     progressColor?: string;
 }
 
-enum AnimPhase {
-    BOX_IN,
-    SCROLL_AND_FADE_IN,
-    SCROLL_OPAQUE,
-    SCROLL_AND_FADE_OUT,
-    BOX_OUT,
-    PAUSE_LOOP,
-}
+/** The kit's Sonos preset is for 144 px keys; these are the original 72 px values. */
+const MEASURE_SCALE = 1.055;
+const TEXT_Y = 60;
 
 interface AnimationState {
     action: any;
     options: AnimationOptions;
+    fader: TitleFader;
     intervalId?: NodeJS.Timeout;
-    offset: number;
-    boxOpacity: number;
-    textOpacity: number;
-    phase: AnimPhase;
-    pauseTicks: number;
-    textWidth: number;
-    shouldScroll: boolean;
     isFading: boolean;
     oldBackgroundImage?: string;
     fadeOpacity: number;
 }
 
+function faderConfig(o: AnimationOptions): TitleFaderConfig {
+    return {
+        size: 72,
+        startX: 18,
+        endX: 72,
+        speed: o.speed || 1.1,
+        pauseTicks: o.pauseDuration || 40,
+        measureScale: MEASURE_SCALE,
+        fontSize: o.fontSize || 13,
+        y: TEXT_Y,
+        boxMax: 0.3,
+        boxStep: 0.05,
+        textStep: 0.1,
+        // The original 72 px band: from 2 px above the cap height, 8 px taller than the font
+        bandTop: 2,
+        bandExtra: 8,
+    };
+}
+
 export class TitleAnimator {
     private animationStates: Map<string, AnimationState> = new Map();
-    private font: opentype.Font | undefined;
-    private fontLoadPromise: Promise<void> | undefined;
 
-    private readonly START_X = 18;       
-    private readonly TRIGGER_X = 72;     
-    private readonly MAX_BOX_OPACITY = 0.3;
-    private readonly BOLD_FACTOR = 1.03; 
-
-    constructor() {
-        this.fontLoadPromise = this.loadFont();
-    }
-
-    private async loadFont(): Promise<void> {
-        const fontFileName = 'OpenSans-Bold.ttf';
-        const cwd = process.cwd();
-        const pathsToTry = [
-            path.join(cwd, 'assets', fontFileName),
-            path.join(cwd, fontFileName)
-        ];
-
-        let foundPath = '';
-        for (const p of pathsToTry) {
-            if (fs.existsSync(p)) {
-                foundPath = p;
-                break;
-            }
-        }
-
-        if (!foundPath) {
-            streamDeck.logger.error(`[TitleAnimator] Font not found. Searched: ${pathsToTry.join(', ')}`);
-            return;
-        }
-
-        try {
-            const data = fs.readFileSync(foundPath);
-            const arrayBuffer = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-            this.font = opentype.parse(arrayBuffer);
-            streamDeck.logger.info(`[TitleAnimator] Font loaded: ${this.font.names.fontFamily?.en ?? 'OK'}`);
-        } catch (err) {
-            streamDeck.logger.error(`[TitleAnimator] Font parse error: ${err}`);
-        }
-    }
-
-    private async measureText(text: string, fontSize: number): Promise<number> {
-        await this.fontLoadPromise;
-        if (this.font) {
-            return this.font.getAdvanceWidth(text, fontSize) * this.BOLD_FACTOR;
-        }
-        return text.length * fontSize * 0.5 * this.BOLD_FACTOR;
-    }
-
-    // Public wrapper for other modules to get an accurate text width
+    /** Width of a bold title as the animation measures it (Arial Bold, scaled like the fader). */
     public async measure(text: string, fontSize: number): Promise<number> {
-        return this.measureText(text, fontSize);
+        return measureArialWidth(text, fontSize, true) * MEASURE_SCALE;
     }
 
     public isRunning(context: string): boolean {
@@ -116,17 +75,14 @@ export class TitleAnimator {
     }
 
     // Updates the battery badge independently of text/backgroundImage — does not reset scroll
-    // phase. Picked up on the next tick of the already-running render interval (every 50-80ms),
-    // fast enough given battery status itself only changes on a much slower poll cadence.
+    // phase. Picked up on the next tick of the already-running render interval.
     public setBatteryBadge(context: string, badge: string): void {
         const state = this.animationStates.get(context);
         if (state) state.options.batteryBadge = badge;
     }
 
     // Updates the progress bar independently of everything else — same rationale as
-    // setBatteryBadge. The caller (play-pause-key.ts) owns its own ~1s timer and recomputes
-    // the live 0-1 fraction itself; this just hands the latest value over for the next tick to
-    // pick up, no animation/easing here.
+    // setBatteryBadge. The caller (play-pause-key.ts) owns its own ~1s timer.
     public setProgress(context: string, progress: number | undefined, color?: string): void {
         const state = this.animationStates.get(context);
         if (!state) return;
@@ -144,34 +100,23 @@ export class TitleAnimator {
             state.oldBackgroundImage = state.options.backgroundImage;
             state.options.backgroundImage = newOptions.backgroundImage;
         }
-
-        if (newOptions.text !== state.options.text) {
-            state.options.text = newOptions.text;
-            const fontSize = state.options.fontSize || 13;
-            state.textWidth = await this.measureText(state.options.text, fontSize);
-            state.shouldScroll = (this.START_X + state.textWidth) > this.TRIGGER_X;
-            this.resetAnimationState(state);
-        }
+        state.options.text = newOptions.text;
+        state.fader.setText(newOptions.text);
     }
 
     public async start(action: any, options: AnimationOptions): Promise<void> {
         const context = action.id;
         this.stop(context);
 
-        const fontSize = options.fontSize || 13;
-        const textWidth = await this.measureText(options.text || '', fontSize);
-        const shouldScroll = (this.START_X + textWidth) > this.TRIGGER_X;
-
         const state: AnimationState = {
-            action, options, offset: 0, boxOpacity: 0, textOpacity: 0,
-            phase: AnimPhase.BOX_IN, pauseTicks: 0, textWidth, shouldScroll,
-            isFading: false, fadeOpacity: 0
+            action,
+            options,
+            fader: new TitleFader(options.text || '', faderConfig(options)),
+            isFading: false,
+            fadeOpacity: 0,
         };
 
-        const interval = setInterval(async () => {
-            const speed = state.options.speed || 1.1;
-            const pauseTicksMax = state.options.pauseDuration || 40;
-
+        state.intervalId = setInterval(async () => {
             if (state.isFading) {
                 state.fadeOpacity += 0.1;
                 if (state.fadeOpacity >= 1) {
@@ -180,73 +125,11 @@ export class TitleAnimator {
                     state.oldBackgroundImage = undefined;
                 }
             }
-
-            switch (state.phase) {
-                case AnimPhase.BOX_IN:
-                    state.boxOpacity += 0.05;
-                    if (state.boxOpacity >= this.MAX_BOX_OPACITY) {
-                        state.boxOpacity = this.MAX_BOX_OPACITY;
-                        state.phase = state.shouldScroll ? AnimPhase.SCROLL_AND_FADE_IN : AnimPhase.SCROLL_OPAQUE;
-                    }
-                    break;
-
-                case AnimPhase.SCROLL_AND_FADE_IN:
-                    state.offset += speed;
-                    state.textOpacity += 0.1;
-                    if (state.textOpacity >= 1) {
-                        state.textOpacity = 1;
-                        state.phase = AnimPhase.SCROLL_OPAQUE;
-                    }
-                    break;
-                
-                case AnimPhase.SCROLL_OPAQUE:
-                    if (state.shouldScroll) {
-                        state.offset += speed;
-                        const currentTailX = this.START_X - state.offset + state.textWidth;
-                        if (currentTailX <= this.TRIGGER_X) {
-                            state.phase = AnimPhase.SCROLL_AND_FADE_OUT;
-                        }
-                    } else {
-                        state.textOpacity = 1;
-                        state.pauseTicks++;
-                        if (state.pauseTicks > pauseTicksMax) state.phase = AnimPhase.SCROLL_AND_FADE_OUT;
-                    }
-                    break;
-
-                case AnimPhase.SCROLL_AND_FADE_OUT:
-                    if (state.shouldScroll) state.offset += speed;
-                    state.textOpacity -= 0.1;
-                    if (state.textOpacity <= 0) {
-                        state.textOpacity = 0;
-                        state.phase = AnimPhase.BOX_OUT;
-                    }
-                    break;
-
-                case AnimPhase.BOX_OUT:
-                    state.boxOpacity -= 0.05;
-                    if (state.boxOpacity <= 0) {
-                        state.boxOpacity = 0;
-                        state.phase = AnimPhase.PAUSE_LOOP;
-                        state.pauseTicks = pauseTicksMax;
-                    }
-                    break;
-
-                case AnimPhase.PAUSE_LOOP:
-                    if (state.pauseTicks > 0) state.pauseTicks--;
-                    else this.resetAnimationState(state);
-                    break;
-            }
-
+            state.fader.step();
             await state.action.setImage(this.renderSvg(state));
         }, options.interval || 50);
 
-        state.intervalId = interval;
         this.animationStates.set(context, state);
-    }
-
-    private resetAnimationState(state: AnimationState) {
-        state.offset = 0; state.boxOpacity = 0; state.textOpacity = 0;
-        state.phase = AnimPhase.BOX_IN; state.pauseTicks = 0;
     }
 
     public stop(contextOrAction: string | any): void {
@@ -259,16 +142,7 @@ export class TitleAnimator {
     }
 
     private renderSvg(state: AnimationState): string {
-        const { options, offset, boxOpacity, textOpacity, isFading, oldBackgroundImage, fadeOpacity } = state;
-        const fontSize = options.fontSize || 13;
-        // A few px up from the old 64 — that sat the box's bottom edge almost flush with the
-        // key's own bottom edge (only ~2px clearance), tight regardless of the progress bar.
-        const textY = 60;
-        const barY = textY - fontSize - 2;
-
-        const textX = state.shouldScroll 
-            ? (this.START_X - offset) 
-            : this.START_X + ((this.TRIGGER_X - this.START_X) - state.textWidth) / 2;
+        const { options, isFading, oldBackgroundImage, fadeOpacity } = state;
 
         let bgHtml = '';
         if (isFading && oldBackgroundImage && options.backgroundImage) {
@@ -285,27 +159,12 @@ export class TitleAnimator {
         const svg = `
             <svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
                 ${bgHtml}
-                <rect x="0" y="${barY}" width="72" height="${fontSize + 8}" fill="black" fill-opacity="${boxOpacity}" />
-                <text
-                    x="${textX}"
-                    y="${textY}"
-                    fill="${options.fontColor || 'white'}"
-                    fill-opacity="${textOpacity}"
-                    font-family="sans-serif"
-                    font-size="${fontSize}"
-                    font-weight="bold"
-                >${this.escapeXml(options.text)}</text>
+                ${state.fader.svg(options.fontColor || '#ffffff')}
                 ${options.batteryBadge || ''}
                 ${renderProgressBar(options.progress, options.progressColor || '#CCCCCC')}
             </svg>
         `;
         return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-    }
-
-    private escapeXml(s: string): string {
-        return String(s).replace(/[<>&"']/g, (c) =>
-            ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' } as any)[c] || c
-        );
     }
 }
 

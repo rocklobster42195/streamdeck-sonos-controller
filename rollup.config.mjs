@@ -3,7 +3,6 @@ import json from '@rollup/plugin-json';
 import nodeResolve from "@rollup/plugin-node-resolve";
 import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
-import copy from "rollup-plugin-copy";
 import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
@@ -25,14 +24,6 @@ const config = {
 		}
 	},
 	plugins: [
-        copy({
-            targets: [
-                // Only the font is actually needed at runtime (see TitleAnimator.ts) — copying
-                // the whole assets/ folder used to also bundle README screenshots and Marketplace
-                // store images into the shipped .streamDeckPlugin for no reason.
-                { src: 'assets/OpenSans-Bold.ttf', dest: `${sdPlugin}/assets` }
-            ]
-        }),
 		{
 			name: "watch-externals",
 			buildStart: function () {
