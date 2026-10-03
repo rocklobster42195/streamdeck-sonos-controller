@@ -11,7 +11,7 @@ Available on the [Elgato Marketplace](https://marketplace.elgato.com/product/son
 
 > **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
 
-<img src="assets/favorite_demo.gif" width="340" alt="Favorites — browse and play Sonos favorites"/>
+<img src="assets/readme/dials-everyday.png" width="800" alt="Track, Volume, Queue and Favorites dials with a Panorama effect across the row"/>
 
 ---
 
@@ -87,6 +87,8 @@ Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim a
 
 ### Queue *(Stream Deck+ only)*
 
+<img src="assets/readme/dial-queue.png" width="200" alt="Queue dial as a scrolling list"/>
+
 The queue as a list that scrolls smoothly, one track per click of the dial, with the selected track in the middle. It rests on the track that is playing (green, with a small wave) and follows it when the next one starts. Push plays the selected track; touch, or a few seconds without input, glides back to the playing one. When the speaker doesn't play from its own queue — a radio station, or music another app streams to it (e.g. Music Assistant) — the dial shows only the row's Panorama effect.
 
 | Interaction | Effect |
@@ -125,7 +127,7 @@ Increase, decrease, mute, or set a preset volume with a single key press.
 
 Dedicated volume control showing the current level as a pie (default), a ring or an open ring. When muted, a volume-off icon replaces it.
 
-<img src="assets/volume_dial_demo.gif" width="200" alt="Volume"/>
+<img src="assets/readme/dials-volume-looks.png" width="800" alt="Volume as pie, ring and open ring, and the Group Volume dial"/>
 
 | Interaction | Effect |
 |-------------|--------|
@@ -197,6 +199,8 @@ With **Fade out** enabled on Line-In, the currently playing music fades down acr
 
 ### Favorites *(Stream Deck+ only)*
 
+<img src="assets/readme/dial-favorites-list.png" width="200" alt="Favorites dial while browsing"/> <img src="assets/readme/dial-favorites-idle.png" width="200" alt="Favorites dial when idle: the heart over the Panorama effect"/>
+
 Browse and play your saved Sonos favorites. Rotate and the favorites become a list that scrolls smoothly, one entry per click of the dial, the selected one in the middle and the playing favorite in green with a small wave. When idle, the dial shows a card with what is playing and where it comes from: the favorite, or the playlist, album or station Sonos reports (e.g. "Playlist · Spotify"). When nothing is known about it — for example music Music Assistant streams to the speaker — it shows a heart, filled while playing. With a Panorama effect in the row, the card and the heart sit on top of it.
 
 | Interaction | Effect |
@@ -254,6 +258,8 @@ Cascading columns of code rain down the panels, Matrix-style.
 | Panorama | The row's effect, its dials and its settings (in "More settings …") |
 
 ### Panorama: one effect per row
+
+<img src="assets/readme/dials-panorama.png" width="800" alt="Four Panorama Effects dials with Particles and the track across them"/>
 
 All dials of a Stream Deck form a row with **one** effect and one set of settings. Choose it in any dial's Panorama section (short line in the panel, everything else in "More settings …"): the effect, which dials of the row show it (a tick per dial), and its settings. A dial without a tick shows its normal view; the effect runs on behind it. The row also spans the dials of other plugins that use it (see [Works with other plugins](#works-with-other-plugins-deckbus)): for example Music Assistant Controller's dials next to yours share the effect.
 

@@ -8,6 +8,8 @@
         "test": "vitest run",
         "pi:preview": "node tools/pi-preview.mjs",
         "showcase": "node tools/sd-sim/showcase.mjs sim-out",
+        "readme-images": "node tools/readme-images.mjs",
+        "store-images": "node tools/generate-store-images.mjs",
         "diagnose": "node tools/diagnose-lag.mjs",
         "diagnose:stereo": "node tools/diagnose-stereo-pairs.mjs",
         "diagnose:favorites": "node tools/dump-favorites.mjs",
