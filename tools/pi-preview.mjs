@@ -66,7 +66,7 @@ http.createServer((req, res) => {
         const lang = u.searchParams.get("lang") ?? "de";
         const action = path.basename(file, ".html");
         const info = { application: { language: lang, platform: "windows", version: "7.0" }, plugin: { uuid: UUID, version: "0.5.0" } };
-        const actionInfo = { action: `${UUID}.${action}`, context: "ctx", device: "dev", payload: { settings: { deviceIp: "192.0.2.10" } } };
+        const actionInfo = { action: `${UUID}.${action}`, context: "ctx", device: "dev", payload: { settings: u.searchParams.has("unset") ? {} : { deviceIp: "192.0.2.10" } } };
         const click = u.searchParams.get("click");
         const boot = `<script>window.addEventListener("load",()=>{connectElgatoStreamDeckSocket(${WS_PORT},"pi","registerPropertyInspector",${JSON.stringify(JSON.stringify(info))},${JSON.stringify(JSON.stringify(actionInfo))});${click ? `let n=0;const tryClick=()=>{const el=!document.body.hidden&&document.querySelector(${JSON.stringify(click)});if(el)el.click();else if(n++<50)setTimeout(tryClick,100);};tryClick();` : ""}});</script><style>body{width:360px}</style>`;
         body = Buffer.from(String(body).replace("</body>", `${boot}</body>`));
