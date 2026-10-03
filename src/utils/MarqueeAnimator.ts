@@ -1,8 +1,9 @@
-// Scrolling text on the dials, drawn with the kit's marquee (time-based, moving in whole ticks of
-// the shared frame ticker). The API is the one the actions always used; speed and pause keep their
+// Scrolling text on the dials, drawn with the kit's marquee and counted steps (MarqueeStepper on
+// the shared frame ticker): whole pixels at a fixed rhythm, and a late frame shows the next step
+// instead of jumping (the time-based offset hitched now and then on hardware, 2026-10-03). The API is the one the actions always used; speed and pause keep their
 // old units (pixels per 150 ms tick, ticks) so stored settings such as the Track dial's
 // marqueeSpeed/marqueePause still mean the same pace.
-import { frames, marqueeNeeded, marqueeSvg } from "@rocklobster42195/streamdeck-kit";
+import { frames, MarqueeStepper, marqueeNeeded, marqueeSvg, measureArialWidth } from "@rocklobster42195/streamdeck-kit";
 
 export interface MarqueeOptions {
     text?: string;
@@ -25,7 +26,7 @@ interface MarqueeState {
     speed: number;
     pauseDuration: number;
     availableWidth: number;
-    startedAt: number;
+    stepper: MarqueeStepper;
 }
 
 export class MarqueeAnimator {
@@ -55,7 +56,7 @@ export class MarqueeAnimator {
             speed: options?.speed ?? 1,
             pauseDuration: options?.pauseDuration ?? 40,
             availableWidth: options?.availableWidth ?? 100,
-            startedAt: Date.now(),
+            stepper: new MarqueeStepper(),
         });
         this.ensureTicking(context);
     }
@@ -65,7 +66,7 @@ export class MarqueeAnimator {
         if (!state) return;
         if (options.text !== undefined && options.text !== state.text) {
             state.text = options.text;
-            state.startedAt = Date.now();
+            state.stepper.reset();
         }
         if (options.availableWidth !== undefined) state.availableWidth = options.availableWidth;
         if (options.fontSize !== undefined) state.fontSize = options.fontSize;
@@ -86,10 +87,9 @@ export class MarqueeAnimator {
             width,
             fontSize: state.fontSize,
             color: state.fontColor,
-            startedAt: state.startedAt,
-            now: Date.now(),
-            speed: (state.speed * 1000) / LEGACY_TICK_MS,
-            pauseMs: state.pauseDuration * LEGACY_TICK_MS,
+            startedAt: 0,
+            now: 0,
+            offset: this.offset(state),
         });
     }
 
@@ -111,9 +111,16 @@ export class MarqueeAnimator {
         frames.run(this.tickerId(context), () => {
             const s = this.states.get(context);
             if (!s?.renderCallback || !marqueeNeeded(s.text, s.fontSize, s.availableWidth)) return false;
+            s.stepper.tick();
             s.renderCallback();
             return true;
         });
+    }
+
+    private offset(s: MarqueeState): number {
+        s.stepper.speed = (s.speed * 1000) / LEGACY_TICK_MS;
+        s.stepper.pauseMs = s.pauseDuration * LEGACY_TICK_MS;
+        return s.stepper.offset(measureArialWidth(s.text, s.fontSize));
     }
 
     private tickerId(context: string): string {
