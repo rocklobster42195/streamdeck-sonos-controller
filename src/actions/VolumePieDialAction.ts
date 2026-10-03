@@ -37,7 +37,7 @@ export type VolumePieDialSettings = PanoramaCapableSettings & {
     showText?: boolean;
     // How the volume is drawn: the pie (default, as always), the kit's ring, or its open ring
     gauge?: 'pie' | 'ring' | 'open';
-    // MDI icon (e.g. "mdiSofa") shown in the opening of the open ring
+    // MDI icon (e.g. "mdiSofa"): in the middle of the ring, in the opening of the open ring
     icon?: string;
 };
 
@@ -255,7 +255,13 @@ export abstract class VolumePieDialAction<
 
         const percent = Math.max(0, Math.min(volume, 100));
         // The family's other looks, from the kit
-        if (gauge === 'ring') return arc(cx, cy, 34, percent / 100, color, { width: 8 });
+        if (gauge === 'ring') {
+            const parts = arc(cx, cy, 34, percent / 100, color, { width: 8 });
+            // The chosen icon in the middle of the ring
+            const path = mdiPath(icon);
+            if (path) parts.push(`<path transform="translate(${cx - 16} ${cy - 16}) scale(${32 / 24})" fill="${color}" d="${path}"/>`);
+            return parts;
+        }
         if (gauge === 'open') {
             const parts = openRing({ cx, cy, r: 34, width: 8, min: 0, max: 100, value: percent, zones: [{ from: -Infinity, color }] });
             // The chosen icon sits in the ring's opening at the bottom
@@ -357,7 +363,8 @@ export abstract class VolumePieDialAction<
         const showSavedFlash = (this.presetSavedUntil.get(context) ?? 0) > Date.now();
         const pieParts = showSavedFlash
             ? this.buildSavedIcon(cx, cy)
-            : this.buildPieParts(cx, cy, displayVolume, isMuted, '#CCCCCC', settings.gauge, settings.icon);
+            // In the ring's middle the icon would sit under the percentage when that is centred too
+            : this.buildPieParts(cx, cy, displayVolume, isMuted, '#CCCCCC', settings.gauge, settings.gauge === 'ring' && align === 'center' && showText ? undefined : settings.icon);
         const textParts = this.buildTextParts(cx, cy, volume, isMuted, displayName, align, showText);
 
         const rawPanoramaKey = panoramaContextGroupKey.get(context);

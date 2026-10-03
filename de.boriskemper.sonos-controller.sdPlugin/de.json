@@ -158,7 +158,7 @@
             "diagnostics_hint": "Zeigt, wie der Lautsprecher antwortet (zur Fehlersuche).",
             "icon_none": "Kein Icon",
             "icon_remove": "Icon entfernen",
-            "icon_hint": "Erscheint unten in der Öffnung des Rings, z. B. für den Raum"
+            "icon_hint": "In der Mitte des Rings bzw. unten in der Öffnung des offenen Rings, z. B. für den Raum"
         },
         "Particle density": "Partikeldichte",
         "Particle speed": "Partikel-Tempo",

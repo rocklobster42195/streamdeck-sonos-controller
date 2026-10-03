@@ -74,7 +74,7 @@ const scenes = {
     "04-volume-looks": () => scene("04-volume-looks", (sim) => {
         keys(sim);
         dial(sim, "volume-dial", { deviceIp: LIVING, gauge: "pie", panoramaMember: false }, 0);
-        dial(sim, "volume-dial", { deviceIp: "127.0.0.3", gauge: "ring", panoramaMember: false }, 1);
+        dial(sim, "volume-dial", { deviceIp: "127.0.0.3", gauge: "ring", icon: "mdiSilverwareForkKnife", panoramaMember: false }, 1);
         dial(sim, "volume-dial", { deviceIp: "127.0.0.4", gauge: "open", icon: "mdiDesk", panoramaMember: false }, 2);
         dial(sim, "group-volume-dial", { groupIp: LIVING, gauge: "ring", align: "center", panoramaMember: false }, 3);
     }),

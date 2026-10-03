@@ -141,7 +141,7 @@ Dedicated volume control showing the current level as a pie (default), a ring or
 | Device | Which Sonos speaker to control |
 | Preset Volume | Target volume for touch |
 | Volume as | `Pie`, `Ring` or `Open ring` |
-| Icon | *(Open ring)* An icon of your choice in the ring's opening, e.g. for the room |
+| Icon | *(Ring, open ring)* An icon of your choice in the middle of the ring or in the open ring's opening, e.g. for the room |
 | Show text | Show/hide the volume percentage and device name on the dial |
 | Alignment | Position of the gauge: `Left`, `Center`, or `Right` |
 | Panorama | Whether this dial shows its row's effect |
@@ -163,7 +163,7 @@ Controls the volume of an entire Sonos group — all speakers currently grouped 
 |---------|-------------|
 | Group | Which Sonos group to control (selected by any of its member speakers) |
 | Volume as | `Pie`, `Ring` or `Open ring` |
-| Icon | *(Open ring)* An icon of your choice in the ring's opening |
+| Icon | *(Ring, open ring)* An icon of your choice in the middle of the ring or in the open ring's opening |
 | Show text | Show/hide the volume percentage on the dial |
 | Alignment | Position of the gauge: `Left`, `Center`, or `Right` |
 | Panorama | Whether this dial shows its row's effect |

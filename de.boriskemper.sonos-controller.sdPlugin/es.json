@@ -158,7 +158,7 @@
             "diagnostics_hint": "Muestra cómo responde el altavoz (para diagnóstico).",
             "icon_none": "Sin icono",
             "icon_remove": "Quitar icono",
-            "icon_hint": "Aparece en la abertura del anillo, p. ej. para la habitación"
+            "icon_hint": "En el centro del anillo o en la abertura del anillo abierto, p. ej. para la habitación"
         },
         "Particle density": "Densidad de partículas",
         "Particle speed": "Velocidad de partículas",
