@@ -41,3 +41,31 @@ export async function getDominantColor(dataUri: string): Promise<string> {
         return '#CCCCCC';
     }
 }
+
+/**
+ * The cover's accent colour as an RGB triplet (like Music Assistant's palette accent): the average
+ * of its most vivid pixels (saturation × brightness, top fifth of a 16×16 version), so a colourful
+ * detail wins over a large grey area. undefined when the image can't be read.
+ */
+export function getAccentColor(dataUri: string): [number, number, number] | undefined {
+    try {
+        const comma = dataUri.indexOf(',');
+        if (comma === -1) return undefined;
+        const decoded = decodeImage(Buffer.from(dataUri.slice(comma + 1), 'base64'));
+        if (!decoded) return undefined;
+        const px = resizeRGBA(decoded, 16, 16);
+        const scored: { s: number; c: [number, number, number] }[] = [];
+        for (let i = 0; i < px.length; i += 4) {
+            const [r, g, b] = [px[i], px[i + 1], px[i + 2]];
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            scored.push({ s: max === 0 ? 0 : ((max - min) / max) * (max / 255), c: [r, g, b] });
+        }
+        scored.sort((a, b) => b.s - a.s);
+        const top = scored.slice(0, Math.max(1, Math.round(scored.length / 5)));
+        const avg = (k: 0 | 1 | 2) => Math.round(top.reduce((sum, p) => sum + p.c[k], 0) / top.length);
+        return [avg(0), avg(1), avg(2)];
+    } catch {
+        return undefined;
+    }
+}

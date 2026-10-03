@@ -4,7 +4,7 @@
 // no extra connections to the speakers. One entry per group (its coordinator).
 import { CoverBoard, readableCoverColor, type CoverEntry } from "@rocklobster42195/streamdeck-kit";
 import type { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { getDominantColor } from "../utils/color-extract";
+import { getAccentColor } from "../utils/color-extract";
 
 export const socCovers = new CoverBoard("SO-C");
 
@@ -39,13 +39,10 @@ export function watchCovers(controller: SonosDeviceController): void {
         const cover = ti.albumArtDataUri;
         if (!cover || cover === g.coverFor) return;
         g.coverFor = cover;
-        getDominantColor(cover)
-            .then((hex) => {
-                if (g.coverFor !== cover) return;
-                g.color = readableCoverColor(hexToRgb(hex));
-                publish();
-            })
-            .catch(() => {});
+        const accent = getAccentColor(cover);
+        if (!accent) return;
+        g.color = readableCoverColor(accent);
+        publish();
     });
     const ts = controller.transportState;
     if (ts) {
@@ -71,7 +68,3 @@ function publish(): void {
     socCovers.publish(entries);
 }
 
-function hexToRgb(hex: string): [number, number, number] {
-    const n = parseInt(hex.replace("#", "").slice(0, 6), 16) || 0;
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
