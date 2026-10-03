@@ -7,17 +7,11 @@ import {
 } from "@elgato/streamdeck";
 import {
     panoramaContextGroupKey,
-    registerInPanorama,
-    unregisterFromPanorama,
+    panoramaRows,
     isPanoramaEffectActive,
-    setContextEffectId,
-    setContextEffectSettings,
-    registerPanoramaRenderCallback,
-    unregisterPanoramaRenderCallback,
-    getPanoramaSliceOffset,
     renderPanoramaEffectSlice,
-} from "../effects/PanoramaOrchestrator";
-import { backfillEffectDefaults } from "../effects/backfillEffectDefaults";
+    socRowState,
+} from "../effects/panorama";
 import { buildUnreachableDialSvg, buildUnreachableCenterFragment } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import streamDeck from "@elgato/streamdeck";
@@ -51,6 +45,8 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
     protected contextDeviceIds: Map<string, string> = new Map();
     protected settingsMap: Map<string, T> = new Map();
     private animTimers: Map<string, NodeJS.Timeout> = new Map();
+    // Dials registered in their row's Panorama (see syncPanoramaParticipation)
+    private inRows: Set<string> = new Set();
     // Retries a failed setup (unreachable speaker) — see scheduleSetupRetry / SetupRetryScheduler.
     protected setupRetry = new SetupRetryScheduler();
 
@@ -187,7 +183,7 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
                 '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
                 '<defs><clipPath id="c"><rect width="200" height="100"/></clipPath></defs>',
                 '<rect width="200" height="100" fill="#000"/>',
-                `<g clip-path="url(#c)">${renderPanoramaEffectSlice(panoramaKey, getPanoramaSliceOffset(context))}</g>`,
+                `<g clip-path="url(#c)">${renderPanoramaEffectSlice(panoramaKey)}</g>`,
                 buildUnreachableCenterFragment(label),
                 '</svg>',
             ].join('')
@@ -200,8 +196,9 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
         }).catch(() => {});
     }
 
-    // 'none' is never a registered effect — everything else is looked up in effectRegistry.
-    // Override to exclude additional action-specific non-effect modes (e.g. Track Dial's 'eq').
+    // Whether an OLD `visualizerMode` value named an effect ('none' never did) — only used to take
+    // the old per-dial choice over into the row (socRowState). Override to exclude additional
+    // action-specific non-effect modes (e.g. Track Dial's 'eq').
     protected isEffectMode(mode?: string): boolean {
         return !!mode && mode !== 'none';
     }
@@ -220,10 +217,8 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
     protected startAnimTimer(context: string): void {
         if (this.animTimers.has(context)) return;
         const timer = setInterval(() => {
-            const settings = this.settingsMap.get(context);
-            const inEffectMode = this.isEffectMode(settings?.visualizerMode);
-            const inPanorama = isPanoramaEffectActive(inEffectMode ? panoramaContextGroupKey.get(context) : undefined);
-            if (!inPanorama && !inEffectMode && !this.shouldKeepAnimating(context)) {
+            const inPanorama = isPanoramaEffectActive(panoramaContextGroupKey.get(context));
+            if (!inPanorama && !this.shouldKeepAnimating(context)) {
                 this.stopAnimTimer(context);
                 return;
             }
@@ -237,50 +232,59 @@ export abstract class PanoramaCapableDialAction<T extends PanoramaCapableSetting
         if (timer) { clearInterval(timer); this.animTimers.delete(context); }
     }
 
-    // Leaves the shared panorama system — only call when actually exiting effect mode or when
-    // the tile itself is being removed. Must NOT be called unconditionally on every settings
-    // update: doing so wipes the shared group key before syncGroups gets a chance to detect a
-    // live effect switch (e.g. Boing Ball -> Boing Globe), which then just re-initializes the
-    // stale effect instance instead of switching to the newly selected one.
+    // Leaves the row's Panorama (the tile is being removed).
     protected leavePanorama(context: string): void {
-        unregisterFromPanorama(context);
-        unregisterPanoramaRenderCallback(context);
+        panoramaRows.remove(context);
+        this.inRows.delete(context);
         this.stopAnimTimer(context);
     }
 
-    // Registers this context as an effect participant in the shared panorama system (an adjacent
-    // dial wanting the SAME effect merges into one shared instance; otherwise this renders its
-    // own effect solo — a "group" of one is exactly how solo rendering works, see
-    // PanoramaOrchestrator), or leaves it if not currently in effect mode.
-    protected syncPanoramaParticipation(context: string, settings: T): void {
-        if (this.isEffectMode(settings.visualizerMode)) {
-            registerInPanorama(context, this.contextColumns.get(context) ?? 0, this.contextDeviceIds.get(context) ?? '');
-            setContextEffectId(context, settings.visualizerMode!);
-            setContextEffectSettings(context, settings);
-            registerPanoramaRenderCallback(context, () => this.renderDial(context));
-            this.startAnimTimer(context);
-        } else {
-            this.leavePanorama(context);
+    // Joins the dial's row in the Panorama (first call) or tells it the settings changed. The row
+    // decides whether the dial shows the effect (its checkbox, the row's effect); the kit redraws
+    // the dial on every effect frame.
+    protected syncPanoramaParticipation(context: string, _settings: T): void {
+        if (this.inRows.has(context)) {
+            panoramaRows.changed(context);
+            return;
         }
+        this.inRows.add(context);
+        panoramaRows.add(context, {
+            device: this.contextDeviceIds.get(context) ?? '',
+            column: this.contextColumns.get(context) ?? 0,
+            label: () => this.panoramaLabel(context),
+            state: () => {
+                const s = (this.settingsMap.get(context) ?? {}) as Record<string, unknown>;
+                const mode = s.visualizerMode as string | undefined;
+                return socRowState(s, this.isEffectMode(mode) ? mode : undefined);
+            },
+            save: (patch) => {
+                const current = this.settingsMap.get(context);
+                const action = streamDeck.actions.getActionById(context);
+                if (!current || !action) return;
+                const next = { ...current, ...patch } as T;
+                this.settingsMap.set(context, next);
+                // Not a reason to set the dial up again (see skipRedundantUpdate)
+                this.lastAppliedSettingsJson.set(context, JSON.stringify(next));
+                void action.setSettings(next);
+            },
+            redraw: () => void this.renderDial(context),
+        });
     }
 
-    // Fills in any missing simple-field defaults (e.g. Volume Dial's `showText`) AND any missing
-    // effect-schema defaults (via backfillEffectDefaults) into `settings`, persisting via a
-    // single setSettings call if anything changed. Returns the (possibly updated) settings to use
-    // for the rest of this render pass.
+    // The dial's name in the PI's map of the row (e.g. the room). Override where there is one.
+    protected panoramaLabel(_context: string): string {
+        return '';
+    }
+
+    // Fills in any missing simple-field defaults (e.g. Volume Dial's `showText`) into `settings`,
+    // persisting via a single setSettings call if anything changed (the effect's own defaults
+    // live in the row now). Returns the (possibly updated) settings for the rest of this pass.
     protected applyBackfill(ev: WillAppearEvent<T> | DidReceiveSettingsEvent<T>, settings: T, extraDefaults: Partial<T> = {}): T {
         let result = settings;
         let saveNeeded = false;
         for (const key of Object.keys(extraDefaults) as (keyof T)[]) {
             if (result[key] === undefined) {
                 result = { ...result, [key]: extraDefaults[key] };
-                saveNeeded = true;
-            }
-        }
-        if (this.isEffectMode(result.visualizerMode)) {
-            const backfill = backfillEffectDefaults(result, result.visualizerMode);
-            if (backfill.changed) {
-                result = backfill.settings as T;
                 saveNeeded = true;
             }
         }

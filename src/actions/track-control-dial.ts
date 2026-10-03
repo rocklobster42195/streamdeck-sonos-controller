@@ -18,7 +18,7 @@ import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { escapeXml } from "../utils/xml";
 import { measureArialWidth } from "@rocklobster42195/streamdeck-kit";
 import { parseRelTime, formatRelTime } from "../sonos/rel-time";
-import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
+import { panoramaContextGroupKey, getPanoramaSliceOffset, groupEffects, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/panorama";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { syncCapabilityFlag } from "./capability-flag";
@@ -97,8 +97,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         const state = this.states.get(context);
         if (!state) return;
         state.transportState = transportState;
-        const settings = this.settingsMap.get(context);
-        const panoKey0 = this.isEffectMode(settings?.visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+        const panoKey0 = panoramaContextGroupKey.get(context);
         const inPanorama = isPanoramaEffectActive(panoKey0);
         if (transportState === 'PLAYING' || inPanorama) {
             this.startAnimTimer(context);
@@ -502,7 +501,8 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
 
         let svg: string;
 
-        if (visualizerMode === 'none') {
+        // A dial in its row's Panorama shows the effect, whatever its old mode was
+        if (visualizerMode === 'none' && !panoramaContextGroupKey.get(context)) {
             // COVER_WIDTH matches the artwork square's own side exactly (see the constant's doc
             // comment), so there's no overflow to crop and the anchor is moot — cover is fully
             // visible instead of a 13px-cropped slice.
@@ -551,7 +551,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
                 }
             }
 
-            const rawPanoKey = this.isEffectMode(visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+            const rawPanoKey = panoramaContextGroupKey.get(context);
             const panoramaKey = isPanoramaEffectActive(rawPanoKey) ? rawPanoKey : undefined;
 
             if (panoramaKey) {

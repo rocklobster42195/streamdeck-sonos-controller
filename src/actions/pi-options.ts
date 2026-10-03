@@ -8,7 +8,7 @@
 
 import streamDeck from "@elgato/streamdeck";
 import { safeDevices, discoveryPromise, onDevicesChanged, isInvisibleSatellite } from "../sonos/sonos-discovery";
-import { effectRegistry } from "../effects/registry.generated";
+import { effectRegistry } from "@rocklobster42195/streamdeck-kit";
 import { piT } from "../utils/pi-i18n";
 
 export type PiOptionItem = { label: string; value: string };

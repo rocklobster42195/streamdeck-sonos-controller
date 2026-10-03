@@ -20,7 +20,7 @@ import { piT } from "../utils/pi-i18n";
 import { escapeXml } from "../utils/xml";
 import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { syncCapabilityFlag } from "./capability-flag";
-import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
+import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/panorama";
 import { sendDeviceList, sendFadeOptions, sendVizOptions, sendAlignOptions } from "./pi-options";
 import { ControllerLease } from "./ControllerLease";
 
@@ -483,7 +483,6 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
 
     /** The row's Panorama effect under this dial, darkened (`dim`) so text stays readable ('' without one). */
     private effectBackdrop(context: string, settings: FavoritesDialSettings, dim = true): string {
-        if (!this.isEffectMode(settings.visualizerMode)) return '';
         const key = panoramaContextGroupKey.get(context);
         if (!isPanoramaEffectActive(key)) return '';
         const slice = renderPanoramaEffectSlice(key!, getPanoramaSliceOffset(context));

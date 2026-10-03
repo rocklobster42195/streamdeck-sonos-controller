@@ -1,11 +1,16 @@
 // Plugin side of the kit's property inspector: the lists its <pi-select> fields ask for. The PI
 // pages that still use sdpi-components keep talking to their actions' onSendToPlugin; both run
 // side by side until every page has moved.
-import { piBridge } from "@rocklobster42195/streamdeck-kit/bridge";
+import { piBridge, trackActions } from "@rocklobster42195/streamdeck-kit/bridge";
+import { panoramaRows, socActions } from "../effects/panorama";
 import { deviceItems, groupItems } from "../actions/pi-options";
 
+/** Call before streamDeck.connect(), so no willAppear is missed (the Panorama needs every dial's place). */
 export function initPiBridge(): void {
+    trackActions(socActions);
     piBridge.init();
+    // The PI's Panorama section (<pi-panorama>): the row's effect, its dials and settings
+    panoramaRows.attachPi(piBridge);
     // `deviceIp`/`groupIp`: the action's current choice, kept in the list while it is offline
     piBridge.registerOptions("sonos-devices", ({ deviceIp }) => deviceItems(deviceIp || undefined));
     piBridge.registerOptions("sonos-groups", ({ groupIp }) => groupItems(groupIp || undefined));

@@ -7,7 +7,7 @@ import streamDeck, {
 import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCapableDialAction";
 import { VolumeInfo } from "../sonos/SonosTypes";
 import { VolumeDisplay } from "@rocklobster42195/streamdeck-kit";
-import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
+import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/panorama";
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
 import { escapeXml } from "../utils/xml";
@@ -319,7 +319,6 @@ export abstract class VolumePieDialAction<
         const state = this.states.get(context);
         const align = settings?.align ?? 'left';
         const showText = settings?.showText ?? true;
-        const visualizerMode = settings?.visualizerMode ?? 'none';
 
         if (!settings || !this.configuredId(settings)) {
             const svg = buildUnconfiguredDialSvg(this.dialLabel);
@@ -342,7 +341,7 @@ export abstract class VolumePieDialAction<
             : this.buildPieParts(cx, cy, displayVolume, isMuted, '#CCCCCC');
         const textParts = this.buildTextParts(cx, cy, volume, isMuted, displayName, align, showText);
 
-        const rawPanoramaKey = this.isEffectMode(visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+        const rawPanoramaKey = panoramaContextGroupKey.get(context);
         const panoramaKey = isPanoramaEffectActive(rawPanoramaKey) ? rawPanoramaKey : undefined;
         const particleFrag = panoramaKey ? renderPanoramaEffectSlice(panoramaKey, getPanoramaSliceOffset(context)) : '';
         const svgParts: string[] = [

@@ -20,7 +20,7 @@ import { TrackInfo } from "../sonos/SonosTypes";
 import { ACCENT_COLOR, buildUnconfiguredDialSvg } from "../utils/icons";
 import { QueueCoverArtCache } from "./QueueCoverArtCache";
 import { piT } from "../utils/pi-i18n";
-import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, groupEffects } from "../effects/PanoramaOrchestrator";
+import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive, groupEffects } from "../effects/panorama";
 import { sendDeviceList, sendVizOptions, sendOptions } from "./pi-options";
 import { ControllerLease } from "./ControllerLease";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
@@ -435,7 +435,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
 
     /** The row's Panorama effect under the dial, darkened for the text ('' without one); also feeds it the cover's colour. */
     private effectBackdrop(context: string, settings: QueueDialSettings, state: QueueDialState): string {
-        const key = this.isEffectMode(settings.visualizerMode) ? panoramaContextGroupKey.get(context) : undefined;
+        const key = panoramaContextGroupKey.get(context);
         if (!isPanoramaEffectActive(key)) return '';
         // Retried on every render until it lands — see colorPushedFor
         if (state.colorPushedFor !== state.dominantColor) {
