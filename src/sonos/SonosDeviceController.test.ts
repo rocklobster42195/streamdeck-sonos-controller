@@ -38,7 +38,7 @@ type FakeCoordinatorController = {
     registerTrackInfoCallback: ReturnType<typeof vi.fn>;
     unregisterTrackInfoCallback: ReturnType<typeof vi.fn>;
     unregisterSourceCallback: ReturnType<typeof vi.fn>;
-    unregisterQueueActiveCallback: ReturnType<typeof vi.fn>;
+    unregisterQueueStateCallback: ReturnType<typeof vi.fn>;
     _callbacks: {
         transportState?: (ts: string) => void;
         trackInfo?: (ti: TrackInfo) => void;
@@ -54,7 +54,7 @@ function createFakeCoordinatorController(deviceIp: string): FakeCoordinatorContr
         registerTrackInfoCallback: vi.fn((_id: string, cb: (ti: TrackInfo) => void) => { callbacks.trackInfo = cb; }),
         unregisterTrackInfoCallback: vi.fn(),
         unregisterSourceCallback: vi.fn(),
-        unregisterQueueActiveCallback: vi.fn(),
+        unregisterQueueStateCallback: vi.fn(),
         _callbacks: callbacks,
     };
 }

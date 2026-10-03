@@ -14,6 +14,14 @@ export type PlaybackSource = {
     objectId?: string;
 };
 
+/** What the speaker plays from: AVTransportURI (x-rincon-queue:… for its queue) and its track count. */
+export type QueueState = { uri: string; tracks: number };
+
+/** A queue worth browsing: the speaker's own queue with more than one track (not, e.g., Music Assistant's single-stream queue). */
+export function isBrowsableQueue(state: QueueState | undefined): boolean {
+    return !!state && state.uri.startsWith('x-rincon-queue:') && state.tracks > 1;
+}
+
 export type TrackInfo = Track & {
     albumArtDataUri?: string;
     isRadio?: boolean;

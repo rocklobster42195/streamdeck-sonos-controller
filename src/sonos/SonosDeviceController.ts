@@ -6,7 +6,7 @@ import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "./cover-art-loader";
 import { normalizeBrowseResult } from "./queue-utils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
-import { PlaybackSource, SonosFavorite, TrackInfo, VolumeInfo } from "./SonosTypes";
+import { PlaybackSource, QueueState, SonosFavorite, TrackInfo, VolumeInfo } from "./SonosTypes";
 import { upnpSourceOf } from "./playback-source";
 import { SonosLocalApiWatcher } from "./sonos-local-api";
 import { withTimeout } from "../utils/with-timeout";
@@ -91,10 +91,12 @@ export class SonosDeviceController {
   private upnpSource: PlaybackSource | null | undefined;
   private apiSource: PlaybackSource | null | undefined;
   private localApi?: SonosLocalApiWatcher;
-  // Whether the speaker plays from its own queue (AVTransportURI x-rincon-queue:…) — not when
-  // another app streams to it (e.g. Music Assistant) or a station plays. undefined: not known yet.
-  private queueActive: boolean | undefined;
-  private queueActiveCallbacks: Map<string, (active: boolean) => void> = new Map();
+  // What the speaker plays from: its AVTransportURI (x-rincon-queue:… for its own queue, with an
+  // id that changes when another app replaces the queue) and how many tracks that has. Music
+  // Assistant, for one, replaces the queue with a single item: its own stream (hardware probe
+  // 2026-10-03). undefined: not known yet.
+  private queueState: QueueState | undefined;
+  private queueStateCallbacks: Map<string, (state: QueueState) => void> = new Map();
   private batteryCallbacks: Map<string, (battery: SonosBatteryStatus | undefined) => void> = new Map();
   private reachabilityCallbacks: Map<string, (reachable: boolean) => void> = new Map();
 
@@ -227,7 +229,7 @@ export class SonosDeviceController {
       this.coordinatorController.unregisterTransportStateCallback(this.coordinatorCallbackId);
       this.coordinatorController.unregisterTrackInfoCallback(this.coordinatorCallbackId);
       this.coordinatorController.unregisterSourceCallback(this.coordinatorCallbackId);
-      this.coordinatorController.unregisterQueueActiveCallback(this.coordinatorCallbackId);
+      this.coordinatorController.unregisterQueueStateCallback(this.coordinatorCallbackId);
       sonosDeviceManager.releaseController(this.coordinatorController.deviceIp);
       this.coordinatorController = undefined;
     }
@@ -275,9 +277,9 @@ export class SonosDeviceController {
         if (!this.reachable) return;
         this.setSource(source ?? null);
       });
-      controller.registerQueueActiveCallback(this.coordinatorCallbackId, (active) => {
+      controller.registerQueueStateCallback(this.coordinatorCallbackId, (state) => {
         if (!this.reachable) return;
-        this.setQueueActive(active);
+        this.setQueueState(state);
       });
     } catch (e) {
       streamDeck.logger.warn(`[${this.deviceIp}] Failed to subscribe to coordinator ${coordinatorHost}`, e);
@@ -327,7 +329,7 @@ export class SonosDeviceController {
       this.coordinatorController.unregisterTransportStateCallback(this.coordinatorCallbackId);
       this.coordinatorController.unregisterTrackInfoCallback(this.coordinatorCallbackId);
       this.coordinatorController.unregisterSourceCallback(this.coordinatorCallbackId);
-      this.coordinatorController.unregisterQueueActiveCallback(this.coordinatorCallbackId);
+      this.coordinatorController.unregisterQueueStateCallback(this.coordinatorCallbackId);
       sonosDeviceManager.releaseController(this.coordinatorController.deviceIp);
       this.coordinatorController = undefined;
     }
@@ -337,7 +339,7 @@ export class SonosDeviceController {
     this.playModeCallbacks.clear();
     this.trackInfoCallbacks.clear();
     this.sourceCallbacks.clear();
-    this.queueActiveCallbacks.clear();
+    this.queueStateCallbacks.clear();
     this.localApi?.stop();
     this.localApi = undefined;
     this.batteryCallbacks.clear();
@@ -742,23 +744,23 @@ export class SonosDeviceController {
     }
   }
 
-  /** Whether the speaker plays from its own queue (fires right away once known, then on every change). */
-  registerQueueActiveCallback(id: string, callback: (active: boolean) => void): void {
-    this.queueActiveCallbacks.set(id, callback);
-    if (this.queueActive !== undefined) callback(this.queueActive);
+  /** What the speaker plays from (fires right away once known, then whenever the URI or track count changes). */
+  registerQueueStateCallback(id: string, callback: (state: QueueState) => void): void {
+    this.queueStateCallbacks.set(id, callback);
+    if (this.queueState !== undefined) callback(this.queueState);
     else if (!this.isGroupedMember) {
       // Not reported yet: ask once (the next AVTransport event keeps it current)
       void this.transportDevice.AVTransportService.GetMediaInfo({ InstanceID: 0 })
-        .then((m) => this.setQueueActive(String(m.CurrentURI ?? '').startsWith('x-rincon-queue:')))
+        .then((m) => this.setQueueState({ uri: String(m.CurrentURI ?? ''), tracks: Number(m.NrTracks) || 0 }))
         .catch(() => { /* stays unknown until the next event */ });
     }
   }
-  unregisterQueueActiveCallback(id: string): void { this.queueActiveCallbacks.delete(id); }
+  unregisterQueueStateCallback(id: string): void { this.queueStateCallbacks.delete(id); }
 
-  private setQueueActive(active: boolean): void {
-    if (this.queueActive === active) return;
-    this.queueActive = active;
-    this.queueActiveCallbacks.forEach(cb => cb(active));
+  private setQueueState(state: QueueState): void {
+    if (this.queueState?.uri === state.uri && this.queueState?.tracks === state.tracks) return;
+    this.queueState = state;
+    this.queueStateCallbacks.forEach(cb => cb(state));
   }
 
   private updateSource(): void {
@@ -918,7 +920,12 @@ export class SonosDeviceController {
             this.upnpSource = upnpSourceOf(data);
             this.updateSource();
           }
-          if (typeof data.AVTransportURI === 'string') this.setQueueActive(data.AVTransportURI.startsWith('x-rincon-queue:'));
+          if (typeof data.AVTransportURI === 'string' || data.NumberOfTracks !== undefined) {
+            this.setQueueState({
+              uri: typeof data.AVTransportURI === 'string' ? data.AVTransportURI : this.queueState?.uri ?? '',
+              tracks: data.NumberOfTracks !== undefined ? Number(data.NumberOfTracks) || 0 : this.queueState?.tracks ?? 0,
+            });
+          }
           if (typeof data.TransportState === 'string') this.transportStateCallbacks.forEach(cb => cb(data.TransportState));
           if (typeof data.CurrentPlayMode === 'string') this.playModeCallbacks.forEach(cb => cb(data.CurrentPlayMode));
           // Some devices may emit 'PlayMode' instead of 'CurrentPlayMode'

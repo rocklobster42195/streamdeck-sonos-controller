@@ -14,7 +14,7 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "../sonos/cover-art-loader";
 import { wrapIndex } from "../sonos/queue-utils";
-import { TrackInfo } from "../sonos/SonosTypes";
+import { isBrowsableQueue, QueueState, TrackInfo } from "../sonos/SonosTypes";
 import { ACCENT_COLOR, buildUnconfiguredDialSvg } from "../utils/icons";
 import { QueueCoverArtCache } from "./QueueCoverArtCache";
 import { piT } from "../utils/pi-i18n";
@@ -35,8 +35,9 @@ interface QueueDialState {
     trackInfo?: TrackInfo;
     transportState: string;
     playbackKind: 'queue' | 'radio' | 'unknown';
-    // false while the speaker doesn't play from its queue (e.g. Music Assistant streams to it)
+    // false while there is no queue worth browsing (another app's stream, a station, a single item)
     queueActive?: boolean;
+    queueState?: QueueState;
     queueItems: Track[];
     liveTrackIndex: number; // 0-based; -1 = unknown/not applicable
     dominantColor: string;
@@ -122,14 +123,16 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         void this.renderDial(context);
     }
 
-    private onQueueActiveChanged(context: string, active: boolean): void {
+    // The queue was replaced (new id, e.g. by Music Assistant), changed its length, or the speaker
+    // left it: reload what we show, or show nothing but the effect while there is no real queue.
+    private onQueueStateChanged(context: string, qs: QueueState): void {
         const state = this.states.get(context);
         if (!state) return;
-        state.queueActive = active;
-        if (!active && state.browsing) this.stopBrowsing(state);
+        state.queueState = qs;
+        state.queueActive = isBrowsableQueue(qs);
+        if (!state.queueActive && state.browsing) this.stopBrowsing(state);
         const controller = this.lease.get(context);
-        // Back on the queue: its content may have changed meanwhile
-        if (active && controller) void this.refreshQueueContext(context, controller, true);
+        if (state.queueActive && controller) void this.refreshQueueContext(context, controller, true);
         void this.renderDial(context);
     }
 
@@ -254,13 +257,13 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
                     // Fires immediately with cached state (incl. isRadio) if a track is already known.
                     controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
                     controller.registerPlayModeCallback(context, (pm) => this.onPlayModeChanged(context, pm));
-                    controller.registerQueueActiveCallback(context, (active) => this.onQueueActiveChanged(context, active));
+                    controller.registerQueueStateCallback(context, (qs) => this.onQueueStateChanged(context, qs));
                 }
                 return [
                     () => controller.unregisterTransportStateCallback(context),
                     () => controller.unregisterTrackInfoCallback(context),
                     () => controller.unregisterPlayModeCallback(context),
-                    () => controller.unregisterQueueActiveCallback(context),
+                    () => controller.unregisterQueueStateCallback(context),
                     () => controller.unregisterReachabilityCallback(context),
                 ];
             });
