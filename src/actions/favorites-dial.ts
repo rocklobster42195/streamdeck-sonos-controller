@@ -13,9 +13,8 @@ import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosFavoritesCache } from "../sonos/sonos-discovery";
 import { SonosFavorite, TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
-import { marqueeAnimator } from "../utils/MarqueeAnimator";
-import { mdiCog, mdiHeart, mdiHeartCircle, mdiHeartCircleOutline, mdiAudioInputRca } from "@mdi/js";
-import { ListController, type ListRow } from "@rocklobster42195/streamdeck-kit";
+import { mdiCog, mdiHeart, mdiAudioInputRca } from "@mdi/js";
+import { ListController, type ListRow, nowPlayingCard } from "@rocklobster42195/streamdeck-kit";
 import { ACCENT_COLOR, INACTIVE_ICON_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
 import { escapeXml } from "../utils/xml";
@@ -126,9 +125,6 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         const match = favs.find((f) => f.Title === trackInfo.Title || f.Title === trackInfo.Artist);
         state.playingFav = match ? { Title: match.Title, AlbumArtUri: match.AlbumArtUri } : undefined;
 
-        if (state.currentIndex === -1) {
-            marqueeAnimator.update(context, { text: state.playingFav?.Title ?? '', availableWidth: 97 });
-        }
         this.queueRender(context);
     }
 
@@ -172,7 +168,6 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
                     s.currentIndex = -1;
                     s.list.dispose();
                     s.fadeOpacity = 1.0;
-                    marqueeAnimator.update(context, { text: s.playingFav?.Title ?? '', availableWidth: 97 });
                 }
             } else {
                 s.fadeOpacity = Math.max(0, 1 - step / STEPS);
@@ -213,13 +208,6 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             transportState: existing?.transportState ?? 'STOPPED',
             currentTrack: existing?.currentTrack,
             playingFav: existing?.playingFav,
-        });
-
-        marqueeAnimator.start(context, () => { this.queueRender(context); }, {
-            text: '',
-            fontSize: 14,
-            fontColor: '#FFFFFF',
-            availableWidth: 97
         });
 
         this.syncPanoramaParticipation(context, settings);
@@ -297,9 +285,6 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             const match = favs.find((f) => f.Title === trackTitle || f.Title === trackArtist);
             state.playingFav = match ? { Title: match.Title, AlbumArtUri: match.AlbumArtUri } : undefined;
 
-            if (state.currentIndex === -1) {
-                marqueeAnimator.update(context, { text: state.playingFav?.Title ?? '', availableWidth: 97 });
-            }
 
             await this.renderDial(context);
         } catch (e) {
@@ -316,8 +301,6 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         state?.list.dispose();
 
         this.lease.release(context);
-
-        marqueeAnimator.destroy(context);
 
         this.renderGen.delete(context);
         this.settingsMap.delete(context);
@@ -370,7 +353,6 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         state.list.dispose();
         state.browseTimeoutId = undefined;
         state.playingFav = { Title: fav.Title, AlbumArtUri: fav.AlbumArtUri, isLineIn: fav.isLineIn };
-        marqueeAnimator.update(context, { text: fav.Title ?? '', availableWidth: 97 });
         this.queueRender(context);
 
         const fadeMs = (Number(ev.payload.settings.fadeDuration) || 0) * 1000;
@@ -406,44 +388,9 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         switch ((payload as any).event) {
             case 'get-devices': await sendDeviceList('-- Choose device --', (await ev.action.getSettings()).deviceIp); break;
             case 'get-fade-options': sendFadeOptions(); break;
-            case 'get-viz-options': sendVizOptions({ label: piT('Cover mosaic'), value: 'mosaic' }); break;
+            case 'get-viz-options': sendVizOptions({ label: piT('None'), value: 'mosaic' }); break;
             case 'get-align-options': sendAlignOptions(); break;
         }
-    }
-
-    // Full-canvas panorama effect background with a heart icon centered per `align` — filled
-    // circle while PLAYING, outline otherwise. No cover/title text: this mode is deliberately a
-    // minimal ambient view, independent of the fragile favorite-title matching used elsewhere.
-    private async renderIconModeDial(action: ReturnType<typeof streamDeck.actions.getActionById>, context: string, settings: FavoritesDialSettings, isPlaying: boolean): Promise<void> {
-        if (!action || !action.isDial()) return;
-
-        const align = settings.align ?? 'center';
-        const cx = align === 'left' ? 50 : align === 'right' ? 150 : 100;
-        const cy = 50;
-
-        const rawPanoramaKey = panoramaContextGroupKey.get(context);
-        const panoramaKey = isPanoramaEffectActive(rawPanoramaKey) ? rawPanoramaKey : undefined;
-        const particleFrag = panoramaKey ? renderPanoramaEffectSlice(panoramaKey, getPanoramaSliceOffset(context)) : '';
-
-        const heartPath = isPlaying ? mdiHeartCircle : mdiHeartCircleOutline;
-        // mdiHeartCircle's own outer ring only spans 20 of its 24 viewBox units (2px inset each
-        // side) — a plain 76px box (VolumeDial pie's rOuter*2) renders visually smaller than the
-        // pie, which draws its arcs edge-to-edge with no such built-in padding. Scale the box up
-        // so the glyph's actual ring diameter matches the pie's 76px.
-        const size = Math.round(76 * (24 / 20));
-        const scale = size / 24;
-
-        const svg = [
-            '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
-            panoramaKey
-                ? `<defs><clipPath id="c"><rect width="200" height="100"/></clipPath></defs><rect width="200" height="100" fill="#000"/><g clip-path="url(#c)">${particleFrag}</g>`
-                : '<rect width="200" height="100" fill="#0a0a0a"/>',
-            `<g transform="translate(${cx - size / 2},${cy - size / 2}) scale(${scale.toFixed(3)})"><path fill="#CCCCCC" d="${heartPath}"/></g>`,
-            '</svg>',
-        ].join('');
-
-        const img = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-        await action.setFeedback({ 'full-canvas': img }).catch(() => {});
     }
 
     protected async renderDial(context: string): Promise<void> {
@@ -464,138 +411,52 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             return;
         }
 
-        const isBrowsing = state.currentIndex !== -1;
-        const favs = this.getFavorites(context);
-        const isPlaying = state.transportState === 'PLAYING';
-        // The synthetic Line-In entry has no cover — whichever "favorite" is currently relevant
-        // (the browsed one, or whatever's playing) gets an icon instead, in both the browsing
-        // carousel and the now-playing resting view.
-        const activeFav = isBrowsing ? favs[state.currentIndex] : state.playingFav;
-        const isLineInActive = !!activeFav?.isLineIn;
-
-        // Icon mode (effect background + centered heart) replaces idle AND now-playing — browsing
-        // always shows the actually-selected favorite's real cover, unaffected. Gated on a
-        // configured device so an unconfigured tile still falls through to the cog placeholder
-        // below instead of animating an effect nobody can act on.
         const settings = this.settingsMap.get(context);
-        if (!isBrowsing && settings?.deviceIp && this.isEffectMode(settings.visualizerMode)) {
-            await this.renderIconModeDial(action, context, settings, isPlaying);
-            return;
-        }
-
+        const favs = this.getFavorites(context);
         const fadeOverlay = state.fadeOpacity !== undefined
             ? `<rect width="200" height="100" fill="#000" opacity="${state.fadeOpacity.toFixed(3)}"/>`
             : '';
+        const send = (img: string) => action.setFeedback({ 'full-canvas': fadeOverlay ? withOverlay(img, fadeOverlay) : img }).catch(() => {});
 
         // Browsing: the kit's scrolling list (marked row in the middle, playing favorite in Sage)
-        if (isBrowsing && favs.length > 0) {
-            const list = state.list.render({
+        if (state.currentIndex !== -1 && favs.length > 0) {
+            await send(state.list.render({
                 row: (i) => this.listRow(favs[i], state.playingFav?.Title),
                 accent: ACCENT_COLOR,
                 showImages: settings?.showCovers !== false,
-            });
-            const img = fadeOverlay ? withOverlay(list, fadeOverlay) : list;
-            await action.setFeedback({ 'full-canvas': img }).catch(() => {});
+            }));
             return;
         }
 
-        const cover = state.playingFav?.AlbumArtUri
-            ? sonosFavoritesCache.getCoverArt(state.playingFav.AlbumArtUri)
-            : undefined;
-        const subtitleText = '';
-        const positionText = isPlaying ? '▶' : '⏸';
-
-        // Full-canvas idle: not browsing, no cover available, and not the Line-In icon either.
-        if (!isBrowsing && !cover && !isLineInActive) {
-            const svg = this.buildIdleSvg(context);
-            const img = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-            await action.setFeedback({ 'full-canvas': img }).catch(() => {});
+        if (!settings?.deviceIp) {
+            await send(noDeviceStrip());
             return;
         }
 
-        // Same 88×88 rounded-rect slot cover art normally occupies; icon centered within it at
-        // roughly half the box size (44px in a 24-unit MDI viewBox → scale 44/24).
-        const coverFrag = isLineInActive
-            ? `<rect x="4" y="6" width="88" height="88" fill="#2a2a2a" rx="6"/><g transform="translate(26,28) scale(1.833)"><path fill="#CCCCCC" d="${mdiAudioInputRca}"/></g>`
-            : cover
-                ? `<image href="${cover}" x="4" y="6" width="88" height="88" preserveAspectRatio="xMidYMid slice" clip-path="url(#cc)"/>`
-                : `<rect x="4" y="6" width="88" height="88" fill="#2a2a2a" rx="6"/>`;
-
-        const titleFrag = marqueeAnimator.isRunning(context)
-            ? marqueeAnimator.render(context, 100, 30, 97, 20)
-            : (() => {
-                const fallback = isBrowsing
-                    ? (favs[state.currentIndex]?.Title ?? '')
-                    : (state.playingFav?.Title ?? '');
-                return `<text x="100" y="30" fill="#FFFFFF" font-family="Arial,sans-serif" font-size="14" clip-path="url(#tc)">${escapeXml(fallback)}</text>`;
-            })();
-
-        const svg = [
-            '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
-            '<defs>',
-            '  <clipPath id="cc"><rect x="4" y="6" width="88" height="88" rx="6"/></clipPath>',
-            '  <clipPath id="tc"><rect x="100" y="5" width="97" height="58"/></clipPath>',
-            '</defs>',
-            '<rect width="200" height="100" fill="#1c1c1c"/>',
-            coverFrag,
-            titleFrag,
-            `<text x="100" y="48" fill="#999999" font-family="Arial,sans-serif" font-size="11" clip-path="url(#tc)">${escapeXml(subtitleText)}</text>`,
-            `<text x="197" y="62" fill="#999999" font-family="Arial,sans-serif" font-size="10" text-anchor="end">${escapeXml(positionText)}</text>`,
-            fadeOverlay,
-            '</svg>'
-        ].join('');
-
-        const img = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-        await action.setFeedback({ 'full-canvas': img }).catch(() => {});
+        // Idle: the family's now-playing card (as on MA-C's Browser dial) — the playing favorite as
+        // the source, else the current track — over the row's Panorama effect when there is one.
+        const fav = state.playingFav;
+        const track = state.currentTrack;
+        const trackLine = [track?.Title, track?.Artist].filter(Boolean).join(' · ');
+        const cover = (fav?.AlbumArtUri ? sonosFavoritesCache.getCoverArt(fav.AlbumArtUri) : undefined)
+            ?? (fav?.isLineIn ? undefined : track?.albumArtDataUri);
+        await send(nowPlayingCard({
+            cover,
+            placeholderIcon: fav?.isLineIn ? mdiAudioInputRca : mdiHeart,
+            title: track?.Title || piT('Nothing playing'),
+            artist: track?.Artist || undefined,
+            source: fav ? { kind: piT('Favorite'), name: fav.Title, track: trackLine } : undefined,
+            hint: piT('Rotate to browse'),
+            backdrop: this.effectBackdrop(context, settings),
+        }));
     }
 
-    private getAvailableCovers(context: string, max: number): string[] {
-        const favs = this.getFavorites(context);
-        const covers: string[] = [];
-        for (const fav of favs) {
-            if (covers.length >= max) break;
-            const art = fav.AlbumArtUri ? sonosFavoritesCache.getCoverArt(fav.AlbumArtUri) : undefined;
-            if (art) covers.push(art);
-        }
-        return covers;
-    }
-
-    private buildIdleSvg(context: string): string {
-        const covers = this.getAvailableCovers(context, 8);
-
-        const body = covers.length === 0
-            ? [
-                `<g transform="translate(82,14) scale(1.5)"><path fill="${INACTIVE_ICON_COLOR}" d="${mdiCog}"/></g>`,
-                `<text x="100" y="66" fill="#555555" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${escapeXml(piT('No device set'))}</text>`,
-            ].join('')
-            : this.buildMosaic(covers);
-
-        const hint = covers.length > 0
-            ? `<text x="100" y="96" fill="#fff" font-family="Arial,sans-serif" font-size="9" text-anchor="middle" opacity="0.4">${escapeXml(piT('Rotate to browse'))}</text>`
-            : '';
-
-        return [
-            '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
-            '<defs><clipPath id="vp"><rect width="200" height="100"/></clipPath></defs>',
-            '<rect width="200" height="100" fill="#111"/>',
-            `<g clip-path="url(#vp)">${body}</g>`,
-            hint,
-            '</svg>',
-        ].join('');
-    }
-
-    private buildMosaic(covers: string[]): string {
-        const COLS = 4, ROWS = 2, W = 50, H = 50;
-        const total = COLS * ROWS;
-        const defs: string[] = [];
-        const imgs: string[] = [];
-        for (let i = 0; i < total; i++) {
-            const col = i % COLS, row = Math.floor(i / COLS);
-            const x = col * W, y = row * H;
-            defs.push(`<clipPath id="ms${i}"><rect x="${x}" y="${y}" width="${W}" height="${H}"/></clipPath>`);
-            imgs.push(`<image href="${covers[i % covers.length]}" x="${x}" y="${y}" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice" clip-path="url(#ms${i})"/>`);
-        }
-        return `<defs>${defs.join('')}</defs>${imgs.join('')}`;
+    /** The row's Panorama effect under this dial, darkened so the card stays readable ('' without one). */
+    private effectBackdrop(context: string, settings: FavoritesDialSettings): string {
+        if (!this.isEffectMode(settings.visualizerMode)) return '';
+        const key = panoramaContextGroupKey.get(context);
+        if (!isPanoramaEffectActive(key)) return '';
+        return renderPanoramaEffectSlice(key!, getPanoramaSliceOffset(context)) + '<rect width="200" height="100" fill="#000" opacity="0.45"/>';
     }
 
     private listRow(fav: SonosFavorite | undefined, playingTitle: string | undefined): ListRow | undefined {
@@ -607,6 +468,18 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             active: !!playingTitle && fav.Title === playingTitle,
         };
     }
+}
+
+/** No device chosen yet: the cog and a hint. */
+function noDeviceStrip(): string {
+    const svg = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+        '<rect width="200" height="100" fill="#111"/>',
+        `<g transform="translate(82,14) scale(1.5)"><path fill="${INACTIVE_ICON_COLOR}" d="${mdiCog}"/></g>`,
+        `<text x="100" y="66" fill="#555555" font-family="Arial,sans-serif" font-size="13" text-anchor="middle">${escapeXml(piT('No device set'))}</text>`,
+        '</svg>',
+    ].join('');
+    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
 /** Lay an SVG fragment (the fade-through-black overlay) over a strip image (an SVG data URI). */
