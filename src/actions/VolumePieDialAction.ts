@@ -6,7 +6,7 @@ import streamDeck, {
 } from "@elgato/streamdeck";
 import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCapableDialAction";
 import { VolumeInfo } from "../sonos/SonosTypes";
-import { FadeDisplayAnimator } from "../utils/FadeDisplayAnimator";
+import { VolumeDisplay } from "@rocklobster42195/streamdeck-kit";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/PanoramaOrchestrator";
 import { mdiVolumeOff, mdiCheck } from "@mdi/js";
 import { buildUnconfiguredDialSvg } from "../utils/icons";
@@ -40,8 +40,8 @@ interface PieDialState {
     isMuted?: boolean;
     // Zone name (Volume Dial) / group name (Group Volume Dial) shown under the % text.
     displayName?: string;
-    // Owns target/display volume plus the fade fake-animation — see FadeDisplayAnimator.
-    anim: FadeDisplayAnimator;
+    // Owns target/display volume plus the fade fake-animation — see VolumeDisplay.
+    anim: VolumeDisplay;
 }
 
 /**
@@ -145,7 +145,7 @@ export abstract class VolumePieDialAction<
         settings = this.applyBackfill(ev, settings, { showText: true } as unknown as Partial<TSettings>);
 
         this.settingsMap.set(context, settings);
-        this.states.set(context, { anim: new FadeDisplayAnimator(() => void this.renderDial(context)) });
+        this.states.set(context, { anim: new VolumeDisplay(() => void this.renderDial(context)) });
 
         const id = this.configuredId(settings);
         if (!id) {

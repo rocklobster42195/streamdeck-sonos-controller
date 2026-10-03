@@ -12,7 +12,7 @@ import streamDeck, {
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { discoveryPromise } from "../sonos/sonos-discovery";
-import { FadeDisplayAnimator } from "../utils/FadeDisplayAnimator";
+import { VolumeDisplay } from "@rocklobster42195/streamdeck-kit";
 import { generateFaderSvg, generateVolumeButtonIcon, generateUnreachableKeyIcon } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { piT } from "../utils/pi-i18n";
@@ -40,7 +40,7 @@ type KeySurface = {
 interface KeyState {
     // Eases/fakes the fader icon's displayed volume — only the 'mute' command's icon actually
     // visualizes the level, so the animation paths are gated on that command below.
-    anim: FadeDisplayAnimator;
+    anim: VolumeDisplay;
     isMuted: boolean;
     command?: VolumeCommand;
 }
@@ -59,7 +59,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
 
     private newKeyState(context: string, volume: number, isMuted: boolean, command: VolumeCommand): KeyState {
         const state: KeyState = {
-            anim: new FadeDisplayAnimator(() => {
+            anim: new VolumeDisplay(() => {
                 const s = this.keyStates.get(context);
                 const a = this.actionRefs.get(context);
                 if (!s || !a) return;

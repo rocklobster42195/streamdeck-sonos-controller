@@ -1,68 +1,17 @@
-import streamDeck from "@elgato/streamdeck";
 import { SonosDevice } from "@svrooij/sonos";
 import { URL } from "url";
-import { runThrottled } from "./per-host-throttle";
+import { loadCover } from "@rocklobster42195/streamdeck-kit";
 
-// Every caller that wants a cover (Queue Dial's cursor/prefetch, Track Dial, PlayPause,
-// SonosDeviceController's currentTrack/polling paths, ...) used to call straight through to
-// fetch() with no shared bookkeeping. Confirmed on hardware this caused two compounding problems:
-// (1) the SAME resolved URL got fetched multiple times concurrently (e.g. Queue Dial browsing
-// back over an item it already just fetched, or a background poll re-requesting the currently
-// playing track's art while a dial's own fetch for that exact cover was still in flight) — each
-// duplicate ate one of only MAX_CONCURRENT_PER_HOST slots in the per-host throttle for no reason,
-// and (2) a single stuck fetch (Sonos's own art proxy hanging on a cache miss) occupied its slot
-// forever, since nothing aborted the underlying request — every later request for that device
-// queued up behind it, observed as covers only appearing after 16+ seconds (two stuck/slow
-// requests deep) and even starving unrelated actions (Track Dial, PlayPause) sharing the host.
-// Fixing this here, once, means every caller benefits without re-implementing it.
-const FETCH_TIMEOUT_MS = 8000;
-const MAX_RESOLVED_CACHE = 100;
-const resolvedCache: Map<string, string> = new Map();
-const pendingFetches: Map<string, Promise<string>> = new Map();
+// Covers come through the kit's cover cache, which carries this plugin's hardware lessons (they
+// started here): one request per URL however many callers ask (Queue dial browsing, polls, track
+// changes), at most two fetches per speaker at once, a stuck request aborted after 8 s so it frees
+// its slot (once caused covers appearing only after 16+ s), and a failed URL resting 5 s — e.g.
+// Sonos's getaa proxy URL for a NAS track can be malformed and 404 forever, which caused retry
+// storms on every poll. What stays here: turning Sonos's relative URIs into full URLs.
 
-// A URL that 404s (or otherwise fails) was never cached — only SUCCESSFUL results were — so a
-// permanently-broken cover (confirmed on hardware, 2026-07-17: Sonos's own getaa proxy URL for a
-// NAS/CIFS track can be malformed — e.g. double percent-encoded — and 404s forever) got re-fetched
-// from scratch by every single caller: each of a group's members' subscription setup, every 8s
-// poll tick, every dial re-render. Ten-plus retries within about a second, repeating on every
-// plugin restart for as long as that track keeps playing — a genuine storm, not just log noise.
-// Cache the failure too, but only briefly — long enough to collapse a burst of near-simultaneous
-// callers into one real attempt, not so long that a TRANSIENT failure (e.g. throttle contention
-// right at a track change) gets mistaken for a permanent one. Confirmed on hardware (same day):
-// an initial 60s cooldown made Queue Dial appear to lag one cover behind — its cover fetch failed
-// once during the change, then the negative-cache suppressed every retry for the next minute, so
-// the dial kept showing the previous track's cover until something else forced a fresh fetch.
-const FAILURE_COOLDOWN_MS = 5_000;
-const failedAt: Map<string, number> = new Map();
-
+/** A cover as a data URI, or "" when it can't be loaded right now. */
 export async function loadImageFromUri(uri: string, device: SonosDevice): Promise<string> {
-  const fullImageUrl = resolveImageUrl(uri, device);
-
-  const cached = resolvedCache.get(fullImageUrl);
-  if (cached) return cached;
-
-  const lastFailure = failedAt.get(fullImageUrl);
-  if (lastFailure !== undefined && Date.now() - lastFailure < FAILURE_COOLDOWN_MS) return "";
-
-  const existing = pendingFetches.get(fullImageUrl);
-  if (existing) return existing;
-
-  const promise = runThrottled(device.Host, () => loadImageFromUriUnthrottled(fullImageUrl))
-    .finally(() => { pendingFetches.delete(fullImageUrl); });
-  pendingFetches.set(fullImageUrl, promise);
-
-  const dataUri = await promise;
-  if (dataUri) {
-    failedAt.delete(fullImageUrl);
-    if (resolvedCache.size >= MAX_RESOLVED_CACHE && !resolvedCache.has(fullImageUrl)) {
-      const oldestKey = resolvedCache.keys().next().value;
-      if (oldestKey !== undefined) resolvedCache.delete(oldestKey);
-    }
-    resolvedCache.set(fullImageUrl, dataUri);
-  } else {
-    failedAt.set(fullImageUrl, Date.now());
-  }
-  return dataUri;
+  return (await loadCover(resolveImageUrl(uri, device))) ?? "";
 }
 
 function resolveImageUrl(uri: string, device: SonosDevice): string {
@@ -78,42 +27,3 @@ function resolveImageUrl(uri: string, device: SonosDevice): string {
   }
   return fullImageUrl;
 }
-
-async function loadImageFromUriUnthrottled(fullImageUrl: string): Promise<string> {
-  // AbortController (not a Promise.race-style timeout) so a stuck request is actually cancelled
-  // at the socket level once it times out, instead of just being abandoned while it keeps running
-  // in the background — the latter would still hold its per-host throttle slot indefinitely.
-  const abortController = new AbortController();
-  const timeoutId = setTimeout(() => abortController.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const response = await fetch(fullImageUrl, { signal: abortController.signal });
-    streamDeck.logger.debug(`Image fetch response status: ${response.status}`);
-
-    if (!response.ok) {
-      streamDeck.logger.error(`Failed to fetch image: ${response.statusText}`);
-      return ""; // Return empty string or a default image path
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    if (arrayBuffer.byteLength === 0) {
-      streamDeck.logger.error(`Empty image body from ${fullImageUrl}`);
-      return "";
-    }
-
-    const mimeType = response.headers.get('content-type') ?? 'image/jpeg';
-    if (!mimeType.startsWith('image/') && !mimeType.startsWith('binary/')) {
-      streamDeck.logger.error(`Non-image MIME type "${mimeType}" from ${fullImageUrl}`);
-      return "";
-    }
-
-    const base64String = Buffer.from(arrayBuffer).toString("base64");
-    const dataUri = `data:${mimeType};base64,${base64String}`;
-    return dataUri;
-  } catch (error) {
-    streamDeck.logger.error("Error in loadImageFromUri:", error);
-    return ""; // Return empty string or a default image path on error
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
