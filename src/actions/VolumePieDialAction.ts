@@ -74,6 +74,11 @@ export abstract class VolumePieDialAction<
     // streamDeck.info.application.language may not be populated yet that early.
     protected abstract readonly dialLabelKey: string;
     protected get dialLabel(): string { return piT(this.dialLabelKey).toUpperCase(); }
+
+    // The dial's name in the Panorama map: the room or group it controls
+    protected override panoramaLabel(context: string): string {
+        return this.states.get(context)?.displayName || piT(this.dialLabelKey);
+    }
     /** The configured target id (deviceIp / groupIp), or undefined when not yet configured. */
     protected abstract configuredId(settings: TSettings): string | undefined;
     protected abstract acquireController(id: string): Promise<TController>;

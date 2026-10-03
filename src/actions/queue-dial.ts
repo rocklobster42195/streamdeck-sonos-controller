@@ -66,6 +66,10 @@ interface QueueDialState {
  */
 @action({ UUID: "de.boriskemper.sonos-controller.queue-dial" })
 export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
+    protected override panoramaLabel(): string {
+        return piT('Queue');
+    }
+
     private lease = new ControllerLease<SonosDeviceController>(
         (ip) => sonosDeviceManager.getController(ip),
         (controller) => sonosDeviceManager.releaseController(controller.deviceIp),

@@ -55,6 +55,10 @@ interface FavDialState {
 
 @action({ UUID: "de.boriskemper.sonos-controller.favorites-dial" })
 export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettings> {
+    protected override panoramaLabel(): string {
+        return piT('Favorites');
+    }
+
     private lease = new ControllerLease<SonosDeviceController>(
         (ip) => sonosDeviceManager.getController(ip),
         (controller) => sonosDeviceManager.releaseController(controller.deviceIp),

@@ -71,6 +71,10 @@ interface DialState {
 
 @action({ UUID: "de.boriskemper.sonos-controller.track-control-dial" })
 export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDialSettings> {
+    protected override panoramaLabel(): string {
+        return piT('Track');
+    }
+
     private lease = new ControllerLease<SonosDeviceController>(
         (ip) => sonosDeviceManager.getController(ip),
         (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
