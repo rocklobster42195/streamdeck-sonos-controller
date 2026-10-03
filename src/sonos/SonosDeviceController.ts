@@ -6,7 +6,8 @@ import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "./cover-art-loader";
 import { normalizeBrowseResult } from "./queue-utils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
-import { SonosFavorite, TrackInfo, VolumeInfo } from "./SonosTypes";
+import { PlaybackSource, SonosFavorite, TrackInfo, VolumeInfo } from "./SonosTypes";
+import { parseSource } from "./playback-source";
 import { withTimeout } from "../utils/with-timeout";
 import { parseRelTime } from "./rel-time";
 import { isRadioAlbumArtUri, upsizeSonosImageProxyUrl, looksLikeRawStreamFilename } from "./track-metadata";
@@ -81,6 +82,9 @@ export class SonosDeviceController {
   private transportStateCallbacks: Map<string, (transportState: string) => void> = new Map();
   private playModeCallbacks: Map<string, (playMode: string) => void> = new Map();
   private trackInfoCallbacks: Map<string, (trackInfo: TrackInfo) => void> = new Map();
+  private sourceCallbacks: Map<string, (source: PlaybackSource | undefined) => void> = new Map();
+  // undefined = not reported yet; null = Sonos reported no source (e.g. a stream from another app)
+  private currentSource: PlaybackSource | null | undefined;
   private batteryCallbacks: Map<string, (battery: SonosBatteryStatus | undefined) => void> = new Map();
   private reachabilityCallbacks: Map<string, (reachable: boolean) => void> = new Map();
 
@@ -212,6 +216,7 @@ export class SonosDeviceController {
     if (this.coordinatorController) {
       this.coordinatorController.unregisterTransportStateCallback(this.coordinatorCallbackId);
       this.coordinatorController.unregisterTrackInfoCallback(this.coordinatorCallbackId);
+      this.coordinatorController.unregisterSourceCallback(this.coordinatorCallbackId);
       sonosDeviceManager.releaseController(this.coordinatorController.deviceIp);
       this.coordinatorController = undefined;
     }
@@ -254,6 +259,10 @@ export class SonosDeviceController {
         streamDeck.logger.info(`[${this.deviceIp}] Forwarded track info from coordinator ${coordinatorHost}: Title="${ti?.Title}", hasArt=${!!ti?.albumArtDataUri}`);
         this.currentTrack = ti;
         this.fireTrackInfoCallbacks(ti);
+      });
+      controller.registerSourceCallback(this.coordinatorCallbackId, (source) => {
+        if (!this.reachable) return;
+        this.setSource(source ?? null);
       });
     } catch (e) {
       streamDeck.logger.warn(`[${this.deviceIp}] Failed to subscribe to coordinator ${coordinatorHost}`, e);
@@ -302,6 +311,7 @@ export class SonosDeviceController {
     if (this.coordinatorController) {
       this.coordinatorController.unregisterTransportStateCallback(this.coordinatorCallbackId);
       this.coordinatorController.unregisterTrackInfoCallback(this.coordinatorCallbackId);
+      this.coordinatorController.unregisterSourceCallback(this.coordinatorCallbackId);
       sonosDeviceManager.releaseController(this.coordinatorController.deviceIp);
       this.coordinatorController = undefined;
     }
@@ -310,6 +320,7 @@ export class SonosDeviceController {
     this.transportStateCallbacks.clear();
     this.playModeCallbacks.clear();
     this.trackInfoCallbacks.clear();
+    this.sourceCallbacks.clear();
     this.batteryCallbacks.clear();
     this.reachabilityCallbacks.clear();
   }
@@ -692,6 +703,19 @@ export class SonosDeviceController {
     if (this.currentTrack) callback(this.currentTrack);
   }
   unregisterTrackInfoCallback(id: string): void { this.trackInfoCallbacks.delete(id); }
+  /** What the music was started from (fires right away once known, then on every change). */
+  registerSourceCallback(id: string, callback: (source: PlaybackSource | undefined) => void): void {
+    this.sourceCallbacks.set(id, callback);
+    if (this.currentSource !== undefined) callback(this.currentSource ?? undefined);
+  }
+  unregisterSourceCallback(id: string): void { this.sourceCallbacks.delete(id); }
+
+  private setSource(source: PlaybackSource | null): void {
+    const prev = this.currentSource;
+    if (prev !== undefined && (prev?.title ?? null) === (source?.title ?? null) && (prev?.uri ?? null) === (source?.uri ?? null)) return;
+    this.currentSource = source;
+    this.sourceCallbacks.forEach(cb => cb(source ?? undefined));
+  }
 
   // Temporary diagnostic (2026-07-18): snapshot every callback map's size to catch a suspected
   // leak (stale contexts never unregistered) that would make this controller's own render fan-out
@@ -831,6 +855,9 @@ export class SonosDeviceController {
           // a stale member-sourced event arriving between poll ticks kept flipping the dial back
           // to "playing" (e.g. the EQ visualizer), fighting the poll's correct value.
           if (this.isGroupedMember) return;
+          if ('EnqueuedTransportURIMetaData' in data || 'EnqueuedTransportURI' in data) {
+            this.setSource(parseSource(data.EnqueuedTransportURIMetaData, data.EnqueuedTransportURI) ?? null);
+          }
           if (typeof data.TransportState === 'string') this.transportStateCallbacks.forEach(cb => cb(data.TransportState));
           if (typeof data.CurrentPlayMode === 'string') this.playModeCallbacks.forEach(cb => cb(data.CurrentPlayMode));
           // Some devices may emit 'PlayMode' instead of 'CurrentPlayMode'

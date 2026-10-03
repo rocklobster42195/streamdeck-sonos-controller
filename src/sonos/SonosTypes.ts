@@ -1,5 +1,12 @@
 import { Track } from "@svrooij/sonos/lib/models";
 
+/**
+ * What the music was started from — a playlist, album, station or favorite — as Sonos reports it
+ * (AVTransport's EnqueuedTransportURI / EnqueuedTransportURIMetaData). Undefined when Sonos knows
+ * none, e.g. a stream another app (Music Assistant) sends straight to the speaker.
+ */
+export type PlaybackSource = { title: string; upnpClass?: string; uri?: string };
+
 export type TrackInfo = Track & {
     albumArtDataUri?: string;
     isRadio?: boolean;

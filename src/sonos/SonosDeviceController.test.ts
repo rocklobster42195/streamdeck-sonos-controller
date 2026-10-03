@@ -37,6 +37,7 @@ type FakeCoordinatorController = {
     unregisterTransportStateCallback: ReturnType<typeof vi.fn>;
     registerTrackInfoCallback: ReturnType<typeof vi.fn>;
     unregisterTrackInfoCallback: ReturnType<typeof vi.fn>;
+    unregisterSourceCallback: ReturnType<typeof vi.fn>;
     _callbacks: {
         transportState?: (ts: string) => void;
         trackInfo?: (ti: TrackInfo) => void;
@@ -51,6 +52,7 @@ function createFakeCoordinatorController(deviceIp: string): FakeCoordinatorContr
         unregisterTransportStateCallback: vi.fn(),
         registerTrackInfoCallback: vi.fn((_id: string, cb: (ti: TrackInfo) => void) => { callbacks.trackInfo = cb; }),
         unregisterTrackInfoCallback: vi.fn(),
+        unregisterSourceCallback: vi.fn(),
         _callbacks: callbacks,
     };
 }
@@ -155,6 +157,7 @@ describe('SonosDeviceController', () => {
             );
             expect(fakeCoordinator.unregisterTransportStateCallback).toHaveBeenCalledWith('member-1.2.3.4');
             expect(fakeCoordinator.unregisterTrackInfoCallback).toHaveBeenCalledWith('member-1.2.3.4');
+            expect(fakeCoordinator.unregisterSourceCallback).toHaveBeenCalledWith('member-1.2.3.4');
             expect(sonosDeviceManager.releaseController).toHaveBeenCalledWith('COORD-X');
 
             await new Promise((r) => setImmediate(r)); // let the in-flight battery poll settle

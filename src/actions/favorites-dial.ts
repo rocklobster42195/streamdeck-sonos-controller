@@ -12,8 +12,8 @@ import { PanoramaCapableDialAction, PanoramaCapableSettings } from "./PanoramaCa
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosFavoritesCache } from "../sonos/sonos-discovery";
-import { SonosFavorite, TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
-import { mdiCog, mdiHeart, mdiAudioInputRca } from "@mdi/js";
+import { PlaybackSource, SonosFavorite, TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
+import { mdiCog, mdiHeart, mdiHeartCircle, mdiHeartCircleOutline, mdiAudioInputRca } from "@mdi/js";
 import { ListController, type ListRow, nowPlayingCard } from "@rocklobster42195/streamdeck-kit";
 import { ACCENT_COLOR, INACTIVE_ICON_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
@@ -50,6 +50,7 @@ interface FavDialState {
     isMuted: boolean;
     transportState: string;
     currentTrack?: TrackInfo;
+    source?: PlaybackSource; // what the music was started from, when Sonos reports it
     playingFav?: { Title: string; AlbumArtUri?: string; isLineIn?: boolean };
     fadeOpacity?: number;       // black overlay opacity (1=fully black, 0=gone), undefined=no fade
     fadeTimer?: NodeJS.Timeout;
@@ -121,11 +122,28 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         }
         state.currentTrack = trackInfo;
 
-        const favs = this.getFavorites(context);
-        const match = favs.find((f) => f.Title === trackInfo.Title || f.Title === trackInfo.Artist);
-        state.playingFav = match ? { Title: match.Title, AlbumArtUri: match.AlbumArtUri } : undefined;
+        this.matchPlayingFavorite(context, state);
 
         this.queueRender(context);
+    }
+
+    private onSourceChanged(context: string, source: PlaybackSource | undefined): void {
+        const state = this.states.get(context);
+        if (!state) return;
+        state.source = source;
+        this.matchPlayingFavorite(context, state);
+        this.queueRender(context);
+    }
+
+    // The playing favorite: the one the music was started from (Sonos's source), else one named
+    // like the current track or artist (stations report their name there).
+    private matchPlayingFavorite(context: string, state: FavDialState): void {
+        const favs = this.getFavorites(context);
+        const t = state.currentTrack;
+        const match = (state.source && favs.find((f) => f.Title === state.source!.title))
+            ?? favs.find((f) => !!f.Title && (f.Title === t?.Title || f.Title === t?.Artist));
+        if (match) state.playingFav = { Title: match.Title, AlbumArtUri: match.AlbumArtUri, isLineIn: match.isLineIn };
+        else if (!state.playingFav?.isLineIn) state.playingFav = undefined;
     }
 
     private startBrowseTimeout(context: string): void {
@@ -207,6 +225,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             isMuted: existing?.isMuted ?? false,
             transportState: existing?.transportState ?? 'STOPPED',
             currentTrack: existing?.currentTrack,
+            source: existing?.source,
             playingFav: existing?.playingFav,
         });
 
@@ -246,11 +265,13 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
                     controller.registerVolumeCallback(context, (vol) => this.onVolumeInfoChanged(context, vol));
                     controller.registerTransportStateCallback(context, (ts) => this.onTransportStateChanged(context, ts));
                     controller.registerTrackInfoCallback(context, (ti) => this.onTrackInfoChanged(context, ti));
+                    controller.registerSourceCallback(context, (src) => this.onSourceChanged(context, src));
                 }
                 return [
                     () => controller.unregisterVolumeCallback(context),
                     () => controller.unregisterTransportStateCallback(context),
                     () => controller.unregisterTrackInfoCallback(context),
+                    () => controller.unregisterSourceCallback(context),
                     () => controller.unregisterReachabilityCallback(context),
                 ];
             });
@@ -279,11 +300,7 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
                 state.currentTrack = { albumArtDataUri: cover } as TrackInfo;
             }
 
-            const favs = this.getFavorites(context);
-            const trackTitle = state.currentTrack?.Title ?? '';
-            const trackArtist = state.currentTrack?.Artist ?? '';
-            const match = favs.find((f) => f.Title === trackTitle || f.Title === trackArtist);
-            state.playingFav = match ? { Title: match.Title, AlbumArtUri: match.AlbumArtUri } : undefined;
+            this.matchPlayingFavorite(context, state);
 
 
             await this.renderDial(context);
@@ -433,9 +450,17 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             return;
         }
 
-        // Idle: the family's now-playing card (as on MA-C's Browser dial) — the playing favorite as
-        // the source, else the current track — over the row's Panorama effect when there is one.
+        // Idle: the family's now-playing card (as on MA-C's Browser dial) with what the music was
+        // started from — the playing favorite, else the playlist/album/station Sonos reports — over
+        // the row's Panorama effect when there is one. Nothing known (e.g. a stream Music Assistant
+        // sends to the speaker): the heart, filled while playing.
         const fav = state.playingFav;
+        const source = state.source;
+        const backdrop = this.effectBackdrop(context, settings);
+        if (!fav && !source) {
+            await send(heartStrip(state.transportState === 'PLAYING', settings.align ?? 'center', backdrop));
+            return;
+        }
         const track = state.currentTrack;
         const trackLine = [track?.Title, track?.Artist].filter(Boolean).join(' · ');
         const cover = (fav?.AlbumArtUri ? sonosFavoritesCache.getCoverArt(fav.AlbumArtUri) : undefined)
@@ -444,10 +469,11 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             cover,
             placeholderIcon: fav?.isLineIn ? mdiAudioInputRca : mdiHeart,
             title: track?.Title || piT('Nothing playing'),
-            artist: track?.Artist || undefined,
-            source: fav ? { kind: piT('Favorite'), name: fav.Title, track: trackLine } : undefined,
+            source: fav
+                ? { kind: piT('Favorite'), name: fav.Title, track: trackLine }
+                : { kind: sourceKind(source!.upnpClass), name: source!.title, track: trackLine },
             hint: piT('Rotate to browse'),
-            backdrop: this.effectBackdrop(context, settings),
+            backdrop,
         }));
     }
 
@@ -468,6 +494,35 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
             active: !!playingTitle && fav.Title === playingTitle,
         };
     }
+}
+
+/** The kind of a source for the card's first line (from its UPnP class). */
+function sourceKind(upnpClass: string | undefined): string {
+    const c = upnpClass ?? '';
+    if (c.includes('playlistContainer')) return piT('Playlist');
+    if (c.includes('album')) return piT('Album');
+    if (c.includes('audioBroadcast') || c.includes('radio')) return piT('Radio');
+    return piT('Playing from');
+}
+
+/**
+ * The heart view, when nothing is known about what plays: filled while playing, an outline
+ * otherwise, at `align`, over the row's effect (or dark).
+ */
+function heartStrip(isPlaying: boolean, align: 'left' | 'center' | 'right', backdrop: string): string {
+    const cx = align === 'left' ? 50 : align === 'right' ? 150 : 100;
+    // mdiHeartCircle's own ring spans 20 of its 24 viewBox units — scale the box so the ring is
+    // 76 px across, like the Volume dial's pie
+    const size = Math.round(76 * (24 / 20));
+    const svg = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
+        backdrop
+            ? `<defs><clipPath id="c"><rect width="200" height="100"/></clipPath></defs><rect width="200" height="100" fill="#000"/><g clip-path="url(#c)">${backdrop}</g>`
+            : '<rect width="200" height="100" fill="#0a0a0a"/>',
+        `<g transform="translate(${cx - size / 2},${50 - size / 2}) scale(${(size / 24).toFixed(3)})"><path fill="#CCCCCC" d="${isPlaying ? mdiHeartCircle : mdiHeartCircleOutline}"/></g>`,
+        '</svg>',
+    ].join('');
+    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
 /** No device chosen yet: the cog and a hint. */
