@@ -5,7 +5,7 @@
 - **One Panorama per row of dials:** a row has one effect with one set of settings, chosen in any dial's Panorama section; each dial has a tick whether it shows the effect. Your existing effects are taken over (the Panorama Effects dial's effect wins its row). **Changed:** two different effects side by side in one row become one effect for the row.
 - **Favorites and Queue dials as a scrolling list:** entries stacked with the selected one in the middle, gliding one entry per click of the dial; what is playing in green with a small wave. The Queue dial rests on the playing track and follows it. New switch "Show covers".
 - **Favorites dial when idle:** a card with what is playing and where it comes from (the favorite, or the playlist, album or station Sonos reports); when that isn't known (e.g. music from Music Assistant) the heart as before. Replaces the cover mosaic.
-- **Volume as pie, ring or open ring** on the Volume and Group Volume dials and the Volume key (default: the pie as before).
+- **Volume as pie, ring or open ring** on the Volume and Group Volume dials and the Volume key (default: the pie as before). With the open ring, the dials can show an icon of your choice in its opening (e.g. a sofa for the living room).
 - **Works with other plugins (deckbus):** the Panorama spans the dials of other plugins in the same row (e.g. Music Assistant Controller); local only, see the README.
 - Smoother scrolling text, more robust cover loading and the volume display come from the shared kit now.
 

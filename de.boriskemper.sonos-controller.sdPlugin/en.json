@@ -156,7 +156,10 @@
             "gauge_pie": "Pie",
             "gauge_ring": "Ring",
             "gauge_open": "Open ring",
-            "diagnostics_hint": "Shows how the speaker answers (for troubleshooting)."
+            "diagnostics_hint": "Shows how the speaker answers (for troubleshooting).",
+            "icon_none": "No icon",
+            "icon_remove": "Remove icon",
+            "icon_hint": "Shown in the opening of the ring, e.g. for the room"
         },
         "Particle density": "Particle density",
         "Particle speed": "Particle speed",

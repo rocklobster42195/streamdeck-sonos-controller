@@ -2,6 +2,7 @@
 // pages that still use sdpi-components keep talking to their actions' onSendToPlugin; both run
 // side by side until every page has moved.
 import { piBridge, trackActions } from "@rocklobster42195/streamdeck-kit/bridge";
+import { mdiOptions } from "@rocklobster42195/streamdeck-kit/mdi";
 import { panoramaRows, socActions } from "../effects/panorama";
 import { deviceItems, groupItems } from "../actions/pi-options";
 import { sonosFavoritesCache } from "../sonos/sonos-discovery";
@@ -14,6 +15,8 @@ export function initPiBridge(): void {
     // The PI's Panorama section (<pi-panorama>): the row's effect, its dials and settings
     panoramaRows.attachPi(piBridge);
     // `deviceIp`/`groupIp`: the action's current choice, kept in the list while it is offline
+    // <pi-icon-picker>: search all Material Design Icons
+    piBridge.registerOptions("mdi-icons", mdiOptions);
     piBridge.registerOptions("sonos-devices", ({ deviceIp }) => deviceItems(deviceIp || undefined));
     piBridge.registerOptions("sonos-groups", ({ groupIp }) => groupItems(groupIp || undefined));
     // Play Favorite: the value is the whole favorite as JSON (what the key always stored)

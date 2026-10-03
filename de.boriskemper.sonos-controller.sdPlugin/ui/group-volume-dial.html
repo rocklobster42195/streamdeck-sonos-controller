@@ -21,6 +21,9 @@
       {"value":"ring","label":"pi.gauge_ring","icon":"gaugeRing"},
       {"value":"open","label":"pi.gauge_open","icon":"gaugeOpen"}
     ]'></pi-choice>
+    <div data-show-when="gauge=open">
+      <pi-icon-picker setting="icon" none-label="pi.icon_none" reset-label="pi.icon_remove" hint="pi.icon_hint"></pi-icon-picker>
+    </div>
   </pi-section>
   <pi-section title="pi.display">
     <pi-toggle setting="showText" label="pi.show_text" data-default="true"></pi-toggle>

@@ -155,7 +155,10 @@
             "gauge_pie": "Tarta",
             "gauge_ring": "Anillo",
             "gauge_open": "Anillo abierto",
-            "diagnostics_hint": "Muestra cómo responde el altavoz (para diagnóstico)."
+            "diagnostics_hint": "Muestra cómo responde el altavoz (para diagnóstico).",
+            "icon_none": "Sin icono",
+            "icon_remove": "Quitar icono",
+            "icon_hint": "Aparece en la abertura del anillo, p. ej. para la habitación"
         },
         "Particle density": "Densidad de partículas",
         "Particle speed": "Velocidad de partículas",

@@ -155,7 +155,10 @@
             "gauge_pie": "Torte",
             "gauge_ring": "Ring",
             "gauge_open": "Offener Ring",
-            "diagnostics_hint": "Zeigt, wie der Lautsprecher antwortet (zur Fehlersuche)."
+            "diagnostics_hint": "Zeigt, wie der Lautsprecher antwortet (zur Fehlersuche).",
+            "icon_none": "Kein Icon",
+            "icon_remove": "Icon entfernen",
+            "icon_hint": "Erscheint unten in der Öffnung des Rings, z. B. für den Raum"
         },
         "Particle density": "Partikeldichte",
         "Particle speed": "Partikel-Tempo",
