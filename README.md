@@ -272,7 +272,7 @@ All dials of a Stream Deck form a row with **one** effect and one set of setting
 
 SONOS Controller talks to other Stream Deck plugins on your computer through **deckbus**, a small open bus between plugins. You don't need to set anything up: when the plugins run, they find each other.
 
-**Offers:** the Panorama: dials of SONOS Controller and of other plugins in the same row share one effect (for example Music Assistant Controller's dials next to yours). Also where its actions are and whether it found Sonos speakers.
+**Offers:** the Panorama: dials of SONOS Controller and of other plugins in the same row share one effect (for example Music Assistant Controller's dials next to yours). Its **speakers as players**: what each one plays (title, cover, position, volume), so other plugins' keys can show and control them, for example after you set up Music Assistant. Controlling them is on by default. Also where its actions are and whether it found Sonos speakers.
 
 **Uses:** the Panorama of the other plugins' dials in the same row.
 

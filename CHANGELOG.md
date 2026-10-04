@@ -8,6 +8,8 @@
 - **Volume as pie, ring or open ring** on the Volume and Group Volume dials and the Volume key (default: the pie as before). With the ring or the open ring, the dials can show an icon of your choice in the middle or in the opening (e.g. a sofa for the living room).
 - **Panorama colour per row:** the Panorama section has a **Colour** for the whole row — **Cover** (the active speaker, or one speaker), **fixed** or the effect's own — instead of each dial colouring it. The Panorama Effects dial's "Colour without a speaker" is taken over into the row. Sonos Controller shares its speakers' cover colours on deckbus, so a row without any Sonos dial follows the cover too.
 - **Works with other plugins (deckbus):** the Panorama spans the dials of other plugins in the same row (e.g. Music Assistant Controller); local only, see the README.
+- **Speakers as players on deckbus:** Sonos Controller shares its speakers with other plugins (title, cover, position, volume, what each can do) and carries out their commands (play/pause, next, seek, volume, shuffle, repeat …), on by default. Groups show up as one player ("Kitchen + 2").
+- **Fixed: a bonded sub or surround counted as a speaker of its own** right after the speakers were found (e.g. in the speaker lists of the settings panels).
 - Smoother scrolling text, more robust cover loading and the volume display come from the shared kit now.
 - **Fixed: the deck lagging by seconds** (e.g. the Queue dial reacting late to turning) while covers were animated: covers were sent to Stream Deck at full size (up to 300 KB each) in every frame. They are now shrunk once to the size the keys and dials draw.
 
