@@ -4,7 +4,7 @@
 //
 // Replaces the plugin's own PanoramaOrchestrator. The dials keep calling the helpers at the bottom
 // (same names as the orchestrator's), so their drawing code didn't have to change.
-import { socCovers } from "../bus/soc-covers";
+import { socCovers } from "../bus/soc-players";
 import { ActionsState } from "@rocklobster42195/streamdeck-kit/bus";
 import { PanoramaEngine, PanoramaRows, rowStateFromSettings, SharedPanorama, type RowDialState } from "@rocklobster42195/streamdeck-kit";
 

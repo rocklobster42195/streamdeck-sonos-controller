@@ -1113,6 +1113,9 @@ export class SonosDeviceController {
   /** Live cached volume — read by GroupFadeCoordinator when enumerating fade members. */
   get liveVolume(): number { return this.currentVolume; }
 
+  /** Live cached mute state (deckbus "players"). */
+  get liveMuted(): boolean { return this.currentMute; }
+
   // Sets this device's volume AND keeps currentVolume + volume callbacks in sync, exactly like a
   // device event would. Silently poking currentVolume instead made the event/poll dedup treat the
   // device's own echo of every fade step as "no change", so watching Volume dials froze mid-fade

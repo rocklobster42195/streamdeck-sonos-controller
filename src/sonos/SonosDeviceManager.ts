@@ -1,6 +1,6 @@
 import streamDeck from "@elgato/streamdeck";
 import { SonosDeviceController } from "./SonosDeviceController";
-import { unwatchCovers, watchCovers } from "../bus/soc-covers";
+import { unwatchPlayers, watchPlayers } from "../bus/soc-players";
 
 type ControllerEntry = {
     controller: SonosDeviceController;
@@ -60,8 +60,8 @@ class SonosDeviceManager {
                 }
 
                 this.controllerEntries.set(ip, { controller, refCount });
-                // Its group's cover colour for deckbus ("covers")
-                watchCovers(controller);
+                // Its group on deckbus ("players", "covers")
+                watchPlayers(controller);
                 return controller;
             } finally {
                 this.pendingInitializations.delete(ip);
@@ -96,7 +96,7 @@ class SonosDeviceManager {
             streamDeck.logger.debug(`[SonosDeviceManager] Released controller for IP: ${ip}. New refCount: ${entry.refCount}`);
             if (entry.refCount <= 0) {
                 streamDeck.logger.debug(`[SonosDeviceManager] Destroying controller for IP: ${ip} as refCount is zero.`);
-                unwatchCovers(entry.controller);
+                unwatchPlayers(entry.controller);
                 entry.controller.destroy();
                 this.controllerEntries.delete(ip);
             }

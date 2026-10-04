@@ -303,8 +303,14 @@ async function runDiscovery(): Promise<void> {
         });
         noteReachableDeviceIp(sonosManager.Devices[0].Host);
         await sonosFavoritesCache.start(sonosManager.Devices[0]);
-        void refreshInvisibleSatelliteHosts();
-        devicesChangedListeners.forEach(cb => cb());
+        // Listeners only after the satellite list is in: anyone listing or counting speakers right
+        // away (PI device lists, group names on deckbus) would otherwise see bonded rooms twice
+        // (observed 2026-10-04: a group of 6 named "Herrenzimmer + 7"). The refresh never rejects.
+        void refreshInvisibleSatelliteHosts().then(() => {
+            devicesChangedListeners.forEach(cb => {
+                try { cb(); } catch (e) { streamDeck.logger.warn('devices-changed listener failed', e); }
+            });
+        });
     } catch (err) {
         streamDeck.logger.error(`Sonos discovery failed — retrying in ${DISCOVERY_RETRY_MS / 1000}s:`, err);
         pendingRetryTimeout = setTimeout(() => void runDiscovery(), DISCOVERY_RETRY_MS);
