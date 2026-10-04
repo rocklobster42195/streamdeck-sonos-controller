@@ -101,6 +101,14 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         const wasRadio = state.playbackKind === 'radio';
         state.trackInfo = trackInfo;
         state.playbackKind = trackInfo.isRadio ? 'radio' : 'queue';
+        // Music Assistant's track through an old queue: that queue doesn't say what plays
+        const active = isBrowsableQueue(state.queueState, trackInfo.TrackUri);
+        if (active !== state.queueActive && state.queueState) {
+            state.queueActive = active;
+            if (!active && state.browsing) this.stopBrowsing(state);
+            const controller = this.lease.get(context);
+            if (active && controller) void this.refreshQueueContext(context, controller, true);
+        }
         if (state.playbackKind === 'radio' && state.browsing) this.stopBrowsing(state);
 
         // Seed the cache with the cover we already have — NOT while the controller flags it as
@@ -125,7 +133,7 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
         const state = this.states.get(context);
         if (!state) return;
         state.queueState = qs;
-        state.queueActive = isBrowsableQueue(qs);
+        state.queueActive = isBrowsableQueue(qs, state.trackInfo?.TrackUri);
         if (!state.queueActive && state.browsing) this.stopBrowsing(state);
         const controller = this.lease.get(context);
         if (state.queueActive && controller) void this.refreshQueueContext(context, controller, true);

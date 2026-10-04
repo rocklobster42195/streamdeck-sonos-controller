@@ -7,6 +7,7 @@ import { CoverBoard, PlayerBoard, readableCoverColor, type CoverEntry, type Play
 import streamDeck from "@elgato/streamdeck";
 import type { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { parsePlayMode, toPlayMode } from "../sonos/play-mode";
+import { isMusicAssistantStream } from "../sonos/SonosTypes";
 import { formatRelTime, parseRelTime } from "../sonos/rel-time";
 import { getAccentColor } from "../utils/color-extract";
 
@@ -190,7 +191,7 @@ function absoluteArt(uri: string | undefined, host: string): string | undefined 
 const clampVolume = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
 
 /** Music Assistant streams to Sonos from its own stream server (port 8097): then MA's data is the better source. */
-const fromMusicAssistant = (uri: string | undefined) => !!uri && /:8097\//.test(uri);
+const fromMusicAssistant = isMusicAssistantStream;
 
 function entryOf(g: Group): PlayerEntry {
     const c = controllerFor(g.id);

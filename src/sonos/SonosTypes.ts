@@ -17,9 +17,19 @@ export type PlaybackSource = {
 /** What the speaker plays from: AVTransportURI (x-rincon-queue:… for its queue) and its track count. */
 export type QueueState = { uri: string; tracks: number };
 
-/** A queue worth browsing: the speaker's own queue with more than one track (not, e.g., Music Assistant's single-stream queue). */
-export function isBrowsableQueue(state: QueueState | undefined): boolean {
-    return !!state && state.uri.startsWith('x-rincon-queue:') && state.tracks > 1;
+/** Music Assistant streams to Sonos from its own stream server (port 8097). */
+export function isMusicAssistantStream(uri: string | undefined): boolean {
+    return !!uri && /:8097\//.test(uri);
+}
+
+/**
+ * A queue worth browsing: the speaker's own queue with more than one track (not, e.g., Music
+ * Assistant's single-stream queue), and not while the current track is Music Assistant's: MA can
+ * play through the queue position of an old queue, which then doesn't say what plays (hardware
+ * 2026-10-04: an old 12-track TIDAL album shown, "track 4" marked, MA's track playing).
+ */
+export function isBrowsableQueue(state: QueueState | undefined, currentTrackUri?: string): boolean {
+    return !!state && state.uri.startsWith('x-rincon-queue:') && state.tracks > 1 && !isMusicAssistantStream(currentTrackUri);
 }
 
 export type TrackInfo = Track & {
