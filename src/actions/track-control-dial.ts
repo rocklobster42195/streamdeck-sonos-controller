@@ -417,7 +417,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
 
     // Per dial: each bar's height now, where it glides to, and when it picks a new target. A new
     // random height on every frame (20 fps) looked hectic (user 2026-10-04); now each bar picks a
-    // new target every 0.3–0.6 s and glides there.
+    // new target every 0.12–0.25 s and glides there (0.3–0.6 s was too slow).
     private eqBars: Map<string, { h: number[]; target: number[]; next: number[] }> = new Map();
 
     private renderEqualizerBars(color: string, amplitude = 1, context = ''): string {
@@ -428,9 +428,9 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         return base.map((h, i) => {
             if (now >= bars.next[i]) {
                 bars.target[i] = Math.max(4, Math.min(18, h + Math.random() * 10 - 5));
-                bars.next[i] = now + 300 + Math.random() * 300;
+                bars.next[i] = now + 120 + Math.random() * 130;
             }
-            bars.h[i] += (bars.target[i] - bars.h[i]) * 0.25;
+            bars.h[i] += (bars.target[i] - bars.h[i]) * 0.45;
             const full = bars.h[i];
             const rh = Math.max(1, Math.round(full * amplitude));
             const op = (0.75 * amplitude).toFixed(2);
