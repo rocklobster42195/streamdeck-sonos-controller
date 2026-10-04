@@ -4,6 +4,7 @@
 // one player on the deck; SO-C talks to it directly, so commands for it come here. Fed by the
 // speaker connections SO-C has open anyway (for its visible actions): no extra connections.
 import { CoverBoard, PlayerBoard, readableCoverColor, type CoverEntry, type PlayerEntry, type RepeatMode, type Transport, type TransportCommand } from "@rocklobster42195/streamdeck-kit";
+import streamDeck from "@elgato/streamdeck";
 import type { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { parsePlayMode, toPlayMode } from "../sonos/play-mode";
 import { formatRelTime, parseRelTime } from "../sonos/rel-time";
@@ -129,7 +130,7 @@ socPlayers.serve(async ({ player, command, value }: Transport) => {
             return;
         }
     }
-});
+}, { failed: (t, e) => streamDeck.logger.warn(`[deckbus] ${t.command} on ${t.player} failed`, e) });
 
 function coordinatorId(c: SonosDeviceController): string {
     const coordinator = c.transportDevice;
