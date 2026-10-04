@@ -309,7 +309,11 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
             duration: () => this.playerOf(context)?.duration,
             seek: (target) => {
                 const p = this.playerOf(context);
-                if (p) socPlayers.send(p, 'seek', target).catch(() => void this.shown.get(context)?.action.showAlert());
+                if (!p) return;
+                socPlayers.send(p, 'seek', target).catch((e) => {
+                    streamDeck.logger.warn(`[${context}] seek to ${Math.round(target)} s failed`, e);
+                    void this.shown.get(context)?.action.showAlert();
+                });
             },
             onChange: () => this.redraw(context),
         });
