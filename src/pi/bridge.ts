@@ -5,6 +5,7 @@ import { piBridge, trackActions } from "@rocklobster42195/streamdeck-kit/bridge"
 import { mdiOptions } from "@rocklobster42195/streamdeck-kit/mdi";
 import { panoramaRows, socActions } from "../effects/panorama";
 import { deviceItems, groupItems } from "../actions/pi-options";
+import { isRemote, remoteItems } from "../actions/remote-player";
 import { sonosFavoritesCache } from "../sonos/sonos-discovery";
 import { piT } from "../utils/pi-i18n";
 
@@ -18,6 +19,8 @@ export function initPiBridge(): void {
     // <pi-icon-picker>: search all Material Design Icons
     piBridge.registerOptions("mdi-icons", mdiOptions);
     piBridge.registerOptions("sonos-devices", ({ deviceIp }) => deviceItems(deviceIp || undefined));
+    // Transport keys: the Sonos speakers, then "Active player" and other plugins' players (deckbus)
+    piBridge.registerOptions("sonos-players", async ({ deviceIp }) => [...(await deviceItems(isRemote(deviceIp) ? undefined : deviceIp || undefined)), ...remoteItems(deviceIp)]);
     piBridge.registerOptions("sonos-groups", ({ groupIp }) => groupItems(groupIp || undefined));
     // Play Favorite: the value is the whole favorite as JSON (what the key always stored)
     piBridge.registerOptions("sonos-favorites", () =>

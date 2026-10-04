@@ -13,7 +13,7 @@
 
 <body hidden>
   <pi-section title="pi.sonos_device">
-    <pi-select setting="deviceIp" source="sonos-devices" with="device" placeholder="pi.choose_device"></pi-select>
+    <pi-select setting="deviceIp" source="sonos-players" with="device" placeholder="pi.choose_device"></pi-select>
     <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
     <div data-show-when="deviceIp=">
       <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>

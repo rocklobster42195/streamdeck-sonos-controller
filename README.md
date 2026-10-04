@@ -281,7 +281,7 @@ SONOS Controller talks to other Stream Deck plugins on your computer through **d
 
 **Offers:** the Panorama: dials of SONOS Controller and of other plugins in the same row share one effect (for example Music Assistant Controller's dials next to yours). Its **speakers as players**: what each one plays (title, cover, position, volume), so other plugins' keys can show and control them, for example after you set up Music Assistant. Controlling them is on by default. Also where its actions are and whether it found Sonos speakers.
 
-**Uses:** the Panorama of the other plugins' dials in the same row.
+**Uses:** the Panorama of the other plugins' dials in the same row, and other plugins' **players**: the Play/Pause, Playback Control and Volume keys can pick **Active player** (the speaker that started playing last) or another plugin's player instead of a Sonos speaker, for example your TV's player in Music Assistant.
 
 **Only with your permission:** nothing.
 

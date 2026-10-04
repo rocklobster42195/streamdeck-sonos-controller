@@ -12,7 +12,10 @@ import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { generateTransportIcon, renderBatteryBadge, renderPausedCover, renderProgressBar, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
-import { keyColorOf, onKeyColors, type KeyColorSettings } from "./key-color";
+import { keyColorOf, keyColorOfPlayer, onKeyColors, type KeyColorSettings } from "./key-color";
+import { isRemote, RemoteKeys, remotePlayer } from "./remote-player";
+import { socPlayers } from "../bus/soc-players";
+import { getCachedCover, loadCover, positionNow } from "@rocklobster42195/streamdeck-kit";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { parseRelTime } from "../sonos/rel-time";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
@@ -84,11 +87,23 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     private unreachableContexts: Set<string> = new Set();
     /** The key colour each key was last drawn with (a change of cover or row colour redraws). */
     private drawnKeyColor: Map<string, string> = new Map();
+    /** Keys on another plugin's player (drawn from deckbus, commands go there). */
+    private remote = new RemoteKeys((context) => this.drawRemote(context));
+    private remoteTimers: Map<string, NodeJS.Timeout> = new Map();
+    /** The image a remote key shows, so an unchanged redraw sends nothing (covers are big). */
+    private remoteImage: Map<string, string> = new Map();
+
+    private setRemoteImage(action: { id: string; setImage(image?: string): Promise<void> }, image: string): void {
+        if (this.remoteImage.get(action.id) === image) return;
+        this.remoteImage.set(action.id, image);
+        void action.setImage(image);
+    }
 
     constructor() {
         super();
         onKeyColors(() => {
             for (const [context, settings] of this.currentSettings) {
+                if (this.remote.has(context)) continue;
                 if (!settings.keyColor || settings.keyColor === 'grey') continue;
                 if (this.drawnKeyColor.get(context) === this.iconColorOf(context)) continue;
                 void this.handleTransportStateChange(context, this.lastTransportState.get(context) ?? 'STOPPED');
@@ -351,6 +366,17 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
             return;
         }
 
+        // Another plugin's player: no Sonos connection, drawn from deckbus
+        if (isRemote(settings.deviceIp)) {
+            this.currentSettings.set(context, settings);
+            this.remote.add(context);
+            await action.setTitle("");
+            this.drawRemote(context);
+            return;
+        }
+        this.remote.delete(context);
+        this.stopRemoteTimer(context);
+
         // Set before acquiring so a callback that fires synchronously during registration (e.g. a
         // reused controller's cached trackInfo) already has settings available — matches the
         // original ordering's guarantee that handleTransportStateChangeUnsafe's `if (!settings)
@@ -446,6 +472,64 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         }
     }
 
+    // ---- a key on another plugin's player (deckbus) ----
+
+    /** Cover (dimmed while paused), progress bar and scrolling title from what the player tells. */
+    private drawRemote(context: string): void {
+        const action = streamDeck.actions.getActionById(context);
+        const settings = this.currentSettings.get(context);
+        if (!action || !settings || !isRemote(settings.deviceIp)) return;
+        const p = remotePlayer(settings.deviceIp);
+        if (!p) {
+            titleAnimator.stop(context);
+            this.stopRemoteTimer(context);
+            this.setRemoteImage(action, generateUnreachableKeyIcon());
+            return;
+        }
+        const iconColor = keyColorOfPlayer(settings, p, action.device.id);
+        const accent = !settings.keyColor || settings.keyColor === 'grey' ? p.color ?? '#CCCCCC' : iconColor;
+        const cover = settings.showCoverArt !== false && p.cover ? getCachedCover(p.cover) : undefined;
+        // Not loaded yet: load it, then draw again
+        if (settings.showCoverArt !== false && p.cover && !cover) void loadCover(p.cover).then((c) => c && this.drawRemote(context));
+        const pos = positionNow(p);
+        const progress = settings.showProgress && p.playing && p.duration && pos !== undefined ? Math.min(1, pos / p.duration) : undefined;
+
+        if (p.playing) {
+            if (settings.showTrackTitle && p.title) {
+                const text = `${p.title}${p.artist ? ` [${p.artist}]` : ''}`;
+                this.remoteImage.delete(context);
+                if (titleAnimator.isRunning(context)) {
+                    titleAnimator.update(context, { text, backgroundImage: cover });
+                    titleAnimator.setProgress(context, progress, accent);
+                } else {
+                    titleAnimator.start(action, { text, backgroundImage: cover, fontColor: settings.fontColor || "#cccccc", fontSize: settings.fontSize ? settings.fontSize : 13, pauseDuration: 120, interval: 80, progress, progressColor: accent });
+                }
+            } else {
+                titleAnimator.stop(context);
+                this.setRemoteImage(action, cover ? wrapImageWithBadge(cover, progress !== undefined ? renderProgressBar(progress, accent) : '') : generateTransportIcon('play', iconColor));
+            }
+        } else {
+            titleAnimator.stop(context);
+            this.setRemoteImage(action, cover ? renderPausedCover(cover, accent) : generateTransportIcon('play', iconColor));
+        }
+        // The progress bar moves on by itself between updates from the player
+        if (progress !== undefined) this.startRemoteTimer(context);
+        else this.stopRemoteTimer(context);
+    }
+
+    private startRemoteTimer(context: string): void {
+        if (this.remoteTimers.has(context)) return;
+        this.remoteTimers.set(context, setInterval(() => this.drawRemote(context), 1000));
+    }
+
+    private stopRemoteTimer(context: string): void {
+        const t = this.remoteTimers.get(context);
+        if (t) {
+            clearInterval(t);
+            this.remoteTimers.delete(context);
+        }
+    }
+
     override async onWillAppear(ev: WillAppearEvent<PlayPauseKeySettings>): Promise<void> {
         if (this.skipRedundantUpdate(ev.action.id, ev.payload.settings)) return;
         this.currentSettings.set(ev.action.id, ev.payload.settings);
@@ -466,6 +550,9 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
 
         this.lease.release(context);
         this.stopProgressTimer(context);
+        this.remote.delete(context);
+        this.stopRemoteTimer(context);
+        this.remoteImage.delete(context);
         this.currentSettings.delete(context);
         this.drawnKeyColor.delete(context);
         this.currentCover.delete(context);
@@ -479,6 +566,16 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     }
 
     override async onKeyDown(ev: KeyDownEvent<PlayPauseKeySettings>): Promise<void> {
+        const deviceIp = this.currentSettings.get(ev.action.id)?.deviceIp;
+        if (this.remote.has(ev.action.id) && isRemote(deviceIp)) {
+            const p = remotePlayer(deviceIp);
+            if (!p) return void ev.action.showAlert();
+            await socPlayers.send(p, 'play-pause').catch((e) => {
+                streamDeck.logger.warn('play-pause on another plugin\'s player failed', e);
+                void ev.action.showAlert();
+            });
+            return;
+        }
         const controller = this.lease.get(ev.action.id);
         if (!controller) return;
         try {

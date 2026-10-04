@@ -12,7 +12,9 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { discoveryPromise } from "../sonos/sonos-discovery";
 import { VolumeDisplay } from "@rocklobster42195/streamdeck-kit";
 import { generateFaderSvg, generateVolumeButtonIcon, generateUnreachableKeyIcon } from "../utils/icons";
-import { keyColorOf, onKeyColors, type KeyColorSettings } from "./key-color";
+import { keyColorOf, keyColorOfPlayer, onKeyColors, type KeyColorSettings } from "./key-color";
+import { isRemote, RemoteKeys, remotePlayer } from "./remote-player";
+import { socPlayers } from "../bus/soc-players";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { ControllerLease } from "./ControllerLease";
 
@@ -59,6 +61,8 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     private keyStates: Map<string, KeyState> = new Map();
     private gauges: Map<string, SonosKeyVolumeSettings['gauge']> = new Map();
     private keySettings: Map<string, SonosKeyVolumeSettings> = new Map();
+    /** Keys on another plugin's player (drawn from deckbus, commands go there). */
+    private remote = new RemoteKeys((context) => this.drawRemote(context));
 
     constructor() {
         super();
@@ -69,6 +73,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     }
 
     private redraw(context: string): void {
+        if (this.remote.has(context)) return this.drawRemote(context);
         const s = this.keyStates.get(context);
         const a = this.actionRefs.get(context);
         if (s && a) void this.updateIcon(a, s.anim.current(), s.isMuted, s.command);
@@ -77,7 +82,41 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     /** The icon colour: grey as before, or the key colour (grill 2026-10-04). */
     private colorOf(action: KeySurface): string {
         const settings = this.keySettings.get(action.id);
-        return settings ? keyColorOf(settings, this.lease.get(action.id), action.device?.id ?? '') : '#CCCCCC';
+        if (!settings) return '#CCCCCC';
+        if (this.remote.has(action.id)) return keyColorOfPlayer(settings, isRemote(settings.deviceIp) ? remotePlayer(settings.deviceIp) : undefined, action.device?.id ?? '');
+        return keyColorOf(settings, this.lease.get(action.id), action.device?.id ?? '');
+    }
+
+    /** A key on another plugin's player: its volume and mute from deckbus. */
+    private drawRemote(context: string): void {
+        const action = this.actionRefs.get(context);
+        const settings = this.keySettings.get(context);
+        if (!action || !settings || !isRemote(settings.deviceIp)) return;
+        const p = remotePlayer(settings.deviceIp);
+        if (!p) {
+            void action.setImage(generateUnreachableKeyIcon());
+            return;
+        }
+        const volume = p.volume ?? 0;
+        void this.updateIcon(action, volume, !!p.muted, settings.command);
+        void this.updateTitle(action, settings, { volume, mute: !!p.muted });
+    }
+
+    /** What a press controls: the Sonos connection, or another plugin's player over deckbus. */
+    private targetOf(context: string): { setVolume(v: number): Promise<unknown>; toggleMute(): Promise<boolean>; volumeUp(step: number): Promise<unknown>; volumeDown(step: number): Promise<unknown> } | undefined {
+        const settings = this.keySettings.get(context);
+        if (!this.remote.has(context) || !isRemote(settings?.deviceIp)) return this.lease.get(context);
+        const p = remotePlayer(settings.deviceIp);
+        if (!p) return undefined;
+        return {
+            setVolume: (v) => socPlayers.send(p, 'volume', v),
+            toggleMute: async () => {
+                await socPlayers.send(p, 'mute', !p.muted);
+                return !p.muted;
+            },
+            volumeUp: (step) => socPlayers.send(p, 'volume-by', step),
+            volumeDown: (step) => socPlayers.send(p, 'volume-by', -step),
+        };
     }
 
     private gaugeOf(action: KeySurface): SonosKeyVolumeSettings['gauge'] {
@@ -172,6 +211,18 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
 
         const preset = presetVolume ?? volume;
         const currentHash = `${deviceIp}-${command}-${preset}-${showVolume}-${showPreset}`;
+        // Another plugin's player: no Sonos connection, drawn from deckbus
+        if (isRemote(deviceIp)) {
+            this.lease.release(context);
+            this.initializedHash.delete(context);
+            this.clearKeyState(context);
+            this.remote.add(context);
+            if (!command) await action.setTitle("Config...");
+            this.drawRemote(context);
+            return;
+        }
+        this.remote.delete(context);
+
         if (this.initializedHash.get(context) === currentHash) {
             // Only the look changed (gauge, colour)
             this.redraw(context);
@@ -306,11 +357,12 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         this.clearKeyState(context);
         this.actionRefs.delete(context);
         this.keySettings.delete(context);
+        this.remote.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<SonosKeyVolumeSettings>): Promise<void> {
         const { action, payload } = ev;
-        const controller = this.lease.get(action.id);
+        const controller = this.targetOf(action.id);
         const { command, volume, presetVolume } = payload.settings;
         const preset = presetVolume ?? volume;
 
@@ -350,7 +402,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     override async onKeyUp(ev: KeyUpEvent<SonosKeyVolumeSettings>): Promise<void> {
         const { action, payload } = ev;
         const { command } = payload.settings;
-        const controller = this.lease.get(action.id);
+        const controller = this.targetOf(action.id);
 
         const timer = this.timers.get(action.id);
         if (timer) {
@@ -377,6 +429,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
                     // device's own echo (UPnP event or next poll tick) to update the icon —
                     // that echo can lag by several seconds.
                     const newMute = await controller.toggleMute();
+                    if (this.remote.has(action.id)) break;
                     const state = this.keyStates.get(action.id);
                     if (state) {
                         state.isMuted = newMute;

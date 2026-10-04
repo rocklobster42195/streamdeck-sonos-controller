@@ -16,7 +16,8 @@ import { TrackInfo } from "../sonos/SonosTypes";
 import { generatePlaybackIcon, generateSeekIcon, generateUnreachableKeyIcon, INACTIVE_ICON_COLOR, OFF_ICON_COLOR } from "../utils/icons";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { ControllerLease } from "./ControllerLease";
-import { keyColorOf, onKeyColors, type KeyColorSettings } from "./key-color";
+import { keyColorOf, keyColorOfPlayer, onKeyColors, type KeyColorSettings } from "./key-color";
+import { isRemote, RemoteKeys, remotePlayer } from "./remote-player";
 
 type SonosPlaybackSettings = KeyColorSettings & {
     deviceIp?: string;
@@ -54,6 +55,9 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
         action.setImage(image).catch(() => {});
     }
 
+    /** Keys on another plugin's player (drawn from deckbus, commands go there). */
+    private remote = new RemoteKeys((context) => this.redraw(context));
+
     constructor() {
         super();
         // A cover or row colour changed: every key draws again in its colour
@@ -64,12 +68,19 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
 
     private colorOf(context: string): string {
         const s = this.shown.get(context);
-        return s ? keyColorOf(s.settings, this.lease.get(context), s.device) : '#CCCCCC';
+        if (!s) return '#CCCCCC';
+        if (this.remote.has(context)) return keyColorOfPlayer(s.settings, this.playerOf(context), s.device);
+        return keyColorOf(s.settings, this.lease.get(context), s.device);
     }
 
     private redraw(context: string): void {
         const s = this.shown.get(context);
-        if (!s || !this.lease.get(context)) return;
+        if (!s) return;
+        if (this.remote.has(context)) {
+            if (this.seekers.get(context)?.active) return this.drawSeek(context);
+            return this.drawRemote(context);
+        }
+        if (!this.lease.get(context)) return;
         if (this.seekers.get(context)?.active) return this.drawSeek(context);
         this.updateIcon(s.action, s.settings.command, this.playModeByContext.get(context) ?? '', this.isRadioByContext.get(context) ?? false, this.colorOf(context));
     }
@@ -120,6 +131,18 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
         const { deviceIp, command } = payload.settings;
         this.shown.set(context, { action, settings: payload.settings, device: action.device.id });
         if (command !== 'next' && command !== 'previous') this.seekers.get(context)?.exit();
+
+        // Another plugin's player: no Sonos connection, drawn from deckbus
+        if (isRemote(deviceIp)) {
+            this.lease.release(context);
+            this.initializedHash.delete(context);
+            this.lastImage.delete(context);
+            this.remote.add(context);
+            await action.setTitle(command ? "" : "Config...");
+            this.redraw(context);
+            return;
+        }
+        this.remote.delete(context);
 
         // Same speaker and command: only the look may have changed (e.g. the colour)
         const currentHash = `${deviceIp}-${command}`;
@@ -217,6 +240,7 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
         this.isRadioByContext.delete(context);
         this.playModeByContext.delete(context);
         this.shown.delete(context);
+        this.remote.delete(context);
         this.lastImage.delete(context);
         clearTimeout(this.holdTimers.get(context));
         this.holdTimers.delete(context);
@@ -231,8 +255,9 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
         const context = ev.action.id;
         const controller = this.lease.get(context);
         const { command } = ev.payload.settings;
+        const remote = this.remote.has(context);
 
-        if (!controller || !command) {
+        if (!command || (!controller && !remote)) {
             ev.action.showAlert();
             return;
         }
@@ -252,11 +277,19 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
         }
 
         try {
-            switch (command) {
-                case 'shuffle':  await controller.toggleShuffle(); break;
-                case 'repeat':   await controller.toggleRepeat(); break;
+            if (remote) {
+                const p = this.playerOf(context);
+                if (!p) throw new Error('player not available');
+                if (command === 'shuffle') await socPlayers.send(p, 'shuffle', !p.shuffle);
+                else await socPlayers.send(p, 'repeat', p.repeat === 'off' || !p.repeat ? 'all' : p.repeat === 'all' ? 'one' : 'off');
+                return;
             }
-        } catch {
+            switch (command) {
+                case 'shuffle':  await controller!.toggleShuffle(); break;
+                case 'repeat':   await controller!.toggleRepeat(); break;
+            }
+        } catch (e) {
+            streamDeck.logger.warn(`[${context}] ${command} failed`, e);
             ev.action.showAlert();
         }
     }
@@ -278,12 +311,19 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
             seeker.tap(command === 'next' ? step : -step);
             return;
         }
-        const controller = this.lease.get(context);
-        if (!controller) return void ev.action.showAlert();
         try {
+            if (this.remote.has(context)) {
+                const p = this.playerOf(context);
+                if (!p) throw new Error('player not available');
+                await socPlayers.send(p, command);
+                return;
+            }
+            const controller = this.lease.get(context);
+            if (!controller) return void ev.action.showAlert();
             if (command === 'next') await controller.next();
             else await controller.previous();
-        } catch {
+        } catch (e) {
+            streamDeck.logger.warn(`[${context}] ${command} failed`, e);
             ev.action.showAlert();
         }
     }
@@ -292,6 +332,8 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
 
     /** The key's speaker group as a player on the deck (position, duration). */
     private playerOf(context: string): Player | undefined {
+        const deviceIp = this.shown.get(context)?.settings.deviceIp;
+        if (isRemote(deviceIp)) return remotePlayer(deviceIp);
         const controller = this.lease.get(context);
         if (!controller) return undefined;
         const coordinator = controller.transportDevice;
@@ -319,6 +361,26 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
         });
         this.seekers.set(context, seeker);
         return seeker;
+    }
+
+    /** A key on another plugin's player: the same icons, from what that player tells on deckbus. */
+    private drawRemote(context: string): void {
+        const s = this.shown.get(context);
+        if (!s?.settings.command) return;
+        const p = this.playerOf(context);
+        if (!p) {
+            this.lastImage.delete(context);
+            void s.action.setImage(generateUnreachableKeyIcon()).catch(() => {});
+            return;
+        }
+        const color = this.colorOf(context);
+        const can = new Set(p.can ?? []);
+        const command = s.settings.command;
+        if (command === 'next' || command === 'previous') return this.setImage(s.action, generatePlaybackIcon(command, false, can.has(command) ? color : INACTIVE_ICON_COLOR));
+        const dim = can.has(command) ? OFF_ICON_COLOR : INACTIVE_ICON_COLOR;
+        if (command === 'shuffle') return this.setImage(s.action, generatePlaybackIcon('shuffle', !!p.shuffle && can.has('shuffle'), color, dim));
+        const repeat = can.has('repeat') ? p.repeat ?? 'off' : 'off';
+        this.setImage(s.action, generatePlaybackIcon('repeat', repeat === 'off' ? false : repeat, color, dim));
     }
 
     /** Seek mode: ⏩/⏪ in the key colour, the waiting jump ("+0:30") or where the track is ("1:23"). */
