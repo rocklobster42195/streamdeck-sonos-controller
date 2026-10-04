@@ -228,7 +228,7 @@ function publish(): void {
     const covers: CoverEntry[] = [];
     const players: PlayerEntry[] = [];
     for (const g of groups.values()) {
-        if (g.color) covers.push({ player: g.id, name: g.name, color: g.color, playing: g.playing, since: g.since });
+        if (g.color) covers.push({ player: g.id, name: g.name, color: g.color, playing: g.playing, since: g.since, device: g.id, direct: true });
         players.push(JSON.parse(JSON.stringify(entryOf(g))) as PlayerEntry);
     }
     socCovers.publish(covers);
