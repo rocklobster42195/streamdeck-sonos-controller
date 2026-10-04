@@ -13,6 +13,7 @@ import { ControllerLease } from "./ControllerLease";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { generateLineInIcon, generateBatteryKeyIcon, generateUnreachableKeyIcon } from "../utils/icons";
+import { keyColorOf, onKeyColors, type KeyColorSettings } from "./key-color";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 
 // MS1 scope so far: Line-In (one-shot source switch, optional fade beforehand) and Battery
@@ -24,7 +25,7 @@ type MultiControlFunction = 'line-in' | 'battery';
 // streamDeck.actions.getActionById() results fit without fighting the SDK's generics.
 type ImageTarget = { setImage(image?: string): Promise<void> };
 
-type MultiControlSettings = {
+type MultiControlSettings = KeyColorSettings & {
     deviceIp?: string;
     controlFunction?: MultiControlFunction;
     fadeDuration?: string; // seconds as string from the PI select, Line-In only — "0"/undefined = no fade
@@ -103,6 +104,15 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
     // (controlFunction === 'battery' has no other render path) and leaving it stuck blank. See
     // PlayPauseKey's identical fix for the full writeup.
     private unreachableContexts: Set<string> = new Set();
+    /** Line-In keys as they are shown, for drawing again in a new key colour. */
+    private lineIn: Map<string, { settings: MultiControlSettings; device: string }> = new Map();
+
+    constructor() {
+        super();
+        onKeyColors(() => {
+            for (const context of this.lineIn.keys()) this.renderIcon(streamDeck.actions.getActionById(context), context, 'line-in');
+        });
+    }
 
     private skipRedundantUpdate(context: string, settings: MultiControlSettings): boolean {
         const settingsJson = JSON.stringify(settings);
@@ -118,7 +128,8 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         if (controlFunction === 'battery') {
             void action.setImage(generateBatteryKeyIcon(this.batteryStatuses.get(context)));
         } else if (controlFunction === 'line-in') {
-            void action.setImage(generateLineInIcon());
+            const shown = this.lineIn.get(context);
+            void action.setImage(generateLineInIcon(shown ? keyColorOf(shown.settings, this.lease.get(context), shown.device) : undefined));
         }
     }
 
@@ -228,6 +239,8 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
 
             await action.setTitle("");
 
+            if (controlFunction === 'line-in') this.lineIn.set(context, { settings, device: action.device.id });
+            else this.lineIn.delete(context);
             if (controlFunction !== 'battery') {
                 this.renderIcon(action, context, controlFunction);
             }
@@ -258,6 +271,7 @@ export class MultiControlKey extends SingletonAction<MultiControlSettings> {
         this.hasLineInByContext.delete(context);
         this.lastAppliedSettingsJson.delete(context);
         this.unreachableContexts.delete(context);
+        this.lineIn.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<MultiControlSettings>): Promise<void> {

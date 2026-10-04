@@ -44,6 +44,8 @@ import {
     mdiBatteryCharging80,
     mdiBatteryCharging90,
     mdiAudioInputRca,
+    mdiFastForward,
+    mdiRewind,
 } from '@mdi/js';
 
 function svgUri(path: string, color: string): string {
@@ -151,6 +153,20 @@ export function generatePlaybackIcon(
             if (active === 'all' || active === true) return svgUri(mdiRepeat, color);
             return svgUri(mdiRepeat, dimColor);
     }
+}
+
+// --- Seek mode (Next/Previous held) ---
+
+/** The Next/Previous key in seek mode: ⏩/⏪ in the key colour and a line below ("+0:30" or "1:23"). */
+export function generateSeekIcon(direction: 'forward' | 'back', color: string, text: string): string {
+    const path = direction === 'forward' ? mdiFastForward : mdiRewind;
+    const safe = text.replace(/[<>&]/g, '');
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">`
+        + `<rect width="144" height="144" fill="#000"/>`
+        + `<path transform="translate(22 2) scale(4.167)" fill="${color}" d="${path}"/>`
+        + `<text x="72" y="130" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="32" fill="#FFFFFF">${safe}</text>`
+        + `</svg>`;
+    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
 // --- Volume Key ---

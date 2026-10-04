@@ -45,6 +45,7 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 | Show track title | Scroll the track title and artist across the key |
 | Font color | Color for the scrolling title text |
 | Font size | Size of the title text (px) |
+| Colour | `Grey` (as before), `Cover`, `Like Panorama` or `Fixed`: the play icon, and the progress bar instead of the cover's own colour |
 | Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
 
 ---
@@ -76,12 +77,16 @@ Also handy for quickly auditioning a playlist: rotate to scrub within the curren
 
 Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim automatically** when a radio station is playing, since seek controls are unavailable for live streams.
 
+**Seek:** hold Next or Previous to switch the key to seeking. Every tap then jumps forward (Next) or back (Previous) by the seek step; quick taps add up and go out as one jump, so six quick taps of 10 seconds jump a minute at once. The key shows the jump (`+1:00`) and otherwise where the track is. It switches back by itself after 3 seconds without a tap, or when you hold it again. Next and Previous act when you let go of the key.
+
 <img src="assets/screenshots/key-playback-control.png" width="100" alt="Playback Control — Next"/> <img src="assets/screenshots/key-playback-control-radio.png" width="100" alt="Playback Control dimmed during radio"/>
 
 | Setting | Description |
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Command | `Next Track`, `Previous Track`, `Toggle Shuffle`, or `Toggle Repeat` |
+| Colour | `Grey` (as before), `Cover` (the colour of what the speaker plays), `Like Panorama` (the row colour of this Stream Deck) or `Fixed` (any colour) ; shuffle and repeat use it while on |
+| Seek step | Next and Previous only: `5`, `10` (default), `15` or `30` seconds per tap while seeking |
 
 ---
 
@@ -116,6 +121,7 @@ Increase, decrease, mute, or set a preset volume with a single key press.
 |---------|-------------|
 | Device | Which Sonos speaker to control |
 | Command | `Volume Up`, `Volume Down`, `Mute / Preset`, or `Volume Preset` |
+| Colour | `Grey` (as before), `Cover` (the colour of what the speaker plays), `Like Panorama` (the row colour of this Stream Deck) or `Fixed` (any colour) ; muted stays grey |
 | Preset Volume | Target volume for the preset command |
 | Show preset | Display the preset value on the key |
 | Show volume | Display the current volume level on the key after adjusting it (`Volume Up`/`Volume Down`/`Mute`, not shown for `Volume Preset`) |
@@ -196,6 +202,7 @@ With **Fade out** enabled on Line-In, the currently playing music fades down acr
 | Device | Which Sonos speaker to control |
 | Function | `Line-In` or `Battery` — Battery is only offered for devices that actually report battery data |
 | Fade out | *(Line-In only)* Fade the whole group out (2–8 s) before switching, then restore each speaker's own volume |
+| Colour | *(Line-In only)* `Grey` (as before), `Cover`, `Like Panorama` or `Fixed` for the Line-In icon |
 
 ---
 

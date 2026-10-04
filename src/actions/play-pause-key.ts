@@ -12,6 +12,7 @@ import { titleAnimator } from "../utils/TitleAnimator";
 import { TrackInfo } from "../sonos/SonosTypes";
 import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { generateTransportIcon, renderBatteryBadge, renderPausedCover, renderProgressBar, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
+import { keyColorOf, onKeyColors, type KeyColorSettings } from "./key-color";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { parseRelTime } from "../sonos/rel-time";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
@@ -21,7 +22,7 @@ import { ControllerLease } from "./ControllerLease";
 /**
  * Settings for {@link PlayPauseKey}.
  */
-type PlayPauseKeySettings = {
+type PlayPauseKeySettings = KeyColorSettings & {
     deviceIp?: string;
     showDeviceName?: boolean;
     showCoverArt?: boolean;
@@ -81,6 +82,32 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
     // already set correctly, icon never painted). This set is instead driven exactly by this
     // context's own registerReachabilityCallback below, so it can never be stale relative to it.
     private unreachableContexts: Set<string> = new Set();
+    /** The key colour each key was last drawn with (a change of cover or row colour redraws). */
+    private drawnKeyColor: Map<string, string> = new Map();
+
+    constructor() {
+        super();
+        onKeyColors(() => {
+            for (const [context, settings] of this.currentSettings) {
+                if (!settings.keyColor || settings.keyColor === 'grey') continue;
+                if (this.drawnKeyColor.get(context) === this.iconColorOf(context)) continue;
+                void this.handleTransportStateChange(context, this.lastTransportState.get(context) ?? 'STOPPED');
+            }
+        });
+    }
+
+    /** The play icon's colour: grey as before, or the key colour (grill 2026-10-04). */
+    private iconColorOf(context: string): string {
+        const settings = this.currentSettings.get(context);
+        const device = streamDeck.actions.getActionById(context)?.device.id ?? '';
+        return settings ? keyColorOf(settings, this.lease.get(context), device) : '#CCCCCC';
+    }
+
+    /** The progress bar and paused play symbol: the cover's own colour as before, or the key colour. */
+    private accentOf(context: string): string | undefined {
+        const keyColor = this.currentSettings.get(context)?.keyColor;
+        return !keyColor || keyColor === 'grey' ? this.dominantColors.get(context) : this.iconColorOf(context);
+    }
 
     private skipRedundantUpdate(context: string, settings: PlayPauseKeySettings): boolean {
         const settingsJson = JSON.stringify(settings);
@@ -158,7 +185,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         // undefined (radio / no known duration) means "don't draw the bar this tick" — passed
         // straight through rather than coerced to 0, see AnimationOptions.progress's doc comment.
         const progress = this.computeProgress(context);
-        const color = this.dominantColors.get(context) ?? '#CCCCCC';
+        const color = this.accentOf(context) ?? '#CCCCCC';
 
         if (titleAnimator.isRunning(context)) {
             titleAnimator.setProgress(context, progress, color);
@@ -215,6 +242,8 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         if (!controller || !settings) return;
 
         this.lastTransportState.set(context, transportState);
+        const iconColor = this.iconColorOf(context);
+        this.drawnKeyColor.set(context, iconColor);
         const batteryMode = settings.batteryDisplayMode ?? 'warning';
         const battery = this.batteryStatuses.get(context);
         // 24x24 viewBox (static icons) vs. 72x72 (cover art / scrolling title) need differently
@@ -244,7 +273,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
             // undefined both when the feature is off AND when the current source has no known
             // duration (radio) — either way, no bar to draw. See AnimationOptions.progress.
             const progress = settings.showProgress ? this.computeProgress(context) : undefined;
-            const progressColor = this.dominantColors.get(context) ?? '#CCCCCC';
+            const progressColor = this.accentOf(context) ?? '#CCCCCC';
 
             streamDeck.logger.debug(`[${context}] showTrackTitle: ${settings.showTrackTitle}, showCoverArt: ${settings.showCoverArt}, cover available: ${cover ? "yes" : "no"}`);
 
@@ -279,7 +308,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
                     const progressBar = progress !== undefined ? renderProgressBar(progress, progressColor) : '';
                     await action.setImage(wrapImageWithBadge(cover, badge72 + progressBar));
                 } else {
-                    await action.setImage(generateTransportIcon('play', undefined, badge24));
+                    await action.setImage(generateTransportIcon('play', iconColor, badge24));
                 }
             }
         } else {
@@ -288,15 +317,15 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
 
             switch (transportState) {
                 case "TRANSITIONING":
-                    await action.setImage(generateTransportIcon('loading', undefined, badge24));
+                    await action.setImage(generateTransportIcon('loading', iconColor, badge24));
                     break;
                 default: { // PAUSED, STOPPED
                     // A dimmed cover says "press to resume" — don't show it when there's nothing to resume.
                     const cover = this.currentCover.get(context);
                     const resumable = !cover || !(await controller.hasNothingToPlay());
                     await action.setImage(settings.showCoverArt !== false && cover && resumable
-                        ? renderPausedCover(cover, this.dominantColors.get(context), badge72)
-                        : generateTransportIcon('play', undefined, badge24));
+                        ? renderPausedCover(cover, this.accentOf(context), badge72)
+                        : generateTransportIcon('play', iconColor, badge24));
                     break;
                 }
             }
@@ -438,6 +467,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         this.lease.release(context);
         this.stopProgressTimer(context);
         this.currentSettings.delete(context);
+        this.drawnKeyColor.delete(context);
         this.currentCover.delete(context);
         this.batteryStatuses.delete(context);
         this.lastTransportState.delete(context);

@@ -27,6 +27,20 @@
       {"value":"repeat","label":"pi.cmd_repeat","icon":"repeat"}
     ]'></pi-choice>
   </pi-section>
+  <pi-section title="kit.key_color">
+    <pi-key-color setting="keyColor" label=""></pi-key-color>
+  </pi-section>
+  <div data-show-when="command=next,previous">
+    <pi-section title="kit.seek_step">
+      <pi-choice setting="seekStep" columns="4" default="10" data-options='[
+        {"value":"5","label":"5 s"},
+        {"value":"10","label":"10 s"},
+        {"value":"15","label":"15 s"},
+        {"value":"30","label":"30 s"}
+      ]'></pi-choice>
+      <div class="pi-hint" data-i18n="kit.seek_step_hint"></div>
+    </pi-section>
+  </div>
   <div class="pi-footer"><span data-plugin-version></span></div>
 </body>
 

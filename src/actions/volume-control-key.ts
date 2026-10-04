@@ -12,10 +12,11 @@ import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { discoveryPromise } from "../sonos/sonos-discovery";
 import { VolumeDisplay } from "@rocklobster42195/streamdeck-kit";
 import { generateFaderSvg, generateVolumeButtonIcon, generateUnreachableKeyIcon } from "../utils/icons";
+import { keyColorOf, onKeyColors, type KeyColorSettings } from "./key-color";
 import { SetupRetryScheduler } from "../utils/SetupRetryScheduler";
 import { ControllerLease } from "./ControllerLease";
 
-type SonosKeyVolumeSettings = {
+type SonosKeyVolumeSettings = KeyColorSettings & {
     deviceIp?: string;
     command?: 'mute' | 'vol-up' | 'vol-down' | 'vol-preset';
     volume?: number;
@@ -32,6 +33,7 @@ type VolumeCommand = SonosKeyVolumeSettings['command'];
 // without fighting the SDK's KeyAction/DialAction union generics.
 type KeySurface = {
     readonly id: string;
+    readonly device?: { readonly id: string };
     setImage(image?: string): Promise<void>;
     setTitle(title?: string): Promise<void>;
 };
@@ -56,6 +58,27 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
     private actionRefs: Map<string, KeySurface> = new Map();
     private keyStates: Map<string, KeyState> = new Map();
     private gauges: Map<string, SonosKeyVolumeSettings['gauge']> = new Map();
+    private keySettings: Map<string, SonosKeyVolumeSettings> = new Map();
+
+    constructor() {
+        super();
+        // A cover or row colour changed: draw again in the key colour
+        onKeyColors(() => {
+            for (const context of this.keySettings.keys()) this.redraw(context);
+        });
+    }
+
+    private redraw(context: string): void {
+        const s = this.keyStates.get(context);
+        const a = this.actionRefs.get(context);
+        if (s && a) void this.updateIcon(a, s.anim.current(), s.isMuted, s.command);
+    }
+
+    /** The icon colour: grey as before, or the key colour (grill 2026-10-04). */
+    private colorOf(action: KeySurface): string {
+        const settings = this.keySettings.get(action.id);
+        return settings ? keyColorOf(settings, this.lease.get(action.id), action.device?.id ?? '') : '#CCCCCC';
+    }
 
     private gaugeOf(action: KeySurface): SonosKeyVolumeSettings['gauge'] {
         return this.gauges.get(action.id) ?? 'pie';
@@ -85,20 +108,21 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         if (!action) return;
 
         let iconFile = '';
+        const color = this.colorOf(action);
         const basePath = 'imgs/actions/volume-control-key/';
 
         switch (command) {
             case 'mute':
-                iconFile = generateFaderSvg(volume, isMuted, "#CCCCCC", this.gaugeOf(action));
+                iconFile = generateFaderSvg(volume, isMuted, isMuted ? "#CCCCCC" : color, this.gaugeOf(action));
                 break;
             case 'vol-up':
-                iconFile = generateVolumeButtonIcon('up');
+                iconFile = generateVolumeButtonIcon('up', color);
                 break;
             case 'vol-down':
-                iconFile = generateVolumeButtonIcon('down');
+                iconFile = generateVolumeButtonIcon('down', color);
                 break;
             case 'vol-preset':
-                iconFile = generateVolumeButtonIcon('preset');
+                iconFile = generateVolumeButtonIcon('preset', color);
                 break;
             default:
                 iconFile = `${basePath}volume-high-cccccc.png`;
@@ -142,12 +166,15 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
         const { deviceIp, command, showVolume, showPreset, volume, presetVolume } = payload.settings;
         const settings = payload.settings;
         this.gauges.set(context, settings.gauge);
+        this.keySettings.set(context, settings);
 
         this.actionRefs.set(context, action);
 
         const preset = presetVolume ?? volume;
         const currentHash = `${deviceIp}-${command}-${preset}-${showVolume}-${showPreset}`;
         if (this.initializedHash.get(context) === currentHash) {
+            // Only the look changed (gauge, colour)
+            this.redraw(context);
             return;
         }
 
@@ -278,6 +305,7 @@ export class VolumeControlKey extends SingletonAction<SonosKeyVolumeSettings> {
 
         this.clearKeyState(context);
         this.actionRefs.delete(context);
+        this.keySettings.delete(context);
     }
 
     override async onKeyDown(ev: KeyDownEvent<SonosKeyVolumeSettings>): Promise<void> {
