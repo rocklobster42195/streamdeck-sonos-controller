@@ -348,6 +348,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
 
         this.settingsMap.delete(context);
         this.states.delete(context);
+        this.eqBars.delete(context);
     }
 
     // Dial press → next track so the user can browse playlists.
@@ -414,10 +415,23 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         } catch { /* position stays at last known value */ }
     }
 
-    private renderEqualizerBars(color: string, amplitude = 1): string {
+    // Per dial: each bar's height now, where it glides to, and when it picks a new target. A new
+    // random height on every frame (20 fps) looked hectic (user 2026-10-04); now each bar picks a
+    // new target every 0.3–0.6 s and glides there.
+    private eqBars: Map<string, { h: number[]; target: number[]; next: number[] }> = new Map();
+
+    private renderEqualizerBars(color: string, amplitude = 1, context = ''): string {
         const base = [8, 14, 10, 18, 6, 12, 16, 8, 14, 10];
+        const now = Date.now();
+        let bars = this.eqBars.get(context);
+        if (!bars) this.eqBars.set(context, (bars = { h: [...base], target: [...base], next: base.map(() => 0) }));
         return base.map((h, i) => {
-            const full = Math.max(4, Math.min(18, h + Math.floor(Math.random() * 10 - 5)));
+            if (now >= bars.next[i]) {
+                bars.target[i] = Math.max(4, Math.min(18, h + Math.random() * 10 - 5));
+                bars.next[i] = now + 300 + Math.random() * 300;
+            }
+            bars.h[i] += (bars.target[i] - bars.h[i]) * 0.25;
+            const full = bars.h[i];
             const rh = Math.max(1, Math.round(full * amplitude));
             const op = (0.75 * amplitude).toFixed(2);
             return `<rect x="${8 + i * 9}" y="${90 - rh}" width="7" height="${rh}" fill="${escapeXml(color)}" opacity="${op}" rx="1"/>`;
@@ -579,7 +593,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
             } else {
                 // EQ layout (or a brief transient moment before an effect's group resolves):
                 // dark background, visualizer bottom-left.
-                const visualizer = isPlaying ? this.renderEqualizerBars(accentColor, eqAmplitude) : '';
+                const visualizer = isPlaying ? this.renderEqualizerBars(accentColor, eqAmplitude, context) : '';
 
                 svg = [
                     '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
