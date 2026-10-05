@@ -1,8 +1,11 @@
 // SO-C on deckbus (the kit's docs/deckbus-protocol.md): shares the Panorama with other plugins'
 // dials in the same row (one effect per row, agreed between the plugins), tells them where its
-// actions are, and whether it found Sonos speakers. Local only; SO-C works on without the bus.
+// actions are, and whether it found Sonos speakers. Pauses or lowers chosen speakers during a call
+// on the computer (state "call" from SA-C; the kit's CallReaction). Local only; SO-C works on without the bus.
 import { setGroupMembers, socCovers, socPlayers } from "./soc-players";
 import streamDeck from "@elgato/streamdeck";
+import { CALL_SETTING, CallReaction } from "@rocklobster42195/streamdeck-kit";
+import { piBridge } from "@rocklobster42195/streamdeck-kit/bridge";
 import { DeckBus } from "@rocklobster42195/streamdeck-kit/bus";
 import { panorama, panoramaRows, shareActionsTo, socActions } from "../effects/panorama";
 import { isInvisibleSatellite, onDevicesChanged, safeDevices } from "../sonos/sonos-discovery";
@@ -16,6 +19,13 @@ let othersMay = true;
 const othersMayControlPlayers = () => othersMay;
 const readOthersMay = (s: Record<string, unknown>) => (othersMay = s.othersMayControlPlayers !== false);
 
+// "When a call starts on this computer": per speaker nothing / pause / lower (global setting callReaction)
+const socCalls = new CallReaction(socPlayers, streamDeck.logger, () => piBridge.schedulePush());
+const readGlobal = (s: Record<string, unknown>) => {
+    readOthersMay(s);
+    socCalls.setChoices(s[CALL_SETTING]);
+};
+
 /** Call after streamDeck.connect() (the plugin version comes from there). */
 export async function startSocBus(): Promise<void> {
     bus = new DeckBus({ id: "de.boriskemper.sonos-controller", name: "SO-C", version: streamDeck.info.plugin.version, caps: [] });
@@ -28,8 +38,11 @@ export async function startSocBus(): Promise<void> {
     // The speakers for every plugin: cover colours for Panorama rows, players for keys
     socCovers.connect(b);
     socPlayers.connect(b, { allow: () => othersMayControlPlayers() });
-    streamDeck.settings.onDidReceiveGlobalSettings((ev) => readOthersMay(ev.settings as Record<string, unknown>));
-    readOthersMay(await streamDeck.settings.getGlobalSettings().catch(() => ({})));
+    socCalls.connect(b);
+    piBridge.addPusher(() => [socCalls.piMessage()]);
+    socPlayers.onChange(() => piBridge.schedulePush());
+    streamDeck.settings.onDidReceiveGlobalSettings((ev) => readGlobal(ev.settings as Record<string, unknown>));
+    readGlobal(await streamDeck.settings.getGlobalSettings().catch(() => ({})));
     if (!(await b.start())) return;
     streamDeck.logger.info(`[deckbus] SO-C in slot ${b.slot}`);
     onDevicesChanged(shareStatus);

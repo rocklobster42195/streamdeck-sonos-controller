@@ -47,6 +47,8 @@ wss.on("connection", (ws) => {
                         { column: 3, plugin: "SO-C", label: "Panorama", member: true, self: false },
                     ];
                     reply({ event: "sendToPropertyInspector", payload: { event: "panorama-row", device: "dev", effect: "particles", settings: {}, effects: listEffects(), dials } });
+                    // The speakers for "When a call starts on this computer" (the kit's CallReaction sends this)
+                    reply({ event: "sendToPropertyInspector", payload: { event: "kit-call-players", available: true, players: [{ player: "RINCON_1", name: "Living Room + 2", mode: "pause" }, { player: "RINCON_2", name: "Office", mode: "duck" }, { player: "RINCON_3", name: "Bedroom" }] } });
                 } else if (msg.payload?.event === "options") {
                     const { requestId, source, params } = msg.payload;
                     const items = optionLists[source]?.(params ?? {}) ?? [];
