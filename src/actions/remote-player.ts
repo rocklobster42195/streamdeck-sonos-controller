@@ -3,7 +3,7 @@
 // "player:active:all" or "player:<choice>" (e.g. "player:MA-C/up89e13563", the SHIELD in Music
 // Assistant). Such a key draws from the players on deckbus and sends its commands there; a Sonos
 // speaker stays on SO-C's own connection as before.
-import { ACTIVE_PLAYER, type Player } from "@rocklobster42195/streamdeck-kit";
+import { ACTIVE_ANY_PLAYER, ACTIVE_PLAYER, type Player } from "@rocklobster42195/streamdeck-kit";
 import { socPlayers } from "../bus/soc-players";
 import { safeDevices } from "../sonos/sonos-discovery";
 
@@ -19,10 +19,13 @@ export function remotePlayer(deviceIp: string): Player | undefined {
     return socPlayers.resolve(deviceIp.slice(PLAYER_PREFIX.length) || ACTIVE_PLAYER);
 }
 
-/** The dropdown entries after the Sonos speakers: "Active player", then other plugins' players. */
+/** The dropdown entries after the Sonos speakers: "Active player", "Active player, also apps" (music on the computer, from SA-C), then other plugins' players. */
 export function remoteItems(currentValue?: string): { label: string; value: string; sub?: string }[] {
     const sonos = new Set(safeDevices().map((d) => d.Uuid));
-    const items: { label: string; value: string; sub?: string }[] = [{ label: "kit.player_active", value: `${PLAYER_PREFIX}${ACTIVE_PLAYER}` }];
+    const items: { label: string; value: string; sub?: string }[] = [
+        { label: "kit.player_active", value: `${PLAYER_PREFIX}${ACTIVE_PLAYER}` },
+        { label: "kit.player_active_all", value: `${PLAYER_PREFIX}${ACTIVE_ANY_PLAYER}` },
+    ];
     for (const p of socPlayers.players()) {
         // Sonos speakers are in the list above already (by their address)
         if (p.device && sonos.has(p.device)) continue;
