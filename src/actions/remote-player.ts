@@ -19,6 +19,12 @@ export function remotePlayer(deviceIp: string): Player | undefined {
     return socPlayers.resolve(deviceIp.slice(PLAYER_PREFIX.length) || ACTIVE_PLAYER);
 }
 
+/** Whether other plugins offer players besides the Sonos speakers (then the PI says "Device", not "Sonos device"). */
+export function hasOtherPlayers(): boolean {
+    const sonos = new Set(safeDevices().map((d) => d.Uuid));
+    return socPlayers.players().some((p) => !(p.device && sonos.has(p.device)) && p.routes.some((r) => r.source !== "SO-C"));
+}
+
 /** The dropdown entries after the Sonos speakers: "Active player", "Active player, also apps" (music on the computer, from SA-C), then other plugins' players. */
 export function remoteItems(currentValue?: string): { label: string; value: string; sub?: string }[] {
     const sonos = new Set(safeDevices().map((d) => d.Uuid));

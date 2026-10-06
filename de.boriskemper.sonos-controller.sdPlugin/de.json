@@ -89,6 +89,7 @@
         "Battery": "Akku",
         "pi": {
             "sonos_device": "SONOS-Gerät",
+            "device_any": "Gerät",
             "choose_device": "Gerät wählen",
             "preset_volume": "Lautstärke-Preset",
             "show_text": "Text anzeigen",

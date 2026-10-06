@@ -12,7 +12,7 @@
 </head>
 
 <body hidden>
-  <pi-section title="pi.sonos_device">
+  <pi-section title="pi.sonos_device" data-player-section>
     <pi-select setting="deviceIp" source="sonos-players" with="device" placeholder="pi.choose_device"></pi-select>
     <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
     <div data-show-when="deviceIp=">

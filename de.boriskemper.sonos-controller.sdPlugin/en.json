@@ -90,6 +90,7 @@
         "no_function_available_hint": "No Multi-Control function is available for this device.",
         "pi": {
             "sonos_device": "Sonos device",
+            "device_any": "Device",
             "choose_device": "Choose a speaker",
             "preset_volume": "Preset volume",
             "show_text": "Show text",
