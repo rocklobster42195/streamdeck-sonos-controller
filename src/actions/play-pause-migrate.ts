@@ -1,4 +1,4 @@
-import type { PlayPauseKeySettings } from "@rocklobster42195/streamdeck-kit";
+import type { PlaybackKeySettings, PlayPauseKeySettings } from "@rocklobster42195/streamdeck-kit";
 import { PLAYER_PREFIX } from "./remote-player";
 
 /** Sonos Controller's Play/Pause key settings before the universal key (kit grill 2026-10-09). */
@@ -17,6 +17,14 @@ export type PlayPauseSettings = PlayPauseKeySettings & LegacySettings;
 /** A speaker the key was bound to by address, until its id is known (a speaker that was offline). */
 export const SONOS_IP_PREFIX = "sonos-ip:";
 
+/** A key's old `deviceIp` onto a deck player choice: a speaker's device (by address until known), another plugin's player as it was. */
+export function playerOf(deviceIp: string | undefined, deviceOf: (ip: string) => string | undefined): string | undefined {
+    if (!deviceIp) return undefined;
+    if (deviceIp.startsWith(PLAYER_PREFIX)) return deviceIp.slice(PLAYER_PREFIX.length) || undefined;
+    const device = deviceOf(deviceIp);
+    return device ? `device:${device}` : `${SONOS_IP_PREFIX}${deviceIp}`;
+}
+
 /**
  * Old settings onto the universal key's, once (undefined: nothing to do). A speaker becomes its
  * device ("device:RINCON_…"; by address while it isn't known yet), another plugin's player its
@@ -27,12 +35,7 @@ export function migratePlayPause(s: PlayPauseSettings, deviceOf: (ip: string) =>
     const { deviceIp, showDeviceName, showCoverArt, showTrackTitle, fontColor, fontSize, batteryDisplayMode, hasBattery, ...rest } = s;
     void fontColor;
     void fontSize;
-    let player: string | undefined;
-    if (deviceIp?.startsWith(PLAYER_PREFIX)) player = deviceIp.slice(PLAYER_PREFIX.length) || undefined;
-    else if (deviceIp) {
-        const device = deviceOf(deviceIp);
-        player = device ? `device:${device}` : `${SONOS_IP_PREFIX}${deviceIp}`;
-    }
+    const player = playerOf(deviceIp, deviceOf);
     const mode = batteryDisplayMode ?? "warning";
     const battery = hasBattery === true && mode !== "off";
     return {
@@ -46,4 +49,15 @@ export function migratePlayPause(s: PlayPauseSettings, deviceOf: (ip: string) =>
         showProgress: !!s.showProgress,
         showName: !!showDeviceName,
     };
+}
+
+/** Sonos Controller's Playback Control key settings, with the older `deviceIp`. */
+export type PlaybackSettings = PlaybackKeySettings & { deviceIp?: string };
+
+/** Old settings onto the universal key's, once: the speaker becomes a deck player choice; command, seek step and colour stay. */
+export function migratePlayback(s: PlaybackSettings, deviceOf: (ip: string) => string | undefined): PlaybackSettings | undefined {
+    if (s.deviceIp === undefined) return undefined;
+    const { deviceIp, ...rest } = s;
+    const player = playerOf(deviceIp, deviceOf);
+    return { ...rest, ...(player ? { player } : {}) };
 }

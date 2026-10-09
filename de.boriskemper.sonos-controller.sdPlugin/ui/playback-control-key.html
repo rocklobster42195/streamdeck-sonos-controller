@@ -13,24 +13,23 @@
 
 <body hidden>
   <pi-section title="pi.sonos_device" data-player-section>
-    <pi-select setting="deviceIp" source="sonos-players" with="device" placeholder="pi.choose_device"></pi-select>
-    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
-    <div data-show-when="deviceIp=">
-      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
-    </div>
+    <pi-select setting="player" source="players" placeholder="kit.player_active"></pi-select>
   </pi-section>
   <pi-section title="pi.command">
-    <pi-choice setting="command" columns="4" data-options='[
+    <pi-choice setting="command" default="next" columns="3" data-options='[
       {"value":"previous","label":"pi.cmd_previous","icon":"previous"},
       {"value":"next","label":"pi.cmd_next","icon":"next"},
       {"value":"shuffle","label":"pi.cmd_shuffle","icon":"shuffle"},
-      {"value":"repeat","label":"pi.cmd_repeat","icon":"repeat"}
+      {"value":"repeat","label":"pi.cmd_repeat","icon":"repeat"},
+      {"value":"crossfade","label":"pi.cmd_crossfade","icon":"crossfade"},
+      {"value":"dont_stop","label":"pi.cmd_dont_stop","icon":"dontStop"}
     ]'></pi-choice>
+    <div class="pi-hint" data-show-when="command=crossfade,dont_stop" data-i18n="pi.cmd_ma_only_hint"></div>
   </pi-section>
   <pi-section title="kit.key_color">
     <pi-key-color setting="keyColor" label=""></pi-key-color>
   </pi-section>
-  <div data-show-when="command=next,previous">
+  <div data-show-when="command=next,previous" data-show-default="next">
     <pi-section title="kit.seek_step">
       <pi-choice setting="seekStep" columns="4" default="10" data-options='[
         {"value":"5","label":"5 s"},

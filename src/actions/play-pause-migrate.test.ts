@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./remote-player", () => ({ PLAYER_PREFIX: "player:" }));
-const { migratePlayPause } = await import("./play-pause-migrate");
+const { migratePlayPause, migratePlayback } = await import("./play-pause-migrate");
 
 const known = (ip: string) => (ip === "192.168.7.210" ? "RINCON_38420B857BB201400" : undefined);
 
@@ -32,5 +32,13 @@ describe("Play/Pause settings onto the universal key", () => {
         expect(migratePlayPause({ deviceIp: "192.168.7.210", hasBattery: true, batteryDisplayMode: "off" }, known)?.topRight).toBe("none");
         expect(migratePlayPause({ showCoverArt: false }, known)?.showCover).toBe(false);
         expect(migratePlayPause({ topLeft: "none", topRight: "none" }, known)).toBeUndefined();
+    });
+});
+
+describe("Playback Control settings onto the universal key", () => {
+    it("the speaker becomes its device; command, seek step and colour stay; runs once", () => {
+        expect(migratePlayback({ deviceIp: "192.168.7.210", command: "repeat", seekStep: "30", keyColor: "row" }, known)).toEqual({ player: "device:RINCON_38420B857BB201400", command: "repeat", seekStep: "30", keyColor: "row" });
+        expect(migratePlayback({ deviceIp: "player:active:all", command: "next" }, known)?.player).toBe("active:all");
+        expect(migratePlayback({ player: "active", command: "next" }, known)).toBeUndefined();
     });
 });
