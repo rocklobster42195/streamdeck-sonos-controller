@@ -58,16 +58,33 @@ function externalMedia(c: SonosDeviceController, merged = socPlayers.players()):
     return p && p.from.source !== "SO-C" && p.from.entry.media && isMusicAssistantStream(c.currentTrackUri) ? p : undefined;
 }
 
+/** What a speaker playing Music Assistant's stream must leave to MA itself. */
+const MEDIA_TRANSPORT: readonly TransportCommand[] = ["play-pause", "play", "pause", "next", "previous"];
+
 /**
- * Next/Previous for a speaker. While it plays Music Assistant's stream they go to MA-C (the kit
- * routes them to the media's plugin): a Sonos "Next" in MA's cloud queue works once, the next one
- * leaves the speaker buffering, then paused at 0 s while MA still says "playing" (seen 2026-10-09).
+ * While a speaker plays Music Assistant's stream, play/pause and next/previous go to MA-C. Sonos
+ * commands break MA's cloud queue (seen 2026-10-09): a second "Next" left the speaker buffering,
+ * then paused at 0 s; "Play" after a pause ended in a playbackError. Both times it stayed silent
+ * while MA still said "playing". True when the command went to MA-C.
  */
-export async function skipTrack(c: SonosDeviceController, command: "next" | "previous"): Promise<void> {
+async function sendToMedia(c: SonosDeviceController, command: TransportCommand): Promise<boolean> {
     const p = externalMedia(c);
-    if (p) await socPlayers.send(p, command);
-    else if (command === "next") await c.next();
+    if (!p || !MEDIA_TRANSPORT.includes(command)) return false;
+    // The kit sends play/pause to the plugin that talks to the speaker (us); these go to the media's
+    await socPlayers.send({ ...p, via: p.from }, command);
+    return true;
+}
+
+/** Next/Previous for a speaker (see sendToMedia). */
+export async function skipTrack(c: SonosDeviceController, command: "next" | "previous"): Promise<void> {
+    if (await sendToMedia(c, command)) return;
+    if (command === "next") await c.next();
     else await c.previous();
+}
+
+/** Play/pause for a speaker (see sendToMedia). */
+export async function togglePlayPause(c: SonosDeviceController): Promise<void> {
+    if (!(await sendToMedia(c, "play-pause"))) await c.togglePlayPause();
 }
 
 const CALLBACK = "soc-players";
@@ -157,6 +174,7 @@ export function unwatchPlayers(controller: SonosDeviceController): void {
 socPlayers.serve(async ({ player, command, value }: Transport) => {
     const c = controllerFor(player);
     if (!c) throw new Error(`transport: ${player} is not connected`);
+    if (await sendToMedia(c, command)) return;
     const dev = c.transportDevice;
     const g = groups.get(player);
     switch (command) {

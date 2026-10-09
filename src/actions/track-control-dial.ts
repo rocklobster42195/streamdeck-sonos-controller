@@ -23,7 +23,7 @@ import { syncCapabilityFlag } from "./capability-flag";
 import { piT } from "../utils/pi-i18n";
 import { buildUnconfiguredDialSvg, renderBatteryBadge } from "../utils/icons";
 import { ControllerLease } from "./ControllerLease";
-import { skipTrack } from "../bus/soc-players";
+import { skipTrack, togglePlayPause } from "../bus/soc-players";
 
 // Cover art is drawn as a size x size square (CoverArtAnimator.render, size = max(w,h)) — making
 // COVER_WIDTH equal that square's own side (100, matching the canvas height) means the square
@@ -371,7 +371,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         const controller = this.lease.get(ev.action.id);
         if (!controller) return;
         try {
-            await controller.togglePlayPause();
+            await togglePlayPause(controller);
         } catch (e) {
             streamDeck.logger.warn('togglePlayPause() failed', e);
         }

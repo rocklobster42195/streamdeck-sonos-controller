@@ -14,7 +14,7 @@ import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { generateTransportIcon, renderBatteryBadge, renderPausedCover, renderProgressBar, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
 import { keyColorOf, keyColorOfPlayer, onKeyColors, type KeyColorSettings } from "./key-color";
 import { isRemote, RemoteKeys, remotePlayer } from "./remote-player";
-import { socPlayers } from "../bus/soc-players";
+import { socPlayers, togglePlayPause } from "../bus/soc-players";
 import { getCachedCover, loadCover, positionNow } from "@rocklobster42195/streamdeck-kit";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { parseRelTime } from "../sonos/rel-time";
@@ -579,7 +579,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
         const controller = this.lease.get(ev.action.id);
         if (!controller) return;
         try {
-            await controller.togglePlayPause();
+            await togglePlayPause(controller);
         } catch (e) {
             // An uncaught rejection here crashes the whole plugin process (every device/action),
             // not just this key — must not propagate.
