@@ -1,5 +1,7 @@
 <!-- NEXT -->
 
+- **Music Assistant on a Sonos speaker:** keys and dials show the track, cover and colour from Music Assistant Controller as soon as it plays (the speaker itself reports Music Assistant's tracks 20–40 s late). Play/pause, next and previous go to Music Assistant (Sonos' own commands could leave the speaker silent), and a paused Music Assistant stream keeps its dimmed cover and resumes.
+- **Fixed: speakers staying "not playing"** (no cover, no Panorama) after a speaker was restarted and the group set up again.
 - **Requires Stream Deck 7.1 or later** and runs on Node.js 24 (Node 20 is out of support), like the other Rocklobster plugins.
 - **New settings panels** (the family's panel kit, as in Music Assistant Controller): shorter, with tiles and switches instead of dropdowns, in English, German and Spanish. The "Speaker not showing up?" field only appears while no speaker is chosen. Dials with a Panorama effect get a settings window for it ("More settings …").
 - **One Panorama per row of dials:** a row has one effect with one set of settings, chosen in any dial's Panorama section; each dial has a tick whether it shows the effect. Your existing effects are taken over (the Panorama Effects dial's effect wins its row). **Changed:** two different effects side by side in one row become one effect for the row.
