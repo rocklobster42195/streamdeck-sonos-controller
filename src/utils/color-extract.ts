@@ -28,7 +28,26 @@ function parseColor(color: string): [number, number, number] | null {
     return null;
 }
 
+/**
+ * Colours another plugin already worked out for a cover, by its data URI: MA-C's, from Music
+ * Assistant's palette, while a speaker plays MA's stream. Keys, dials and deckbus then show the
+ * same colour as MA-C instead of one SO-C works out a little differently.
+ */
+const knownColors = new Map<string, string>();
+
+export function setKnownCoverColor(dataUri: string, color: string): void {
+    knownColors.delete(dataUri);
+    knownColors.set(dataUri, color);
+    while (knownColors.size > 50) knownColors.delete(knownColors.keys().next().value!);
+}
+
+export function knownCoverColor(dataUri: string): string | undefined {
+    return knownColors.get(dataUri);
+}
+
 export async function getDominantColor(dataUri: string): Promise<string> {
+    const known = knownColors.get(dataUri);
+    if (known) return known;
     try {
         const comma = dataUri.indexOf(',');
         if (comma === -1) return '#CCCCCC';

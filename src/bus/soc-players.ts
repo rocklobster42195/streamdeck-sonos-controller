@@ -9,7 +9,7 @@ import type { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { parsePlayMode, toPlayMode } from "../sonos/play-mode";
 import { isMusicAssistantStream, type TrackInfo } from "../sonos/SonosTypes";
 import { formatRelTime, parseRelTime } from "../sonos/rel-time";
-import { getAccentColor } from "../utils/color-extract";
+import { getAccentColor, knownCoverColor, setKnownCoverColor } from "../utils/color-extract";
 
 export const socCovers = new CoverBoard("SO-C");
 export const socPlayers = new PlayerBoard("SO-C");
@@ -28,7 +28,7 @@ function syncExternalTracks(): void {
         const from = externalMedia(c, merged)?.from;
         const ma = from?.entry.title ? from.entry : undefined;
         const cover = ma?.cover ? getCachedCover(ma.cover) : undefined;
-        const key = ma ? `${ma.title}|${ma.artist}|${ma.cover}|${cover ? "1" : "0"}` : "";
+        const key = ma ? `${ma.title}|${ma.artist}|${ma.cover}|${cover ? "1" : "0"}|${ma.color}` : "";
         if (externalShown.get(c.deviceIp) === key) continue;
         externalShown.set(c.deviceIp, key);
         if (!ma) {
@@ -36,6 +36,7 @@ function syncExternalTracks(): void {
             continue;
         }
         // The cover once it's loaded (the kit's cache); until then the last one stays as a placeholder
+        if (cover && ma.color) setKnownCoverColor(cover, ma.color);
         if (ma.cover && !cover) void loadCover(ma.cover).then((uri) => uri && syncExternalTracks());
         c.setExternalTrack({
             Title: ma.title,
@@ -117,10 +118,12 @@ export function watchPlayers(controller: SonosDeviceController): void {
         g.cover = absoluteArt(ti.AlbumArtUri, g.host);
         void refreshPosition(controller, g);
         const art = ti.albumArtDataUri;
-        if (art && !ti.coverPending && art !== g.coverFor) {
-            g.coverFor = art;
-            const accent = getAccentColor(art);
-            if (accent) g.color = readableCoverColor(accent);
+        const known = art && knownCoverColor(art);
+        if (art && !ti.coverPending && `${art}|${known}` !== g.coverFor) {
+            g.coverFor = `${art}|${known}`;
+            const accent = known ? undefined : getAccentColor(art);
+            if (known) g.color = known;
+            else if (accent) g.color = readableCoverColor(accent);
         }
         publish();
     });
