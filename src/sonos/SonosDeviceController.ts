@@ -8,7 +8,7 @@ import { normalizeBrowseResult } from "./queue-utils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
 import { isMusicAssistantStream, PlaybackSource, QueueState, SonosFavorite, TrackInfo, VolumeInfo } from "./SonosTypes";
 import { upnpSourceOf } from "./playback-source";
-import { SonosLocalApiWatcher } from "./sonos-local-api";
+import { SonosLocalApiWatcher, type LocalPlayback } from "./sonos-local-api";
 import { withTimeout } from "../utils/with-timeout";
 import { parseRelTime } from "./rel-time";
 import { isRadioAlbumArtUri, upsizeSonosImageProxyUrl, looksLikeRawStreamFilename } from "./track-metadata";
@@ -350,6 +350,7 @@ export class SonosDeviceController {
     this.queueStateCallbacks.clear();
     this.localApi?.stop();
     this.localApi = undefined;
+    clearTimeout(this.localCheckTimer);
     this.batteryCallbacks.clear();
     this.reachabilityCallbacks.clear();
   }
@@ -411,27 +412,7 @@ export class SonosDeviceController {
 
         // Poll track info every 3rd tick (~24 s) when playing — covers UPnP-dead scenarios.
         trackPollTick++;
-        if (trackPollTick % 3 === 0 && ts === 'PLAYING') {
-          const track = await this.getCurrentTrack();
-          if (track && track.Title !== this.currentTrack?.Title) {
-            const newTrackInfo: TrackInfo = { ...track };
-            if (track.AlbumArtUri && track.AlbumArtUri !== this.currentAlbumArtUri) {
-              this.currentAlbumArtUri = track.AlbumArtUri;
-              try {
-                const cover = await loadImageFromUri(track.AlbumArtUri, this.transportDevice);
-                if (cover) { newTrackInfo.albumArtDataUri = cover; this.lastKnownCover = cover; }
-              } catch { this.currentAlbumArtUri = ''; }
-            }
-            newTrackInfo.albumArtDataUri = newTrackInfo.albumArtDataUri ?? this.lastKnownCover;
-            newTrackInfo.isRadio =
-              MetaDataHelper.IsRadioStream(track.TrackUri) ||
-              (track.AlbumArtUri
-                ? isRadioAlbumArtUri(track.AlbumArtUri)
-                : (this.currentTrack?.isRadio ?? false));
-            this.currentTrack = newTrackInfo;
-            this.fireTrackInfoCallbacks(this.currentTrack!);
-          }
-        }
+        if (trackPollTick % 3 === 0 && ts === 'PLAYING') await this.checkTrack();
       } catch (e) {
         streamDeck.logger.debug(`[${this.deviceIp}] Polling error:`, e);
         this.notePollFailure();
@@ -447,6 +428,59 @@ export class SonosDeviceController {
       void tick();
       this.pollInterval = setInterval(() => void tick(), POLL_INTERVAL_MS);
     }, staggerMs);
+  }
+
+  /** Asks for the current track; a new one (by title) goes out with its cover. True when it changed. */
+  private async checkTrack(): Promise<boolean> {
+    const track = await this.getCurrentTrack();
+    if (!track || track.Title === this.currentTrack?.Title) return false;
+    const newTrackInfo: TrackInfo = { ...track };
+    if (track.AlbumArtUri && track.AlbumArtUri !== this.currentAlbumArtUri) {
+      this.currentAlbumArtUri = track.AlbumArtUri;
+      try {
+        const cover = await loadImageFromUri(track.AlbumArtUri, this.transportDevice);
+        if (cover) { newTrackInfo.albumArtDataUri = cover; this.lastKnownCover = cover; }
+      } catch { this.currentAlbumArtUri = ''; }
+    }
+    newTrackInfo.albumArtDataUri = newTrackInfo.albumArtDataUri ?? this.lastKnownCover;
+    newTrackInfo.isRadio =
+      MetaDataHelper.IsRadioStream(track.TrackUri) ||
+      (track.AlbumArtUri
+        ? isRadioAlbumArtUri(track.AlbumArtUri)
+        : (this.currentTrack?.isRadio ?? false));
+    this.currentTrack = newTrackInfo;
+    this.fireTrackInfoCallbacks(this.currentTrack!);
+    return true;
+  }
+
+  private lastLocalPlayback = '';
+  private localCheckTimer?: NodeJS.Timeout;
+
+  /**
+   * The local API saw another queue item or playback state (it asks every 2 s): fetch the track and
+   * the transport state now instead of waiting for the speaker's own events, which come 7–18 s late
+   * (measured 2026-10-09, also for Spotify from the Sonos app). Asks again a few times while the
+   * speaker still names the previous track.
+   */
+  private onLocalPlayback(playback: LocalPlayback): void {
+    const key = `${playback.itemId ?? ''}|${playback.state ?? ''}`;
+    if (key === this.lastLocalPlayback) return;
+    const first = !this.lastLocalPlayback;
+    this.lastLocalPlayback = key;
+    if (first) return;
+    clearTimeout(this.localCheckTimer);
+    const check = async (tries: number): Promise<void> => {
+      try {
+        const ts = await this.getTransportState();
+        if (ts !== this.lastPolledTransportState) {
+          this.lastPolledTransportState = ts;
+          this.transportStateCallbacks.forEach(cb => cb(ts));
+        }
+        if (await this.checkTrack()) return;
+      } catch { /* the regular poll catches up */ }
+      if (tries > 1) this.localCheckTimer = setTimeout(() => void check(tries - 1), 1500);
+    };
+    void check(3);
   }
 
   private async updateInitialState(): Promise<void> {
@@ -737,10 +771,14 @@ export class SonosDeviceController {
     this.sourceCallbacks.set(id, callback);
     // The local API watcher runs only while someone wants the source
     if (!this.localApi) {
-      this.localApi = new SonosLocalApiWatcher(this.deviceIp, (source) => {
-        this.apiSource = source ?? null;
-        this.updateSource();
-      });
+      this.localApi = new SonosLocalApiWatcher(
+        this.deviceIp,
+        (source) => {
+          this.apiSource = source ?? null;
+          this.updateSource();
+        },
+        (playback) => this.onLocalPlayback(playback),
+      );
     }
     if (this.currentSource !== undefined) callback(this.currentSource ?? undefined);
   }

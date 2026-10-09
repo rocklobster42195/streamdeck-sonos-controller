@@ -15,6 +15,14 @@ import type { PlaybackSource } from "./SonosTypes";
 const API_KEY = "123e4567-e89b-12d3-a456-426655440000";
 const PORT = 1443;
 const RETRY_MS = [5_000, 15_000, 60_000];
+/**
+ * How often to ask for the playback status. The speaker pushes a new track 7–16 s late (also for
+ * Spotify from the Sonos app, measured 2026-10-09) but answers at once when asked.
+ */
+const ASK_MS = 2_000;
+
+/** What plays now, as far as the local API tells: the queue item and the playback state. */
+export type LocalPlayback = { itemId?: string; state?: string };
 
 type Container = { name?: string; type?: string; id?: { objectId?: string }; service?: { name?: string } };
 
@@ -38,10 +46,13 @@ export class SonosLocalApiWatcher {
     private retry = 0;
     private retryTimer?: NodeJS.Timeout;
     private stopped = false;
+    private askTimer?: NodeJS.Timeout;
 
     constructor(
         private readonly ip: string,
         private readonly onSource: (source: PlaybackSource | undefined) => void,
+        /** The playback status, on every answer and push (the caller sorts out what changed). */
+        private readonly onPlayback?: (playback: LocalPlayback) => void,
     ) {
         void this.connect();
     }
@@ -49,6 +60,7 @@ export class SonosLocalApiWatcher {
     stop(): void {
         this.stopped = true;
         clearTimeout(this.retryTimer);
+        clearInterval(this.askTimer);
         this.ws?.removeAllListeners();
         this.ws?.close();
         this.ws = undefined;
@@ -75,11 +87,16 @@ export class SonosLocalApiWatcher {
             this.retry = 0;
             this.send("groups:1", "subscribe");
             this.subscribeMetadata();
+            if (this.onPlayback) {
+                clearInterval(this.askTimer);
+                this.askTimer = setInterval(() => this.send("playback:1", "getPlaybackStatus"), ASK_MS);
+            }
         });
         ws.on("message", (raw) => this.onMessage(raw.toString()));
         ws.on("error", () => { /* followed by close */ });
         ws.on("close", () => {
             if (this.ws !== ws) return;
+            clearInterval(this.askTimer);
             this.ws = undefined;
             this.scheduleRetry();
         });
@@ -104,11 +121,16 @@ export class SonosLocalApiWatcher {
         if (header.namespace === "playbackMetadata:1" && header.type === "metadataStatus") {
             this.onSource(sourceFromContainer(body.container));
         }
+        if (header.namespace === "playback:1" && header.type === "playbackStatus") {
+            const b = body as { itemId?: string; playbackState?: string };
+            this.onPlayback?.({ itemId: b.itemId, state: b.playbackState });
+        }
     }
 
     private subscribeMetadata(): void {
         if (!this.groupId) return;
         this.send("playbackMetadata:1", "subscribe");
+        if (this.onPlayback) this.send("playback:1", "subscribe");
     }
 
     private send(namespace: string, command: string): void {
