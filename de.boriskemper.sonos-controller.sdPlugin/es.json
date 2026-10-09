@@ -92,6 +92,8 @@
             "device_any": "Dispositivo",
             "choose_device": "Elegir dispositivo",
             "preset_volume": "Volumen preestablecido",
+            "preset_long_press_hint": "Mantén la tecla medio segundo para este volumen.",
+            "vol_step": "Paso",
             "show_text": "Mostrar texto",
             "alignment": "Alineación",
             "align_left": "Izquierda",

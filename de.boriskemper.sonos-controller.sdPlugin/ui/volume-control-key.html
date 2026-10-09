@@ -13,36 +13,31 @@
 
 <body hidden>
   <pi-section title="pi.sonos_device" data-player-section>
-    <pi-select setting="deviceIp" source="sonos-players" with="device" placeholder="pi.choose_device"></pi-select>
-    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
-    <div data-show-when="deviceIp=">
-      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
-    </div>
+    <pi-select setting="player" source="players" placeholder="kit.player_active"></pi-select>
   </pi-section>
   <pi-section title="pi.command">
-    <pi-choice setting="command" columns="4" data-options='[
+    <pi-choice setting="command" default="up" columns="4" data-options='[
       {"value":"mute","label":"pi.cmd_mute","icon":"volumeOff"},
-      {"value":"vol-down","label":"pi.cmd_vol_down","icon":"volumeDown"},
-      {"value":"vol-up","label":"pi.cmd_vol_up","icon":"volumeUp"},
-      {"value":"vol-preset","label":"pi.cmd_vol_preset","icon":"volumeMedium"}
+      {"value":"down","label":"pi.cmd_vol_down","icon":"volumeDown"},
+      {"value":"up","label":"pi.cmd_vol_up","icon":"volumeUp"},
+      {"value":"preset","label":"pi.cmd_vol_preset","icon":"volumeMedium"}
     ]'></pi-choice>
+    <pi-range setting="step" min="1" max="20" step="1" default="5" unit="%" label="pi.vol_step" data-show-when="command=up,down" data-show-default="up"></pi-range>
+    <pi-range setting="preset" min="0" max="100" step="1" default="20" unit="%" label="pi.preset_volume"></pi-range>
+    <div class="pi-hint" data-show-when="command=mute,up,down" data-show-default="up" data-i18n="pi.preset_long_press_hint"></div>
   </pi-section>
-  <pi-section title="pi.volume" data-show-when="command=mute,vol-preset">
-    <pi-range setting="presetVolume" min="0" max="100" step="1" default="20" unit="%" label="pi.preset_volume"></pi-range>
-  </pi-section>
-  <pi-section data-show-when="command=mute,vol-preset" title="pi.gauge">
-    <pi-choice setting="gauge" default="pie" columns="3" data-options='[
+  <pi-section data-show-when="command=mute" title="pi.gauge">
+    <pi-choice setting="gauge" default="ring" columns="3" data-options='[
       {"value":"pie","label":"pi.gauge_pie","icon":"gaugePie"},
       {"value":"ring","label":"pi.gauge_ring","icon":"gaugeRing"},
       {"value":"open","label":"pi.gauge_open","icon":"gaugeOpen"}
     ]'></pi-choice>
   </pi-section>
+  <pi-section title="pi.display">
+    <pi-toggle setting="showVolume" label="pi.show_volume" data-default="true"></pi-toggle>
+  </pi-section>
   <pi-section title="kit.key_color">
     <pi-key-color setting="keyColor" label=""></pi-key-color>
-  </pi-section>
-  <pi-section title="pi.display">
-    <pi-toggle setting="showVolume" label="pi.show_volume"></pi-toggle>
-    <pi-toggle setting="showPreset" label="pi.show_preset"></pi-toggle>
   </pi-section>
   <pi-section class="pi-win" title="kit.call_title">
     <pi-call-reaction></pi-call-reaction>

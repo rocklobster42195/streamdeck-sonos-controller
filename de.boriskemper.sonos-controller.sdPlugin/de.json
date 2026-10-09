@@ -92,6 +92,8 @@
             "device_any": "Gerät",
             "choose_device": "Gerät wählen",
             "preset_volume": "Lautstärke-Preset",
+            "preset_long_press_hint": "Taste eine halbe Sekunde halten für diese Lautstärke.",
+            "vol_step": "Schritt",
             "show_text": "Text anzeigen",
             "alignment": "Ausrichtung",
             "align_left": "Links",

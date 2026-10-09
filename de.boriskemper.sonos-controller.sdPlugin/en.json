@@ -93,6 +93,8 @@
             "device_any": "Device",
             "choose_device": "Choose a speaker",
             "preset_volume": "Preset volume",
+            "preset_long_press_hint": "Hold the key half a second for this volume.",
+            "vol_step": "Step",
             "show_text": "Show text",
             "alignment": "Alignment",
             "align_left": "Left",

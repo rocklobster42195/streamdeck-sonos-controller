@@ -1,4 +1,4 @@
-import type { PlaybackKeySettings, PlayPauseKeySettings } from "@rocklobster42195/streamdeck-kit";
+import type { PlaybackKeySettings, PlayPauseKeySettings, VolumeCommand, VolumeKeySettings } from "@rocklobster42195/streamdeck-kit";
 import { PLAYER_PREFIX } from "./remote-player";
 
 /** Sonos Controller's Play/Pause key settings before the universal key (kit grill 2026-10-09). */
@@ -60,4 +60,32 @@ export function migratePlayback(s: PlaybackSettings, deviceOf: (ip: string) => s
     const { deviceIp, ...rest } = s;
     const player = playerOf(deviceIp, deviceOf);
     return { ...rest, ...(player ? { player } : {}) };
+}
+
+/** Sonos Controller's Volume key settings, with the older ones. */
+export type VolumeSettings = VolumeKeySettings & { deviceIp?: string; presetVolume?: number; volume?: number; showPreset?: boolean };
+/** As stored before: older command names ("vol-up", "vol-down", "vol-preset"). */
+type OldVolumeSettings = Omit<VolumeSettings, "command"> & { command?: string };
+
+const OLD_COMMANDS: Record<string, VolumeCommand> = { "vol-up": "up", "vol-down": "down", "vol-preset": "preset", mute: "mute" };
+
+/**
+ * Old settings onto the universal key's, once. The look and feel stays: 2 % per press (as before),
+ * the preset, the number only when it was on, the pie for the mute key.
+ */
+export function migrateVolume(s: OldVolumeSettings, deviceOf: (ip: string) => string | undefined): VolumeSettings | undefined {
+    if (s.deviceIp === undefined && !(s.command && s.command in OLD_COMMANDS && s.command !== "mute")) return undefined;
+    const { deviceIp, presetVolume, volume, showPreset, ...rest } = s;
+    void showPreset;
+    const player = playerOf(deviceIp, deviceOf);
+    const preset = presetVolume ?? volume;
+    return {
+        ...rest,
+        ...(player ? { player } : {}),
+        command: OLD_COMMANDS[s.command ?? "mute"] ?? (s.command as VolumeCommand),
+        step: 2,
+        ...(preset !== undefined ? { preset } : {}),
+        showVolume: !!s.showVolume,
+        gauge: s.gauge ?? "pie",
+    };
 }

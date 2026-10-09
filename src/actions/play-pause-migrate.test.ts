@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("./remote-player", () => ({ PLAYER_PREFIX: "player:" }));
-const { migratePlayPause, migratePlayback } = await import("./play-pause-migrate");
+const { migratePlayPause, migratePlayback, migrateVolume } = await import("./play-pause-migrate");
 
 const known = (ip: string) => (ip === "192.168.7.210" ? "RINCON_38420B857BB201400" : undefined);
 
@@ -40,5 +40,14 @@ describe("Playback Control settings onto the universal key", () => {
         expect(migratePlayback({ deviceIp: "192.168.7.210", command: "repeat", seekStep: "30", keyColor: "row" }, known)).toEqual({ player: "device:RINCON_38420B857BB201400", command: "repeat", seekStep: "30", keyColor: "row" });
         expect(migratePlayback({ deviceIp: "player:active:all", command: "next" }, known)?.player).toBe("active:all");
         expect(migratePlayback({ player: "active", command: "next" }, known)).toBeUndefined();
+    });
+});
+
+describe("Volume settings onto the universal key", () => {
+    it("old commands and fields move over; the look stays (2 %, pie, number only when it was on)", () => {
+        expect(migrateVolume({ deviceIp: "192.168.7.210", command: "vol-preset", presetVolume: 18, showVolume: true }, known)).toEqual({ player: "device:RINCON_38420B857BB201400", command: "preset", step: 2, preset: 18, showVolume: true, gauge: "pie" });
+        expect(migrateVolume({ deviceIp: "192.168.7.210", command: "vol-up" }, known)).toMatchObject({ command: "up", step: 2, showVolume: false });
+        expect(migrateVolume({ deviceIp: "192.168.7.210", command: "mute", gauge: "ring", volume: 30 }, known)).toMatchObject({ command: "mute", gauge: "ring", preset: 30 });
+        expect(migrateVolume({ player: "active", command: "up" }, known)).toBeUndefined();
     });
 });
