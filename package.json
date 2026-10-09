@@ -49,7 +49,7 @@
     "dependencies": {
         "@elgato/streamdeck": "^2.1.0",
         "@mdi/js": "^7.4.47",
-        "@rocklobster42195/streamdeck-kit": "0.1.0-alpha.13",
+        "@rocklobster42195/streamdeck-kit": "0.1.0-alpha.14",
         "@svrooij/sonos": "^2.7.0-beta.4",
         "jpeg-js": "^0.4.4",
         "pngjs": "^7.0.0",

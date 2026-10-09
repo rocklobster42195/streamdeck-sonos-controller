@@ -10,6 +10,7 @@ import { piBridge } from "@rocklobster42195/streamdeck-kit/bridge";
 import { DeckBus } from "@rocklobster42195/streamdeck-kit/bus";
 import { panorama, panoramaRows, shareActionsTo, socActions } from "../effects/panorama";
 import { isInvisibleSatellite, onDevicesChanged, safeDevices } from "../sonos/sonos-discovery";
+import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 
 // Before any speaker connection is watched: which speakers report a battery (Roam, Move)
 setBatteryProbe(deviceHasBattery);
@@ -55,6 +56,30 @@ export async function startSocBus(): Promise<void> {
     const countMembers = () => setGroupMembers((id) => safeDevices().filter((d) => !isInvisibleSatellite(d.Host) && (d.Coordinator?.Uuid || d.Coordinator?.Host) === id).map((d) => d.Uuid || d.Host));
     onDevicesChanged(countMembers);
     countMembers();
+    // Every group on deckbus, not only the speakers SO-C's own actions have open: the universal
+    // keys (any plugin's) follow the active speaker and stopped ones too (seen 2026-10-09: a radio
+    // started in the Sonos app only reached the deck late, through Music Assistant)
+    onDevicesChanged(followGroups);
+    followGroups();
+}
+
+/** The coordinator of every visible group, each held open while it leads its group. */
+const followed = new Set<string>();
+function followGroups(): void {
+    const leaders = new Set(safeDevices().filter((d) => !isInvisibleSatellite(d.Host) && (!d.Coordinator || d.Coordinator.Host === d.Host)).map((d) => d.Host));
+    for (const host of leaders) {
+        if (followed.has(host)) continue;
+        followed.add(host);
+        sonosDeviceManager.getController(host).catch((e) => {
+            followed.delete(host);
+            streamDeck.logger.warn(`[deckbus] can't follow ${host}`, e);
+        });
+    }
+    for (const host of [...followed]) {
+        if (leaders.has(host)) continue;
+        followed.delete(host);
+        sonosDeviceManager.releaseController(host);
+    }
 }
 
 function shareStatus(): void {

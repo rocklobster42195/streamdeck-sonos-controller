@@ -124,6 +124,8 @@ type Group = {
     playMode?: string;
     /** The music service it plays from (Sonos' name, e.g. "Spotify"), for the keys' source corner. */
     source?: string;
+    /** It plays its own media (not Music Assistant's stream), from the last track it reported. */
+    ownMedia?: boolean;
 };
 
 /** Battery readings of watched speakers that have one (Roam, Move), by IP. */
@@ -173,6 +175,10 @@ export function watchPlayers(controller: SonosDeviceController): void {
         g.album = ti.Album || undefined;
         g.isRadio = ti.isRadio;
         g.trackUri = ti.TrackUri;
+        // Whose media it is, from the last real track: after Music Assistant's pause the speaker
+        // reports no track at all, and the stopped stream is still MA's
+        const uri = controller.currentTrackUri;
+        if (uri) g.ownMedia = !fromMusicAssistant(uri);
         g.cover = absoluteArt(ti.AlbumArtUri, g.host);
         void refreshPosition(controller, g);
         const art = ti.albumArtDataUri;
@@ -340,7 +346,7 @@ function entryOf(g: Group): PlayerEntry {
         name: g.name,
         kind: "speaker",
         direct: true,
-        media: !fromMusicAssistant(g.trackUri),
+        media: g.ownMedia ?? !fromMusicAssistant(g.trackUri),
         playing: g.playing,
         since: g.since,
         color: g.color,
