@@ -1,5 +1,7 @@
 <!-- NEXT -->
 
+- **Play/Pause key: the family's key** (the same in Music Assistant Controller and System Audio Controller, from the kit). It controls any player on the deck: a Sonos room (grouped: its group), music on the PC, Music Assistant's players; without a chosen one the speaker that started playing last. Two icons at the top to choose: your own icon, the service it plays from (Spotify, TIDAL, …: its logo) or the battery. A press sends a clear play or pause and shows it at once. Your keys keep their speaker and look (the battery stays top right); the device name is now the key's Stream Deck title, so its size and colour are set in Stream Deck's title settings.
+- Speakers on deckbus tell their group's members, the music service and, for a Roam or Move, the battery (`members`, `source`, `battery`), for the keys in every plugin.
 - **Fixed: a dial in a shared Panorama stayed black** after its plugin (or another one in the row) restarted, until the plugin leading the row restarted too (kit 0.1.0-alpha.7).
 - **Music Assistant on a Sonos speaker:** keys and dials show the track, cover and colour from Music Assistant Controller as soon as it plays (the speaker itself reports Music Assistant's tracks 20–40 s late). Play/pause, next and previous go to Music Assistant (Sonos' own commands could leave the speaker silent), and a paused Music Assistant stream keeps its dimmed cover and resumes.
 - **Fixed: speakers staying "not playing"** (no cover, no Panorama) after a speaker was restarted and the group set up again.

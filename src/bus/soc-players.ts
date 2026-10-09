@@ -9,6 +9,7 @@ import type { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { parsePlayMode, toPlayMode } from "../sonos/play-mode";
 import { isMusicAssistantStream, type TrackInfo } from "../sonos/SonosTypes";
 import { formatRelTime, parseRelTime } from "../sonos/rel-time";
+import type { SonosBatteryStatus } from "../sonos/SonosBattery";
 import { getAccentColor, knownCoverColor, setKnownCoverColor } from "../utils/color-extract";
 
 export const socCovers = new CoverBoard("SO-C");
@@ -121,7 +122,21 @@ type Group = {
     duration?: number;
     at?: number;
     playMode?: string;
+    /** The music service it plays from (Sonos' name, e.g. "Spotify"), for the keys' source corner. */
+    source?: string;
 };
+
+/** Battery readings of watched speakers that have one (Roam, Move), by IP. */
+const batteries = new Map<string, SonosBatteryStatus | undefined>();
+
+// Whether a speaker has a battery (set by soc-bus.ts: the probe needs discovery, which this module
+// doesn't import, see setGroupMembers)
+let hasBattery: (ip: string) => Promise<boolean | undefined> = async () => false;
+
+/** Tells the players how to find out whether a speaker has a battery. */
+export function setBatteryProbe(fn: (ip: string) => Promise<boolean | undefined>): void {
+    hasBattery = fn;
+}
 
 /** Groups by coordinator UUID, and the watched speaker controllers by IP. */
 const groups = new Map<string, Group>();
@@ -131,6 +146,18 @@ const controllers = new Map<string, SonosDeviceController>();
 export function watchPlayers(controller: SonosDeviceController): void {
     const ip = controller.deviceIp;
     controllers.set(ip, controller);
+    // Where it plays from (Sonos' service name) and, for speakers with one, the battery
+    controller.registerSourceCallback(CALLBACK, (source) => {
+        groupOf(controller).source = source?.service;
+        publish();
+    });
+    void hasBattery(controller.deviceIp).then((has) => {
+        if (!has || controllers.get(controller.deviceIp) !== controller) return;
+        controller.registerBatteryCallback(CALLBACK, (b) => {
+            batteries.set(controller.deviceIp, b);
+            publish();
+        });
+    });
     controller.registerTransportStateCallback(CALLBACK, (ts) => {
         const g = groupOf(controller);
         const playing = ts === "PLAYING";
@@ -174,6 +201,9 @@ export function watchPlayers(controller: SonosDeviceController): void {
 
 /** The speaker connection goes: forget its group when no other watched speaker is in it. */
 export function unwatchPlayers(controller: SonosDeviceController): void {
+    controller.unregisterSourceCallback(CALLBACK);
+    controller.unregisterBatteryCallback(CALLBACK);
+    batteries.delete(controller.deviceIp);
     controller.unregisterTransportStateCallback(CALLBACK);
     controller.unregisterTrackInfoCallback(CALLBACK);
     controller.unregisterPlayModeCallback(CALLBACK);
@@ -251,12 +281,12 @@ function groupOf(c: SonosDeviceController): Group {
     return g;
 }
 
-// How many visible speakers a group has (set by soc-bus.ts from discovery, which this module
-// doesn't import: discovery starts working as soon as it is loaded)
-let membersOf: (coordinatorId: string) => number = () => 1;
+// A group's visible speakers by id (set by soc-bus.ts from discovery, which this module doesn't
+// import: discovery starts working as soon as it is loaded)
+let membersOf: (coordinatorId: string) => string[] = (id) => [id];
 
-/** Tells the players how to count a group's speakers; call again when the groups change. */
-export function setGroupMembers(fn: (coordinatorId: string) => number): void {
+/** Tells the players a group's speakers; call again when the groups change. */
+export function setGroupMembers(fn: (coordinatorId: string) => string[]): void {
     membersOf = fn;
     for (const c of controllers.values()) groupOf(c);
     publish();
@@ -264,7 +294,7 @@ export function setGroupMembers(fn: (coordinatorId: string) => number): void {
 
 /** "Küche", or "Küche + 2" for a group of three (bonded satellites don't count). */
 function groupName(id: string, name: string): string {
-    const members = membersOf(id);
+    const members = membersOf(id).length;
     return members > 1 ? `${name} + ${members - 1}` : name;
 }
 
@@ -326,7 +356,19 @@ function entryOf(g: Group): PlayerEntry {
         shuffle: g.isRadio ? undefined : shuffle,
         repeat: g.isRadio ? undefined : repeat,
         can,
+        members: membersOf(g.id),
+        source: g.source,
+        ...batteryOf(g.id),
     };
+}
+
+/** The battery of a watched speaker in the group that has one (a Roam on its own, usually). */
+function batteryOf(id: string): { battery?: number; charging?: boolean } {
+    for (const c of controllers.values()) {
+        const b = coordinatorId(c) === id ? batteries.get(c.deviceIp) : undefined;
+        if (b) return { battery: b.percent, charging: b.charging };
+    }
+    return {};
 }
 
 function publish(): void {

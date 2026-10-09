@@ -5,7 +5,7 @@
 // speaker stays on SO-C's own connection as before.
 import { ACTIVE_ANY_PLAYER, ACTIVE_PLAYER, type Player } from "@rocklobster42195/streamdeck-kit";
 import { socPlayers } from "../bus/soc-players";
-import { safeDevices } from "../sonos/sonos-discovery";
+import { isInvisibleSatellite, safeDevices } from "../sonos/sonos-discovery";
 
 export const PLAYER_PREFIX = "player:";
 
@@ -23,6 +23,28 @@ export function remotePlayer(deviceIp: string): Player | undefined {
 export function hasOtherPlayers(): boolean {
     const sonos = new Set(safeDevices().map((d) => d.Uuid));
     return socPlayers.players().some((p) => !(p.device && sonos.has(p.device)) && p.routes.some((r) => r.source !== "SO-C"));
+}
+
+/**
+ * The universal keys' player list (<pi-select source="players">): "Active player", "…also apps",
+ * every Sonos room on its own (a grouped one controls its group), then other plugins' players.
+ */
+export function playerItems(): { label: string; value: string; sub?: string }[] {
+    const rooms = safeDevices().filter((d) => !isInvisibleSatellite(d.Host));
+    const sonos = new Set(safeDevices().map((d) => d.Uuid));
+    const items: { label: string; value: string; sub?: string }[] = [
+        { label: "kit.player_active", value: ACTIVE_PLAYER },
+        { label: "kit.player_active_all", value: ACTIVE_ANY_PLAYER },
+    ];
+    for (const d of rooms) {
+        const p = socPlayers.resolve(`device:${d.Uuid}`);
+        items.push({ label: `${p?.playing ? "▶ " : ""}${d.Name}`, value: `device:${d.Uuid}`, sub: p && p.device !== d.Uuid ? p.name : "Sonos" });
+    }
+    for (const p of socPlayers.players()) {
+        if (p.device && sonos.has(p.device)) continue;
+        items.push({ label: `${p.playing ? "▶ " : ""}${p.name}`, value: p.id, sub: [...new Set(p.routes.map((r) => r.source))].join(" · ") });
+    }
+    return items;
 }
 
 /** The dropdown entries after the Sonos speakers: "Active player", "Active player, also apps" (music on the computer, from SA-C), then other plugins' players. */

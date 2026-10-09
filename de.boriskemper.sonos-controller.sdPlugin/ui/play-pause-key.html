@@ -13,29 +13,19 @@
 
 <body hidden>
   <pi-section title="pi.sonos_device" data-player-section>
-    <pi-select setting="deviceIp" source="sonos-players" with="device" placeholder="pi.choose_device"></pi-select>
-    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
-    <div data-show-when="deviceIp=">
-      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
-    </div>
+    <pi-select setting="player" source="players" placeholder="kit.player_active"></pi-select>
   </pi-section>
   <pi-section title="pi.display">
-    <pi-toggle setting="showCoverArt" label="pi.show_cover" data-default="true"></pi-toggle>
-    <pi-toggle setting="showTrackTitle" label="pi.show_track_title"></pi-toggle>
+    <pi-toggle setting="showCover" label="pi.show_cover" data-default="true"></pi-toggle>
+    <pi-toggle setting="showTitle" label="pi.show_track_title"></pi-toggle>
     <pi-toggle setting="showProgress" label="pi.show_progress"></pi-toggle>
-    <pi-toggle setting="showDeviceName" label="pi.show_device_name"></pi-toggle>
-    <pi-range setting="fontSize" min="10" max="20" step="1" default="13" unit=" px" label="pi.font_size"></pi-range>
-    <pi-color setting="fontColor" default="#FFFFFF" label="pi.font_color"></pi-color>
+    <pi-toggle setting="showName" label="pi.show_device_name"></pi-toggle>
+  </pi-section>
+  <pi-section title="kit.corners_title">
+    <pi-corners default-left="marker" default-right="source"></pi-corners>
   </pi-section>
   <pi-section title="kit.key_color">
     <pi-key-color setting="keyColor" label=""></pi-key-color>
-  </pi-section>
-  <pi-section title="pi.battery" data-show-when="hasBattery=true">
-    <pi-choice setting="batteryDisplayMode" default="warning" columns="3" data-options='[
-      {"value":"off","label":"pi.battery_off"},
-      {"value":"warning","label":"pi.battery_warning"},
-      {"value":"full","label":"pi.battery_full"}
-    ]'></pi-choice>
   </pi-section>
   <pi-section class="pi-win" title="kit.call_title">
     <pi-call-reaction></pi-call-reaction>

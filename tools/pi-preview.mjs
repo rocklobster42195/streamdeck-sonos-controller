@@ -18,6 +18,15 @@ const { listEffects } = await import("@rocklobster42195/streamdeck-kit");
 /** Invented answers for the lists the PI asks the plugin for (<pi-select source="…">). */
 const rooms = ["Living Room", "Kitchen", "Office", "Bedroom", "Terrace"];
 const optionLists = {
+    // The universal keys' player list (the plugin's playerItems)
+    players: () => [
+        { label: "kit.player_active", value: "active" },
+        { label: "kit.player_active_all", value: "active:all" },
+        { label: "▶ Living Room", value: "device:RINCON_1", sub: "Sonos" },
+        { label: "Kitchen", value: "device:RINCON_4", sub: "Living Room + 2" },
+        { label: "Office", value: "device:RINCON_2", sub: "Sonos" },
+        { label: "Spotify", value: "app:spotify", sub: "SA-C" },
+    ],
     "sonos-devices": () => rooms.map((name, i) => ({ value: `192.0.2.${10 + i}`, label: name })),
     "sonos-groups": () => [{ value: "192.0.2.10", label: "Living Room + 2" }, { value: "192.0.2.13", label: "Bedroom" }],
 };

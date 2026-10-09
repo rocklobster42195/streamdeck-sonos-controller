@@ -2,13 +2,17 @@
 // dials in the same row (one effect per row, agreed between the plugins), tells them where its
 // actions are, and whether it found Sonos speakers. Pauses or lowers chosen speakers during a call
 // on the computer (state "call" from SA-C; the kit's CallReaction). Local only; SO-C works on without the bus.
-import { setGroupMembers, socCovers, socPlayers } from "./soc-players";
+import { setBatteryProbe, setGroupMembers, socCovers, socPlayers } from "./soc-players";
+import { deviceHasBattery } from "../sonos/SonosBattery";
 import streamDeck from "@elgato/streamdeck";
 import { CALL_SETTING, CallReaction } from "@rocklobster42195/streamdeck-kit";
 import { piBridge } from "@rocklobster42195/streamdeck-kit/bridge";
 import { DeckBus } from "@rocklobster42195/streamdeck-kit/bus";
 import { panorama, panoramaRows, shareActionsTo, socActions } from "../effects/panorama";
 import { isInvisibleSatellite, onDevicesChanged, safeDevices } from "../sonos/sonos-discovery";
+
+// Before any speaker connection is watched: which speakers report a battery (Roam, Move)
+setBatteryProbe(deviceHasBattery);
 
 let bus: DeckBus | undefined;
 let lastStatus = "";
@@ -48,7 +52,7 @@ export async function startSocBus(): Promise<void> {
     onDevicesChanged(shareStatus);
     shareStatus();
     // Group names like "Küche + 2", again whenever speakers join or leave groups
-    const countMembers = () => setGroupMembers((id) => safeDevices().filter((d) => !isInvisibleSatellite(d.Host) && (d.Coordinator?.Uuid || d.Coordinator?.Host) === id).length);
+    const countMembers = () => setGroupMembers((id) => safeDevices().filter((d) => !isInvisibleSatellite(d.Host) && (d.Coordinator?.Uuid || d.Coordinator?.Host) === id).map((d) => d.Uuid || d.Host));
     onDevicesChanged(countMembers);
     countMembers();
 }
