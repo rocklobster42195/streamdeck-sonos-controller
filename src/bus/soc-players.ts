@@ -3,7 +3,7 @@
 // the coordinator's RINCON id as device id, so a Sonos speaker that Music Assistant also knows is
 // one player on the deck; SO-C talks to it directly, so commands for it come here. Fed by the
 // speaker connections SO-C has open anyway (for its visible actions): no extra connections.
-import { CoverBoard, PlayerBoard, getCachedCover, loadCover, readableCoverColor, type CoverEntry, type PlayerEntry, type RepeatMode, type Transport, type TransportCommand } from "@rocklobster42195/streamdeck-kit";
+import { CoverBoard, PlayerBoard, getCachedCover, loadCover, readableCoverColor, type CoverEntry, type Player, type PlayerEntry, type RepeatMode, type Transport, type TransportCommand } from "@rocklobster42195/streamdeck-kit";
 import streamDeck from "@elgato/streamdeck";
 import type { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { parsePlayMode, toPlayMode } from "../sonos/play-mode";
@@ -25,10 +25,8 @@ const externalShown = new Map<string, string>();
 function syncExternalTracks(): void {
     const merged = socPlayers.players();
     for (const c of controllers.values()) {
-        const id = coordinatorId(c);
-        const p = merged.find((x) => x.device === id);
-        const from = p?.from;
-        const ma = from && from.source !== "SO-C" && from.entry.media && from.entry.title && isMusicAssistantStream(c.currentTrackUri) ? from.entry : undefined;
+        const from = externalMedia(c, merged)?.from;
+        const ma = from?.entry.title ? from.entry : undefined;
         const cover = ma?.cover ? getCachedCover(ma.cover) : undefined;
         const key = ma ? `${ma.title}|${ma.artist}|${ma.cover}|${cover ? "1" : "0"}` : "";
         if (externalShown.get(c.deviceIp) === key) continue;
@@ -51,6 +49,25 @@ function syncExternalTracks(): void {
     }
 }
 socPlayers.onChange(syncExternalTracks);
+
+/** The deck's player for this speaker while it plays another plugin's stream (MA-C for MA's). */
+function externalMedia(c: SonosDeviceController, merged = socPlayers.players()): Player | undefined {
+    const id = coordinatorId(c);
+    const p = merged.find((x) => x.device === id);
+    return p && p.from.source !== "SO-C" && p.from.entry.media && isMusicAssistantStream(c.currentTrackUri) ? p : undefined;
+}
+
+/**
+ * Next/Previous for a speaker. While it plays Music Assistant's stream they go to MA-C (the kit
+ * routes them to the media's plugin): a Sonos "Next" in MA's cloud queue works once, the next one
+ * leaves the speaker buffering, then paused at 0 s while MA still says "playing" (seen 2026-10-09).
+ */
+export async function skipTrack(c: SonosDeviceController, command: "next" | "previous"): Promise<void> {
+    const p = externalMedia(c);
+    if (p) await socPlayers.send(p, command);
+    else if (command === "next") await c.next();
+    else await c.previous();
+}
 
 const CALLBACK = "soc-players";
 

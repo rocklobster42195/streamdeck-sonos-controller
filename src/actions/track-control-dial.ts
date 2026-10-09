@@ -23,6 +23,7 @@ import { syncCapabilityFlag } from "./capability-flag";
 import { piT } from "../utils/pi-i18n";
 import { buildUnconfiguredDialSvg, renderBatteryBadge } from "../utils/icons";
 import { ControllerLease } from "./ControllerLease";
+import { skipTrack } from "../bus/soc-players";
 
 // Cover art is drawn as a size x size square (CoverArtAnimator.render, size = max(w,h)) — making
 // COVER_WIDTH equal that square's own side (100, matching the canvas height) means the square
@@ -356,7 +357,7 @@ export class TrackControlDial extends PanoramaCapableDialAction<TrackControlDial
         const controller = this.lease.get(ev.action.id);
         if (!controller) return;
         try {
-            await controller.next();
+            await skipTrack(controller, "next");
         } catch (e) {
             // e.g. UPnPError 701 "Transition not available" — a source that doesn't support
             // skipping (radio, empty queue). Must not propagate: an uncaught rejection here

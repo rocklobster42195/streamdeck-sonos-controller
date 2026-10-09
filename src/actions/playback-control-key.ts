@@ -8,7 +8,7 @@ import streamDeck, {
     WillDisappearEvent
 } from "@elgato/streamdeck";
 import { DEFAULT_SEEK_STEP, SeekStepper, positionNow, type Player } from "@rocklobster42195/streamdeck-kit";
-import { socPlayers } from "../bus/soc-players";
+import { skipTrack, socPlayers } from "../bus/soc-players";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { discoveryPromise } from "../sonos/sonos-discovery";
@@ -320,8 +320,7 @@ export class PlaybackControlKey extends SingletonAction<SonosPlaybackSettings> {
             }
             const controller = this.lease.get(context);
             if (!controller) return void ev.action.showAlert();
-            if (command === 'next') await controller.next();
-            else await controller.previous();
+            await skipTrack(controller, command);
         } catch (e) {
             streamDeck.logger.warn(`[${context}] ${command} failed`, e);
             ev.action.showAlert();
