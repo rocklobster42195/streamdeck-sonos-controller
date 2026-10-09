@@ -3,16 +3,54 @@
 // the coordinator's RINCON id as device id, so a Sonos speaker that Music Assistant also knows is
 // one player on the deck; SO-C talks to it directly, so commands for it come here. Fed by the
 // speaker connections SO-C has open anyway (for its visible actions): no extra connections.
-import { CoverBoard, PlayerBoard, readableCoverColor, type CoverEntry, type PlayerEntry, type RepeatMode, type Transport, type TransportCommand } from "@rocklobster42195/streamdeck-kit";
+import { CoverBoard, PlayerBoard, getCachedCover, loadCover, readableCoverColor, type CoverEntry, type PlayerEntry, type RepeatMode, type Transport, type TransportCommand } from "@rocklobster42195/streamdeck-kit";
 import streamDeck from "@elgato/streamdeck";
 import type { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { parsePlayMode, toPlayMode } from "../sonos/play-mode";
-import { isMusicAssistantStream } from "../sonos/SonosTypes";
+import { isMusicAssistantStream, type TrackInfo } from "../sonos/SonosTypes";
 import { formatRelTime, parseRelTime } from "../sonos/rel-time";
 import { getAccentColor } from "../utils/color-extract";
 
 export const socCovers = new CoverBoard("SO-C");
 export const socPlayers = new PlayerBoard("SO-C");
+
+/** Per coordinator: the title/cover last handed to its controllers as the external track. */
+const externalShown = new Map<string, string>();
+
+/**
+ * While a speaker plays Music Assistant's stream, SO-C's keys and dials show what MA-C publishes
+ * for it on deckbus: the speaker itself reports MA's tracks 18–40 s late (measured 2026-10-09:
+ * MA's web player under 1 s), and MA-C knows the track that really plays (its TrackAdvance).
+ */
+function syncExternalTracks(): void {
+    const merged = socPlayers.players();
+    for (const c of controllers.values()) {
+        const id = coordinatorId(c);
+        const p = merged.find((x) => x.device === id);
+        const from = p?.from;
+        const ma = from && from.source !== "SO-C" && from.entry.media && from.entry.title && isMusicAssistantStream(c.currentTrackUri) ? from.entry : undefined;
+        const cover = ma?.cover ? getCachedCover(ma.cover) : undefined;
+        const key = ma ? `${ma.title}|${ma.artist}|${ma.cover}|${cover ? "1" : "0"}` : "";
+        if (externalShown.get(c.deviceIp) === key) continue;
+        externalShown.set(c.deviceIp, key);
+        if (!ma) {
+            c.setExternalTrack(undefined);
+            continue;
+        }
+        // The cover once it's loaded (the kit's cache); until then the last one stays as a placeholder
+        if (ma.cover && !cover) void loadCover(ma.cover).then((uri) => uri && syncExternalTracks());
+        c.setExternalTrack({
+            Title: ma.title,
+            Artist: ma.artist,
+            Album: ma.album,
+            AlbumArtUri: ma.cover,
+            albumArtDataUri: cover,
+            coverPending: !cover,
+            isRadio: false,
+        } as TrackInfo);
+    }
+}
+socPlayers.onChange(syncExternalTracks);
 
 const CALLBACK = "soc-players";
 

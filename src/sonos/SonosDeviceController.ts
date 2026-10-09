@@ -6,7 +6,7 @@ import { Track } from "@svrooij/sonos/lib/models";
 import { loadImageFromUri } from "./cover-art-loader";
 import { normalizeBrowseResult } from "./queue-utils";
 import { GetZoneAttributesResponse } from "@svrooij/sonos/lib/services";
-import { PlaybackSource, QueueState, SonosFavorite, TrackInfo, VolumeInfo } from "./SonosTypes";
+import { isMusicAssistantStream, PlaybackSource, QueueState, SonosFavorite, TrackInfo, VolumeInfo } from "./SonosTypes";
 import { upnpSourceOf } from "./playback-source";
 import { SonosLocalApiWatcher } from "./sonos-local-api";
 import { withTimeout } from "../utils/with-timeout";
@@ -134,6 +134,12 @@ export class SonosDeviceController {
   private currentMute: boolean = false;
   private currentAlbumArtUri: string = '';
   private currentTrack: TrackInfo | undefined;
+  /**
+   * What plays here according to another plugin (MA-C over deckbus) while this speaker plays
+   * Music Assistant's stream: the speaker reports MA's tracks 18–40 s late (measured 2026-10-09),
+   * so keys and dials show this one instead (see soc-players.ts, syncExternalTracks).
+   */
+  private externalTrack: TrackInfo | undefined;
   // Only ever set when a cover is successfully loaded; never cleared by track events with no art.
   private lastKnownCover: string | undefined;
   // Bounds the "still missing" cover retry in the poll loop below — without this it retried an
@@ -723,7 +729,7 @@ export class SonosDeviceController {
   registerTrackInfoCallback(id: string, callback: (trackInfo: TrackInfo) => void): void {
     this.trackInfoCallbacks.set(id, callback);
     // Fire immediately with cached state so callers get isRadio without waiting for the next UPnP event.
-    if (this.currentTrack) callback(this.currentTrack);
+    if (this.currentTrack) callback(this.shownTrack(this.currentTrack));
   }
   unregisterTrackInfoCallback(id: string): void { this.trackInfoCallbacks.delete(id); }
   /** What the music was started from (fires right away once known, then on every change). */
@@ -790,7 +796,26 @@ export class SonosDeviceController {
       `reachability=${this.reachabilityCallbacks.size}`;
   }
 
-  private fireTrackInfoCallbacks(ti: TrackInfo): void {
+  /** The speaker's own track URI (Music Assistant's stream or not), whatever is shown. */
+  get currentTrackUri(): string | undefined {
+    return this.currentTrack?.TrackUri;
+  }
+
+  /** Shows another plugin's track while the speaker plays Music Assistant's stream (undefined: the speaker's own again). */
+  setExternalTrack(ti: TrackInfo | undefined): void {
+    this.externalTrack = ti;
+    if (this.currentTrack) this.fireTrackInfoCallbacks(this.currentTrack);
+  }
+
+  /** The track to show: the external one while the speaker plays Music Assistant's stream. */
+  private shownTrack(ti: TrackInfo): TrackInfo {
+    if (!this.externalTrack || !isMusicAssistantStream(ti.TrackUri)) return ti;
+    // Until the external cover is loaded, the one shown so far stays as a placeholder
+    return { ...this.externalTrack, TrackUri: ti.TrackUri, albumArtDataUri: this.externalTrack.albumArtDataUri ?? ti.albumArtDataUri };
+  }
+
+  private fireTrackInfoCallbacks(trackInfo: TrackInfo): void {
+    const ti = this.shownTrack(trackInfo);
     // Temporary diagnostic (2026-07-18), disabled 2026-07-18 — root cause found (see
     // project-favdial-lag-2026-07-18 memory), was firing on every track change so left noisy
     // logging off by default. Uncomment to re-enable: pairs with the "Forwarded track info"/burst
