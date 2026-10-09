@@ -228,13 +228,26 @@ function coordinatorId(c: SonosDeviceController): string {
     return coordinator.Uuid || coordinator.Host;
 }
 
+/**
+ * The coordinator's room name. The Sonos library throws until it has loaded a speaker's zone
+ * attributes ("Zone attributes not loaded", e.g. right after a power cycle and regrouping), which
+ * broke watchPlayers halfway: the group stayed "not playing" and keys failed to set up.
+ */
+function roomName(c: SonosDeviceController): string {
+    try {
+        return c.transportDevice.Name || c.deviceIp;
+    } catch {
+        return c.deviceIp;
+    }
+}
+
 function groupOf(c: SonosDeviceController): Group {
     const coordinator = c.transportDevice;
     const id = coordinatorId(c);
     let g = groups.get(id);
-    if (!g) groups.set(id, (g = { id, name: coordinator.Name || c.deviceIp, host: coordinator.Host, playing: false, since: 0 }));
+    if (!g) groups.set(id, (g = { id, name: roomName(c), host: coordinator.Host, playing: false, since: 0 }));
     g.host = coordinator.Host;
-    g.name = groupName(id, coordinator.Name || c.deviceIp);
+    g.name = groupName(id, roomName(c));
     return g;
 }
 
