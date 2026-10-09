@@ -81,8 +81,11 @@ const MEDIA_TRANSPORT: readonly TransportCommand[] = ["play-pause", "play", "pau
 async function sendToMedia(c: SonosDeviceController, command: TransportCommand): Promise<boolean> {
     const p = externalMedia(c);
     if (!p || !MEDIA_TRANSPORT.includes(command)) return false;
+    // MA learns of a pause ~30 s late (the speaker's late report), so its own toggle would pause
+    // again: the speaker's real state picks play or pause (seen 2026-10-09)
+    const sent = command === "play-pause" ? (c.transportState === "PLAYING" ? "pause" : "play") : command;
     // The kit sends play/pause to the plugin that talks to the speaker (us); these go to the media's
-    await socPlayers.send({ ...p, via: p.from }, command);
+    await socPlayers.send({ ...p, via: p.from }, sent);
     return true;
 }
 
