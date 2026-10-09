@@ -1,5 +1,6 @@
 <!-- NEXT -->
 
+- **Fixed: a dial in a shared Panorama stayed black** after its plugin (or another one in the row) restarted, until the plugin leading the row restarted too (kit 0.1.0-alpha.7).
 - **Music Assistant on a Sonos speaker:** keys and dials show the track, cover and colour from Music Assistant Controller as soon as it plays (the speaker itself reports Music Assistant's tracks 20–40 s late). Play/pause, next and previous go to Music Assistant (Sonos' own commands could leave the speaker silent), and a paused Music Assistant stream keeps its dimmed cover and resumes.
 - **Fixed: speakers staying "not playing"** (no cover, no Panorama) after a speaker was restarted and the group set up again.
 - **Requires Stream Deck 7.1 or later** and runs on Node.js 24 (Node 20 is out of support), like the other Rocklobster plugins.
