@@ -51,11 +51,22 @@ function syncExternalTracks(): void {
 }
 socPlayers.onChange(syncExternalTracks);
 
-/** The deck's player for this speaker while it plays another plugin's stream (MA-C for MA's). */
+/**
+ * The deck's player for this speaker while it plays another plugin's stream (MA-C for MA's). A
+ * paused one counts too: MA's "pause" stops the speaker and empties its own queue, so its track
+ * no longer looks like MA's stream (seen 2026-10-09); MA-C still claims the media while MA's
+ * queue drives the speaker, and drops it once something else (the Sonos app) plays.
+ */
 function externalMedia(c: SonosDeviceController, merged = socPlayers.players()): Player | undefined {
     const id = coordinatorId(c);
     const p = merged.find((x) => x.device === id);
-    return p && p.from.source !== "SO-C" && p.from.entry.media && isMusicAssistantStream(c.currentTrackUri) ? p : undefined;
+    if (!p || p.from.source === "SO-C" || !p.from.entry.media) return undefined;
+    return isMusicAssistantStream(c.currentTrackUri) || c.transportState !== "PLAYING" ? p : undefined;
+}
+
+/** Whether another plugin's media drives this speaker (MA's queue): resumable even with an empty Sonos queue. */
+export function playsExternalMedia(c: SonosDeviceController): boolean {
+    return externalMedia(c) !== undefined;
 }
 
 /** What a speaker playing Music Assistant's stream must leave to MA itself. */

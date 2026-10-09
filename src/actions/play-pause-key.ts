@@ -14,7 +14,7 @@ import { SonosBatteryStatus, deviceHasBattery } from "../sonos/SonosBattery";
 import { generateTransportIcon, renderBatteryBadge, renderPausedCover, renderProgressBar, wrapImageWithBadge, generateUnreachableKeyIcon } from "../utils/icons";
 import { keyColorOf, keyColorOfPlayer, onKeyColors, type KeyColorSettings } from "./key-color";
 import { isRemote, RemoteKeys, remotePlayer } from "./remote-player";
-import { socPlayers, togglePlayPause } from "../bus/soc-players";
+import { playsExternalMedia, socPlayers, togglePlayPause } from "../bus/soc-players";
 import { getCachedCover, loadCover, positionNow } from "@rocklobster42195/streamdeck-kit";
 import { getDominantColor, ensureVisibleColor } from "../utils/color-extract";
 import { parseRelTime } from "../sonos/rel-time";
@@ -337,7 +337,7 @@ export class PlayPauseKey extends SingletonAction<PlayPauseKeySettings> {
                 default: { // PAUSED, STOPPED
                     // A dimmed cover says "press to resume" — don't show it when there's nothing to resume.
                     const cover = this.currentCover.get(context);
-                    const resumable = !cover || !(await controller.hasNothingToPlay());
+                    const resumable = !cover || playsExternalMedia(controller) || !(await controller.hasNothingToPlay());
                     await action.setImage(settings.showCoverArt !== false && cover && resumable
                         ? renderPausedCover(cover, this.accentOf(context), badge72)
                         : generateTransportIcon('play', iconColor, badge24));
