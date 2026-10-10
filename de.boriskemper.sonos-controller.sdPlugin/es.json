@@ -147,6 +147,12 @@
             "look_hint": "Sin efecto (el Panorama decide si este dial muestra uno)",
             "look_track_info": "Info de pista",
             "look_eq": "Ecualizador",
+
+            "cover_side": "Portada",
+
+            "cover_left": "Izquierda",
+
+            "cover_right": "Derecha",
             "list": "Lista",
             "show_covers": "Mostrar portadas",
             "back_after": "Volver a la pista actual tras",

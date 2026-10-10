@@ -90,18 +90,6 @@ async function sendToMedia(c: SonosDeviceController, command: TransportCommand):
     return true;
 }
 
-/** Next/Previous for a speaker (see sendToMedia). */
-export async function skipTrack(c: SonosDeviceController, command: "next" | "previous"): Promise<void> {
-    if (await sendToMedia(c, command)) return;
-    if (command === "next") await c.next();
-    else await c.previous();
-}
-
-/** Play/pause for a speaker (see sendToMedia). */
-export async function togglePlayPause(c: SonosDeviceController): Promise<void> {
-    if (!(await sendToMedia(c, "play-pause"))) await c.togglePlayPause();
-}
-
 const CALLBACK = "soc-players";
 
 type Group = {

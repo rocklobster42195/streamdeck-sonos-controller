@@ -147,6 +147,12 @@
             "look_hint": "Ohne Effekt (ob dieser Dial einen zeigt, entscheidet das Panorama)",
             "look_track_info": "Track-Info",
             "look_eq": "Equalizer",
+
+            "cover_side": "Cover",
+
+            "cover_left": "Links",
+
+            "cover_right": "Rechts",
             "list": "Liste",
             "show_covers": "Cover anzeigen",
             "back_after": "Zurück zum laufenden Titel nach",

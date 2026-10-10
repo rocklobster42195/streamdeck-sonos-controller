@@ -12,21 +12,33 @@
 </head>
 
 <body hidden>
-  <pi-section title="pi.sonos_device">
-    <pi-select setting="deviceIp" source="sonos-devices" with="device" placeholder="pi.choose_device"></pi-select>
-    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
-    <div data-show-when="deviceIp=">
-      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
-    </div>
+  <pi-section title="pi.sonos_device" data-player-section>
+    <pi-select setting="player" source="players" placeholder="kit.player_active"></pi-select>
   </pi-section>
   <pi-section title="pi.look">
-    <pi-choice setting="visualizerMode" default="eq" columns="2" data-options='[
-      {"value":"none","label":"pi.look_track_info","icon":"trackInfo"},
+    <pi-choice setting="look" default="eq" columns="2" data-options='[
+      {"value":"info","label":"pi.look_track_info","icon":"trackInfo"},
       {"value":"eq","label":"pi.look_eq","icon":"eq"}
     ]'></pi-choice>
     <div class="pi-hint" data-i18n="pi.look_hint"></div>
+    <pi-toggle setting="showTitle" label="pi.show_title" data-default="true"></pi-toggle>
   </pi-section>
-  <pi-section title="pi.battery" data-show-when="hasBattery=true">
+  <pi-section title="pi.cover_side">
+    <pi-choice setting="coverSide" default="right" columns="2" data-options='[
+      {"value":"left","label":"pi.cover_left","icon":"alignLeft"},
+      {"value":"right","label":"pi.cover_right","icon":"alignRight"}
+    ]'></pi-choice>
+  </pi-section>
+  <pi-section class="pi-win" title="kit.seek_step">
+    <pi-choice setting="seekStep" columns="4" default="10" data-options='[
+      {"value":"5","label":"5 s"},
+      {"value":"10","label":"10 s"},
+      {"value":"15","label":"15 s"},
+      {"value":"30","label":"30 s"}
+    ]'></pi-choice>
+    <div class="pi-hint" data-i18n="kit.seek_step_hint"></div>
+  </pi-section>
+  <pi-section title="pi.battery">
     <pi-choice setting="batteryDisplayMode" default="warning" columns="3" data-options='[
       {"value":"off","label":"pi.battery_off"},
       {"value":"warning","label":"pi.battery_warning"},

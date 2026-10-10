@@ -148,6 +148,12 @@
             "look_hint": "Without an effect (the Panorama below decides whether this dial shows one)",
             "look_track_info": "Track info",
             "look_eq": "Equalizer",
+
+            "cover_side": "Cover",
+
+            "cover_left": "Left",
+
+            "cover_right": "Right",
             "list": "List",
             "show_covers": "Show covers",
             "back_after": "Back to the playing track after",
