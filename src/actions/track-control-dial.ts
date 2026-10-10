@@ -36,6 +36,8 @@ export class TrackControlDial extends TrackDialAction<TrackDialSettings> {
                 return renderBatteryBadge(s?.batteryDisplayMode ?? "warning", { percent: p.battery, charging: !!p.charging }, x, 10, 18) || undefined;
             },
             nothingLabel: () => piT("Track"),
+            // As the dial always was: the Equalizer, until the user picks track info
+            defaultLook: "eq",
             migrate: (s) => migrateTrackDial(s, deviceOf),
             onShown: (a, s) => this.joinRow(a, s),
             onSettings: (a, s) => {
