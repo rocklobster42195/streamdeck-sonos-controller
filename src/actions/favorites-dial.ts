@@ -20,6 +20,8 @@ import { deviceHasLineIn } from "../sonos/SonosLineIn";
 import { syncCapabilityFlag } from "./capability-flag";
 import { panoramaContextGroupKey, getPanoramaSliceOffset, renderPanoramaEffectSlice, isPanoramaEffectActive } from "../effects/panorama";
 import { ControllerLease } from "./ControllerLease";
+import { deckPlayers, deviceOf } from "./deck-players";
+import { playerOf } from "./play-pause-migrate";
 
 type FavoritesDialSettings = PanoramaCapableSettings & {
     deviceIp?: string;
@@ -361,7 +363,16 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         const state = this.states.get(context);
         const controller = this.lease.get(context);
         const favs = this.getFavorites(context);
-        if (!state || !controller || state.currentIndex === -1 || favs.length === 0) return;
+        if (!state || !controller) return;
+        // On the now-playing card: a push starts the favorite shown from its beginning (again), or
+        // just plays when only a source is known (a playlist from another app, Music Assistant's)
+        if (state.currentIndex === -1) {
+            const shown = state.playingFav ? favs.find((f) => f.Title === state.playingFav!.Title) : undefined;
+            if (shown) await this.playFavoriteNow(context, controller, shown, ev.payload.settings);
+            else await this.sendTransport(context, 'play');
+            return;
+        }
+        if (favs.length === 0) return;
 
         const fav = favs[state.list.marked];
         if (!fav) return;
@@ -375,7 +386,12 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         state.playingFav = { Title: fav.Title, AlbumArtUri: fav.AlbumArtUri, isLineIn: fav.isLineIn };
         this.queueRender(context);
 
-        const fadeMs = (Number(ev.payload.settings.fadeDuration) || 0) * 1000;
+        await this.playFavoriteNow(context, controller, fav, ev.payload.settings);
+    }
+
+    /** Plays a favorite (with the dial's fade), also the one that is playing: a restart. */
+    private async playFavoriteNow(context: string, controller: SonosDeviceController, fav: SonosFavorite, settings: FavoritesDialSettings): Promise<void> {
+        const fadeMs = (Number(settings.fadeDuration) || 0) * 1000;
         try {
             if (fav.isLineIn) {
                 await controller.switchToLineInWithFade(fadeMs);
@@ -389,6 +405,23 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         }
     }
 
+    /**
+     * Play or pause through the deck's players, so a speaker that plays Music Assistant's stream is
+     * controlled by MA-C (Sonos commands would break MA's queue); explicit, from what the card shows.
+     */
+    private async sendTransport(context: string, command: 'play' | 'pause'): Promise<void> {
+        const ip = this.settingsMap.get(context)?.deviceIp;
+        const choice = playerOf(ip, deviceOf);
+        const player = choice ? deckPlayers.resolve(choice) : undefined;
+        if (!player) return;
+        try {
+            await deckPlayers.send(player, command);
+        } catch (e) {
+            streamDeck.logger.warn(`[FavDial] ${command} failed`, e);
+            await streamDeck.actions.getActionById(context)?.showAlert();
+        }
+    }
+
     override async onTouchTap(ev: TouchTapEvent<FavoritesDialSettings>): Promise<void> {
         const context = ev.action.id;
         const state = this.states.get(context);
@@ -398,6 +431,8 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
         if (state.currentIndex !== -1) {
             this.startFadeThroughBlack(context);
         } else {
+            // On the now-playing card a tap plays or pauses, as on the Track dial
+            await this.sendTransport(context, state.transportState === 'PLAYING' ? 'pause' : 'play');
             this.queueRender(context);
         }
     }

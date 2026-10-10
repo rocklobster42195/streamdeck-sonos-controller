@@ -1,5 +1,6 @@
 <!-- NEXT -->
 
+- **Favorites dial, now-playing card:** a **tap** plays or pauses (through the deck's players, so a speaker playing Music Assistant's stream is controlled by Music Assistant Controller), a **push** starts the favorite shown again from its beginning (with the dial's fade), or plays when only a source is known. Both did nothing before.
 - **Fixed: A new cover's colour reached the Panorama late: the colour fade took four seconds instead of one (kit 0.1.0-alpha.23).** Matrix Rain now recolours what is already drawn.
 - **Fixed: a speaker that is idle no longer tries a cover from an address that isn't one** (`/getaa` with "[object Object]", HTTP 404 in the log at every start).
 - **The Volume dial's manual speaker address** (for a speaker that discovery doesn't find) is back in its settings, with the Track dial's.

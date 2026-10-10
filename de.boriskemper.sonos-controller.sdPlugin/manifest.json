@@ -141,9 +141,9 @@
 			"Encoder": {
 				"layout": "layouts/canvas.json",
 				"TriggerDescription": {
-					"Push": "Play selected favorite",
+					"Push": "Play selected favorite (now playing: start it again)",
 					"Rotate": "Browse favorites list",
-					"Touch": "Return to now playing"
+					"Touch": "Return to now playing (now playing: play / pause)"
 				}
 			},
 			"States": [
