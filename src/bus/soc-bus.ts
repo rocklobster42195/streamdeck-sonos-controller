@@ -61,6 +61,13 @@ export async function startSocBus(): Promise<void> {
     // started in the Sonos app only reached the deck late, through Music Assistant)
     onDevicesChanged(followGroups);
     followGroups();
+    // The topology also changes while nothing is rediscovered (a speaker joins or leaves a group in
+    // the Sonos app): the names ("Küche + 2") and the leaders held open follow it a few seconds later
+    const topology = setInterval(() => {
+        countMembers();
+        followGroups();
+    }, 15_000);
+    topology.unref?.();
 }
 
 /** The coordinator of every visible group, each held open while it leads its group. */

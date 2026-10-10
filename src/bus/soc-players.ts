@@ -349,7 +349,19 @@ function batteryOf(id: string): { battery?: number; charging?: boolean } {
     return {};
 }
 
+/**
+ * Forgets the groups no watched speaker leads any more. A speaker that joined another group keeps
+ * its old group in the map (with the last state it had: "playing"), until its connection goes;
+ * that phantom group ("Badezimmer", no title, no cover, started just now) then became the active
+ * speaker and left the keys empty (seen 2026-10-10).
+ */
+function pruneGroups(): void {
+    const live = new Set([...controllers.values()].map((c) => coordinatorId(c)));
+    for (const id of [...groups.keys()]) if (!live.has(id)) groups.delete(id);
+}
+
 function publish(): void {
+    pruneGroups();
     const covers: CoverEntry[] = [];
     const players: PlayerEntry[] = [];
     for (const g of groups.values()) {
