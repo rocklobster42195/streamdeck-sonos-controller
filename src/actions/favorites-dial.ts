@@ -11,7 +11,7 @@ import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 import { SonosDeviceController } from "../sonos/SonosDeviceController";
 import { sonosFavoritesCache } from "../sonos/sonos-discovery";
 import { PlaybackSource, SonosFavorite, TrackInfo, VolumeInfo } from "../sonos/SonosTypes";
-import { mdiCog, mdiHeart, mdiHeartCircle, mdiHeartCircleOutline, mdiAudioInputRca } from "@mdi/js";
+import { mdiCog, mdiHeart, mdiHeartCircle, mdiHeartCircleOutline, mdiAudioInputRca, mdiPlayPause, mdiRestart, mdiSwapVertical } from "@mdi/js";
 import { ListController, type ListRow, nowPlayingCard } from "@rocklobster42195/streamdeck-kit";
 import { ACCENT_COLOR, INACTIVE_ICON_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
@@ -501,6 +501,8 @@ export class FavoritesDial extends PanoramaCapableDialAction<FavoritesDialSettin
                 ? { kind: piT('Favorite'), name: fav.Title, track: trackLine }
                 : { kind: [sourceKind(source!.upnpClass), source!.service].filter(Boolean).join(' · '), name: source!.title, track: trackLine },
             hint: piT('Rotate to browse'),
+            // Rotate to browse (up and down the list), tap to play or pause, push to start again
+            hintIcons: [mdiSwapVertical, mdiPlayPause, mdiRestart],
             backdrop,
         }));
     }
