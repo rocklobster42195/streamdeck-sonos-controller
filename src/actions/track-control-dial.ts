@@ -21,6 +21,8 @@ export class TrackControlDial extends TrackDialAction<TrackDialSettings> {
     constructor() {
         super({
             board: deckPlayers,
+            // The manifest's "$A0" layout has a title, icon and indicator of its own ("Track Control"): cleared
+            feedback: { title: "", icon: "", indicator: { value: 0, enabled: false } },
             rowColor: (deviceId) => panoramaRows.rowColor(deviceId),
             underlay: (id) => {
                 const key = panoramaContextGroupKey.get(id);
