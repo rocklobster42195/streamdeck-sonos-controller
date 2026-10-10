@@ -4,7 +4,7 @@
 import { definePiComponents, initChoiceOptions, initConditionalVisibility, initSettingsWindow, registerSelectParams, sd, settingsWindowShown, t, translateDom } from "@rocklobster42195/streamdeck-kit/pi";
 import { CHOICE_ICONS } from "./choice-icons";
 
-initSettingsWindow({ name: "SO-C" });
+initSettingsWindow({ name: "SO-C", helpUrl: "https://github.com/rocklobster42195/streamdeck-sonos-controller" });
 
 // <pi-select with="device">/<… with="group">: the action's current choice, so the plugin keeps it
 // in the list while that speaker is offline
