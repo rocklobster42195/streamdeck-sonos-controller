@@ -60,6 +60,7 @@ const CONTROL_ICONS: Record<string, string> = { count: mdiScatterPlotOutline, sp
 export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings> {
     private readonly instances = new Map<string, Instance>();
     private readonly lastImage = new Map<string, string>();
+    private readonly lastTitle = new Map<string, string>();
     private readonly offPlayers: () => void;
 
     constructor() {
@@ -205,6 +206,10 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
         if (!inst) return;
         const p = inst.settings.showTrackInfo ? this.playerOf(id) : undefined;
         const text: RunText | undefined = p?.title ? { kind: "track", title: p.title, artist: p.artist ?? "" } : undefined;
+        if (text?.kind === "track" && text.title !== this.lastTitle.get(id)) {
+            this.lastTitle.set(id, text.title);
+            streamDeck.logger.info(`[Panorama ${id.slice(0, 6)}] text "${text.title}" from ${p?.name ?? "?"} (${p?.source ?? "?"})`);
+        }
         textRuns.setText(id, text);
     }
 
