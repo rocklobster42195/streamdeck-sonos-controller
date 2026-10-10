@@ -1,4 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
+import { setKitLogger } from "@rocklobster42195/streamdeck-kit";
 import "./sonos/sonos-discovery"; // This will start the discovery process
 // Diagnostic-heartbeat imports — see the disabled block at the bottom of this file.
 // import { sonosDeviceManager } from "./sonos/SonosDeviceManager";
@@ -22,6 +23,8 @@ import { initPiBridge } from "./pi/bridge";
 import { startSocBus } from "./bus/soc-bus";
 
 streamDeck.logger.setLevel("info");
+// The kit reports into the plugin's log (transport routes, covers that failed to load, a throwing effect)
+setKitLogger(streamDeck.logger);
 
 // Register the actions that this plugin supports.
 initPiBridge();
