@@ -70,26 +70,6 @@ export function playsExternalMedia(c: SonosDeviceController): boolean {
     return externalMedia(c) !== undefined;
 }
 
-/** What a speaker playing Music Assistant's stream must leave to MA itself. */
-const MEDIA_TRANSPORT: readonly TransportCommand[] = ["play-pause", "play", "pause", "next", "previous"];
-
-/**
- * While a speaker plays Music Assistant's stream, play/pause and next/previous go to MA-C. Sonos
- * commands break MA's cloud queue (seen 2026-10-09): a second "Next" left the speaker buffering,
- * then paused at 0 s; "Play" after a pause ended in a playbackError. Both times it stayed silent
- * while MA still said "playing". True when the command went to MA-C.
- */
-async function sendToMedia(c: SonosDeviceController, command: TransportCommand): Promise<boolean> {
-    const p = externalMedia(c);
-    if (!p || !MEDIA_TRANSPORT.includes(command)) return false;
-    // MA learns of a pause ~30 s late (the speaker's late report), so its own toggle would pause
-    // again: the speaker's real state picks play or pause (seen 2026-10-09)
-    const sent = command === "play-pause" ? (c.transportState === "PLAYING" ? "pause" : "play") : command;
-    // The kit sends play/pause to the plugin that talks to the speaker (us); these go to the media's
-    await socPlayers.send({ ...p, via: p.from }, sent);
-    return true;
-}
-
 const CALLBACK = "soc-players";
 
 type Group = {
@@ -208,11 +188,15 @@ export function unwatchPlayers(controller: SonosDeviceController): void {
     publish();
 }
 
-/** Commands for SO-C's own players, from its own keys and from other plugins (deckbus "transport"). */
+/**
+ * Commands for SO-C's own players, from its own keys and from other plugins (deckbus "transport").
+ * Commands about what plays go to the plugin whose media it is (the kit's merge, routeFor: Music
+ * Assistant's stream gets its play, pause, next and previous from MA-C), so they only arrive here
+ * for the speaker's own media; Sonos commands on MA's stream would break its queue (2026-10-09).
+ */
 socPlayers.serve(async ({ player, command, value }: Transport) => {
     const c = controllerFor(player);
     if (!c) throw new Error(`transport: ${player} is not connected`);
-    if (await sendToMedia(c, command)) return;
     const dev = c.transportDevice;
     const g = groups.get(player);
     switch (command) {
