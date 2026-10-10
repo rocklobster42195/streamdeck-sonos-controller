@@ -69,6 +69,10 @@ function nextPollStaggerMs(): number {
     return Math.round((slot / POLL_STAGGER_SLOTS) * POLL_INTERVAL_MS);
 }
 
+// Addresses already reported once (see initialize / initializeSubscriptions)
+const loggedUnreachable = new Set<string>();
+const loggedPollingFallback = new Set<string>();
+
 export class SonosDeviceController {
   public readonly deviceIp: string;
   public sonosDevice: SonosDevice; 
@@ -317,7 +321,13 @@ export class SonosDeviceController {
       // (mirroring notePollFailure's flip, but skipping straight there since we already know)
       // lets initialize() still complete normally below, so this controller gets pooled and
       // recovers the same way any mid-session drop does.
-      streamDeck.logger.warn(`[${this.deviceIp}] Initial connection failed — starting unreachable`, e);
+      // A key pinned to a dead IP is set up again every few seconds: say it once at warn level
+      // (with the stack), then quietly — the key's unreachable icon says the rest.
+      if (loggedUnreachable.has(this.deviceIp)) streamDeck.logger.debug(`[${this.deviceIp}] Initial connection failed again — unreachable.`);
+      else {
+        loggedUnreachable.add(this.deviceIp);
+        streamDeck.logger.warn(`[${this.deviceIp}] Initial connection failed — starting unreachable (further attempts are logged at debug level; a key or dial may still be set to this old address)`, e);
+      }
       this.reachable = false;
     }
     await this.initializeSubscriptions();
@@ -970,7 +980,11 @@ export class SonosDeviceController {
           streamDeck.logger.debug(`[${this.deviceIp}] Subscribe error while unreachable (suppressed).`);
         }
         if (!this.pollInterval) {
-          streamDeck.logger.warn(`[${this.deviceIp}] UPnP subscription failed — falling back to 8s polling.`);
+          if (loggedPollingFallback.has(this.deviceIp)) streamDeck.logger.debug(`[${this.deviceIp}] UPnP subscription failed — polling.`);
+          else {
+            loggedPollingFallback.add(this.deviceIp);
+            streamDeck.logger.warn(`[${this.deviceIp}] UPnP subscription failed — falling back to 8s polling.`);
+          }
           this.startPolling();
         }
       });
@@ -1236,7 +1250,8 @@ export class SonosDeviceController {
       // parsed object without AlbumArtUri (other radio). The URI stays stable during news
       // segments, so the station logo keeps showing.
       // (an idle speaker can report something that isn't a string, which became "[object Object]")
-      if (typeof positionInfo.TrackURI === 'string' && positionInfo.TrackURI) {
+      // x-rincon: is a pointer to the group's coordinator, not a stream — /getaa answers 404 for it
+      if (typeof positionInfo.TrackURI === 'string' && positionInfo.TrackURI && !positionInfo.TrackURI.startsWith('x-rincon:')) {
           const artUri = `/getaa?s=1&u=${encodeURIComponent(positionInfo.TrackURI)}`;
           streamDeck.logger.debug(`[getCurrentTrackCover] Trying radio art: ${artUri.substring(0, 80)}`);
           const cover = await loadImageFromUri(artUri, this.transportDevice);
