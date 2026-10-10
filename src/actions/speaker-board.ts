@@ -41,7 +41,7 @@ function roomName(ip: string): string {
 
 const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
 
-export const speakerBoard: Pick<PlayerBoard, "resolve" | "send" | "onChange"> = {
+export const speakerBoard: Pick<PlayerBoard, "resolve" | "send" | "onChange" | "status"> = {
     resolve(choice) {
         const base = deckPlayers.resolve(choice);
         const c = choice ? held.get(choice) : undefined;
@@ -66,4 +66,5 @@ export const speakerBoard: Pick<PlayerBoard, "resolve" | "send" | "onChange"> = 
         throw new Error(`speaker: ${command} is not a speaker command`);
     },
     onChange: (fn) => deckPlayers.onChange(fn),
+    status: (p, now) => deckPlayers.status(p, now),
 };

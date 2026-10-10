@@ -14,7 +14,7 @@ export function deviceOf(ip: string): string | undefined {
  * The deck's players as the key sees them: a key moved over while its speaker was offline is bound
  * by address ("sonos-ip:…") and finds the speaker once it's back.
  */
-export const deckPlayers: Pick<typeof socPlayers, "resolve" | "send" | "onChange"> = {
+export const deckPlayers: Pick<typeof socPlayers, "resolve" | "send" | "onChange" | "status"> = {
     resolve: (choice) => {
         if (!choice?.startsWith(SONOS_IP_PREFIX)) return socPlayers.resolve(choice);
         const device = deviceOf(choice.slice(SONOS_IP_PREFIX.length));
@@ -22,5 +22,6 @@ export const deckPlayers: Pick<typeof socPlayers, "resolve" | "send" | "onChange
     },
     send: (target, command, value) => socPlayers.send(target, command, value),
     onChange: (fn) => socPlayers.onChange(fn),
+    status: (p, now) => socPlayers.status(p, now),
 };
 
