@@ -1235,7 +1235,8 @@ export class SonosDeviceController {
       // This works regardless of whether TrackMetaData is a plain string (some radio) or a
       // parsed object without AlbumArtUri (other radio). The URI stays stable during news
       // segments, so the station logo keeps showing.
-      if (positionInfo.TrackURI) {
+      // (an idle speaker can report something that isn't a string, which became "[object Object]")
+      if (typeof positionInfo.TrackURI === 'string' && positionInfo.TrackURI) {
           const artUri = `/getaa?s=1&u=${encodeURIComponent(positionInfo.TrackURI)}`;
           streamDeck.logger.debug(`[getCurrentTrackCover] Trying radio art: ${artUri.substring(0, 80)}`);
           const cover = await loadImageFromUri(artUri, this.transportDevice);
