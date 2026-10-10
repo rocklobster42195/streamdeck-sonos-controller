@@ -707,6 +707,12 @@ export class SonosDeviceController {
     throw lastError;
   }
 
+  /** Mutes or unmutes this speaker itself (not its group). */
+  async setMute(mute: boolean): Promise<void> {
+    await this.sonosDevice.RenderingControlService.SetMute({ DesiredMute: mute, InstanceID: 0, Channel: "Master" });
+    this.currentMute = mute;
+  }
+
   async toggleMute(): Promise<boolean> {
     const newMute = !this.currentMute;
     await this.sonosDevice.RenderingControlService.SetMute({ DesiredMute: newMute, InstanceID: 0, Channel: "Master" });

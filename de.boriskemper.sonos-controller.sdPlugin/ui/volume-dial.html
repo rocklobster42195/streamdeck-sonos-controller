@@ -12,15 +12,12 @@
 </head>
 
 <body hidden>
-  <pi-section title="pi.sonos_device">
-    <pi-select setting="deviceIp" source="sonos-devices" with="device" placeholder="pi.choose_device"></pi-select>
-    <!-- Only while setting up: a speaker that discovery doesn't find (e.g. another VLAN) -->
-    <div data-show-when="deviceIp=">
-      <pi-field setting="lastKnownDeviceIp" global label="pi.manual_ip_summary" placeholder="192.168.1.42" hint="pi.manual_ip_hint"></pi-field>
-    </div>
+  <pi-section title="pi.sonos_device" data-player-section>
+    <pi-select setting="player" source="players" placeholder="kit.player_active"></pi-select>
   </pi-section>
   <pi-section title="pi.volume">
-    <pi-range setting="presetVolume" min="0" max="100" step="1" default="50" unit="%" label="pi.preset_volume" hint="pi.preset_volume_hint"></pi-range>
+    <pi-range setting="step" min="1" max="10" step="1" default="1" unit="%" label="pi.vol_step"></pi-range>
+    <pi-range setting="preset" min="0" max="100" step="1" default="50" unit="%" label="pi.preset_volume" hint="pi.preset_volume_hint"></pi-range>
   </pi-section>
   <pi-section title="pi.gauge">
     <pi-choice setting="gauge" default="pie" columns="3" data-options='[
@@ -39,6 +36,12 @@
       {"value":"center","label":"pi.align_center","icon":"alignCenter"},
       {"value":"right","label":"pi.align_right","icon":"alignRight"}
     ]'></pi-choice>
+  </pi-section>
+  <pi-section title="kit.key_color">
+    <pi-key-color setting="keyColor" label=""></pi-key-color>
+  </pi-section>
+  <pi-section title="kit.key_color">
+    <pi-key-color setting="keyColor" label=""></pi-key-color>
   </pi-section>
   <pi-panorama class="pi-win"></pi-panorama>
   <pi-panorama class="pi-pi-only" summary></pi-panorama>

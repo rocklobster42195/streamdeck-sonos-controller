@@ -10,6 +10,8 @@
         "Control SONOS volume with a key.": "SONOS-Lautstärke per Taste steuern.",
         "Unmuted": "Nicht stummgeschaltet",
         "Muted": "Stummgeschaltet",
+
+        "Muted (short)": "STUMM",
         "Volume": "Lautstärke",
         "Control SONOS volume with a dial.": "SONOS-Lautstärke per Regler steuern.",
         "Favorites": "Favoriten",

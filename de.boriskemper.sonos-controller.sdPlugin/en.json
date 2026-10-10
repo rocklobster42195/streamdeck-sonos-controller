@@ -10,6 +10,8 @@
         "Control SONOS volume with a key.": "Control SONOS volume with a key.",
         "Unmuted": "Unmuted",
         "Muted": "Muted",
+
+        "Muted (short)": "MUTE",
         "Volume": "Volume",
         "Control SONOS volume with a dial.": "Control SONOS volume with a dial.",
         "Favorites": "Favorites",
