@@ -1,7 +1,8 @@
 // Plugin side of the kit's property inspector: the lists its <pi-select> fields ask for. The PI
 // pages that still use sdpi-components keep talking to their actions' onSendToPlugin; both run
 // side by side until every page has moved.
-import { piBridge, trackActions } from "@rocklobster42195/streamdeck-kit/bridge";
+import { deckPeers } from "../bus/soc-bus";
+import { registerDiagnostics, piBridge, trackActions } from "@rocklobster42195/streamdeck-kit/bridge";
 import { mdiOptions } from "@rocklobster42195/streamdeck-kit/mdi";
 import { panoramaRows, socActions } from "../effects/panorama";
 import { deviceItems, groupItems } from "../actions/pi-options";
@@ -13,6 +14,8 @@ import { piT } from "../utils/pi-i18n";
 export function initPiBridge(): void {
     trackActions(socActions);
     piBridge.init();
+    // "Diagnostics" in the settings window: the log, a report to copy, the issue page
+    registerDiagnostics(piBridge, { issueUrl: "https://github.com/rocklobster42195/streamdeck-sonos-controller/issues", peers: deckPeers });
     // The PI's Panorama section (<pi-panorama>): the row's effect, its dials and settings
     panoramaRows.attachPi(piBridge);
     // `deviceIp`/`groupIp`: the action's current choice, kept in the list while it is offline
