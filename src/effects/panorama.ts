@@ -6,7 +6,7 @@
 // (same names as the orchestrator's), so their drawing code didn't have to change.
 import { socCovers } from "../bus/soc-players";
 import { ActionsState } from "@rocklobster42195/streamdeck-kit/bus";
-import { PanoramaEngine, PanoramaRows, rowStateFromSettings, SharedPanorama, type RowDialState } from "@rocklobster42195/streamdeck-kit";
+import { PanoramaEngine, PanoramaRows, rowStateFromSettings, SharedPanorama, TextRuns, type RowDialState } from "@rocklobster42195/streamdeck-kit";
 
 let sink: ((key: string, value: unknown) => void) | undefined;
 
@@ -19,6 +19,9 @@ export function shareActionsTo(fn: (key: string, value: unknown) => void): void 
 }
 
 export const panorama = new SharedPanorama(new PanoramaEngine({ defaultColor: "#404040" }), socActions);
+
+/** Text over the Panorama across plugin borders (one run of canvas dials, whichever plugin they belong to). */
+export const textRuns = new TextRuns(socActions);
 
 /** One effect per row, with the row's colour (the cover of a speaker from SO-C's or another plugin's "covers" on deckbus). */
 export const panoramaRows = new PanoramaRows(panorama, { name: "SO-C", actions: socActions, covers: socCovers });

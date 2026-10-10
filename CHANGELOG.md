@@ -1,5 +1,7 @@
 <!-- NEXT -->
 
+- **Panorama Effects dial:** "Show track info" now runs across the dials of other plugins too (a title can start on Music Assistant's Panorama dial and end on this one), and the dial's player is chosen from every player on deckbus ("Active player" by default), not only Sonos speakers.
+- An unreachable speaker address is logged once instead of every few seconds; the cover guess is skipped for `x-rincon:` track URIs (it answered 404).
 - **Diagnostics in the settings window:** a collapsed field at the end with the end of the plugin's log (warnings and errors marked, a filter), a small copy icon at the top right that copies a report (versions of the plugin, Stream Deck and the other plugins, then the log; tokens, passwords and e-mail addresses hidden), "Show log file" (opens the file manager) and "Report an issue" (copies the report and opens the issue page).
 - **Fixed: a speaker that joined another group stayed a group of its own on the deck** ("playing", without title or cover): it became the active speaker and the Play/Pause key and the cover colour went empty. The group names ("Küche + 2") now follow joining and leaving within seconds as well.
 - **Favorites dial, now-playing card:** a **tap** plays or pauses (through the deck's players, so a speaker playing Music Assistant's stream is controlled by Music Assistant Controller), a **push** starts the favorite shown again from its beginning (with the dial's fade), or plays when only a source is known. Both did nothing before.

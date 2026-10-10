@@ -9,12 +9,10 @@ import streamDeck, {
     WillDisappearEvent,
 } from "@elgato/streamdeck";
 import { mdiScatterPlotOutline, mdiSpeedometer, mdiWeatherPouring } from "@mdi/js";
-import { measureArialWidth, ROW_COLOR_KEY, truncateToWidth } from "@rocklobster42195/streamdeck-kit";
-import { panorama, panoramaRows, socRowState } from "../effects/panorama";
-import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
-import { SonosDeviceController } from "../sonos/SonosDeviceController";
-import { TrackInfo } from "../sonos/SonosTypes";
-import { ControllerLease } from "./ControllerLease";
+import { lyricsOverlay, measureArialWidth, ROW_COLOR_KEY, trackOverlay, type RunText } from "@rocklobster42195/streamdeck-kit";
+import { panorama, panoramaRows, socRowState, textRuns } from "../effects/panorama";
+import { deckPlayers } from "./deck-players";
+import { SONOS_IP_PREFIX } from "./play-pause-migrate";
 import { escapeXml } from "../utils/xml";
 import { ACCENT_COLOR } from "../utils/icons";
 import { piT } from "../utils/pi-i18n";
@@ -22,7 +20,9 @@ import { piT } from "../utils/pi-i18n";
 type PanoramaEffectsSettings = {
     // The old per-dial effect choice — taken over into the row once (socRowState), then the row's.
     effectId?: string;
-    // The speaker whose track the text shows (its cover was the effect's colour before the row's colour).
+    // The player whose track the text shows: "" = the active player, "device:<id>", or a player of another plugin.
+    player?: string;
+    // The speaker of an older version (before players), taken as the choice while `player` is unset.
     deviceIp?: string;
     // Colour without a speaker — taken over into the row's colour once (rowColorTaken), then the row's.
     staticColor?: string;
@@ -34,7 +34,6 @@ type Instance = {
     settings: PanoramaEffectsSettings;
     deviceId: string;
     column: number;
-    track?: { title: string; artist: string };
     /** Which of the effect's values turning changes (index into panoramaRows.tunables). */
     fn: number;
     /** Until when the function badge shows at the top. */
@@ -61,10 +60,15 @@ const CONTROL_ICONS: Record<string, string> = { count: mdiScatterPlotOutline, sp
 export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings> {
     private readonly instances = new Map<string, Instance>();
     private readonly lastImage = new Map<string, string>();
-    private lease = new ControllerLease<SonosDeviceController>(
-        (ip) => sonosDeviceManager.getController(ip),
-        (controller) => sonosDeviceManager.releaseController(controller.deviceIp),
-    );
+    private readonly offPlayers: () => void;
+
+    constructor() {
+        super();
+        // Players and what they play change over deckbus: every dial takes the new text
+        this.offPlayers = deckPlayers.onChange(() => {
+            for (const id of this.instances.keys()) this.publishText(id);
+        });
+    }
 
     override async onWillAppear(ev: WillAppearEvent<PanoramaEffectsSettings>): Promise<void> {
         if (!ev.action.isDial()) return;
@@ -97,23 +101,23 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
             inst.settings = { ...inst.settings, rowColorTaken: true };
             void ev.action.setSettings(inst.settings);
         }
-        await this.followDevice(id);
+        textRuns.set(id, { device: ev.action.device.id, column }, undefined, () => void this.renderDial(id));
+        this.publishText(id);
     }
 
     override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<PanoramaEffectsSettings>): Promise<void> {
         const inst = this.instances.get(ev.action.id);
         if (!inst) return;
-        const before = inst.settings;
         inst.settings = ev.payload.settings;
         panoramaRows.changed(ev.action.id);
-        if (before.deviceIp !== inst.settings.deviceIp) await this.followDevice(ev.action.id);
+        this.publishText(ev.action.id);
         void this.renderDial(ev.action.id);
     }
 
     override async onWillDisappear(ev: WillDisappearEvent<PanoramaEffectsSettings>): Promise<void> {
         const id = ev.action.id;
         clearTimeout(this.instances.get(id)?.tuneTimer);
-        this.lease.release(id);
+        textRuns.remove(id);
         this.instances.delete(id);
         this.lastImage.delete(id);
         panoramaRows.remove(id);
@@ -186,81 +190,43 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
         ].join("");
     }
 
-    // ---- the speaker: track text and cover colour --------------------------------------------
+    // ---- the player: track text ---------------------------------------------------------------
 
-    private async followDevice(id: string): Promise<void> {
-        this.lease.release(id);
-        const inst = this.instances.get(id);
-        if (!inst) return;
-        inst.track = undefined;
-        const ip = inst.settings.deviceIp;
-        if (!ip) return;
-        try {
-            await this.lease.acquire(id, ip, (controller) => {
-                controller.registerTrackInfoCallback(id, (ti) => this.onTrack(id, ti));
-                return [() => controller.unregisterTrackInfoCallback(id)];
-            });
-        } catch (e) {
-            streamDeck.logger.warn(`[Panorama ${id}] speaker ${ip} not available`, e);
-        }
+    /** The player this dial's text is about: its choice, the speaker of an older version, or the active player. */
+    private playerOf(id: string) {
+        const s = this.instances.get(id)?.settings;
+        const choice = s?.player || (s?.deviceIp ? `${SONOS_IP_PREFIX}${s.deviceIp}` : undefined);
+        return deckPlayers.resolve(choice);
     }
 
-    private onTrack(id: string, ti: TrackInfo): void {
+    /** What this dial shows as text, given to the run: it spans the dials of every plugin next to it. */
+    private publishText(id: string): void {
         const inst = this.instances.get(id);
         if (!inst) return;
-        inst.track = ti.Title ? { title: ti.Title, artist: ti.Artist ?? "" } : undefined;
-        this.renderOwnRun(id);
+        const p = inst.settings.showTrackInfo ? this.playerOf(id) : undefined;
+        const text: RunText | undefined = p?.title ? { kind: "track", title: p.title, artist: p.artist ?? "" } : undefined;
+        textRuns.setText(id, text);
     }
 
     // ---- drawing ------------------------------------------------------------------------------
-
-    /** The Panorama Effects dials right next to each other on this device (this one included). */
-    private ownRun(id: string): string[] {
-        const me = this.instances.get(id);
-        if (!me) return [id];
-        const byColumn = new Map<number, string>();
-        for (const [other, inst] of this.instances) if (inst.deviceId === me.deviceId) byColumn.set(inst.column, other);
-        let left = me.column;
-        while (byColumn.has(left - 1)) left--;
-        let right = me.column;
-        while (byColumn.has(right + 1)) right++;
-        const run: string[] = [];
-        for (let c = left; c <= right; c++) run.push(byColumn.get(c)!);
-        return run;
-    }
-
-    private renderOwnRun(id: string): void {
-        for (const other of this.ownRun(id)) void this.renderDial(other);
-    }
 
     private async renderDial(id: string): Promise<void> {
         const sdAction = streamDeck.actions.getActionById(id);
         const inst = this.instances.get(id);
         if (!sdAction || !sdAction.isDial() || !inst) return;
 
-        // Title and artist of the run's speaker, right-aligned at the run's last dial; long lines
-        // grow left over the run and are cut to it, so every dial cuts the same string
-        const run = this.ownRun(id).map((c) => this.instances.get(c)!).filter(Boolean);
-        const source = run.find((r) => r.settings.showTrackInfo && r.track);
-        const cols = run.map((r) => r.column);
-        const anchorX = 196 + (Math.max(...cols) - inst.column) * 200;
-        const maxW = 196 + (Math.max(...cols) - Math.min(...cols)) * 200 - 8;
-        const title = source?.track?.title ? truncateToWidth(source.track.title, 20, maxW) : "";
-        const artist = source?.track?.artist ? truncateToWidth(source.track.artist, 15, maxW) : "";
-        const titleW = title ? measureArialWidth(title, 20) : 0;
-        const artistW = artist ? measureArialWidth(artist, 15) : 0;
-        const text = (x: number, y: number, size: number, color: string, weight: string, value: string) =>
-            value ? `<text x="${x}" y="${y}" fill="${color}" font-family="Arial,sans-serif" font-size="${size}"${weight ? ` font-weight="${weight}"` : ""} text-anchor="end" clip-path="url(#c)">${escapeXml(value)}</text>` : "";
+        // The run's text (the leftmost dial that shows any, of whichever plugin) is drawn across all
+        // its dials; every display cuts its own window of it, so the string is the same on each
+        const view = textRuns.run(id);
+        const run = view ? { width: view.width, offset: view.offset } : undefined;
+        const overlay = !run || !view?.text ? "" : view.text.kind === "track" ? trackOverlay(run, view.text) : lyricsOverlay(run, view.text.current, view.text.next, undefined);
 
         const svg = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
             '<defs><clipPath id="c"><rect width="200" height="100"/></clipPath></defs>',
             '<rect width="200" height="100" fill="#000"/>',
             `<g clip-path="url(#c)">${panorama.renderSlice(id)}</g>`,
-            titleW ? `<rect x="${anchorX - titleW - 4}" y="49" width="${titleW + 8}" height="27" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : "",
-            text(anchorX, 72, 20, "#fff", "500", title),
-            artistW ? `<rect x="${anchorX - artistW - 4}" y="77" width="${artistW + 8}" height="20" rx="3" fill="#000" fill-opacity="0.7" clip-path="url(#c)"/>` : "",
-            text(anchorX, 93, 15, "#aaa", "", artist),
+            `<g clip-path="url(#c)">${overlay}</g>`,
             this.badge(id),
             "</svg>",
         ].join("");

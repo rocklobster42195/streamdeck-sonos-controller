@@ -8,7 +8,7 @@ import streamDeck from "@elgato/streamdeck";
 import { CALL_SETTING, CallReaction } from "@rocklobster42195/streamdeck-kit";
 import { piBridge } from "@rocklobster42195/streamdeck-kit/bridge";
 import { DeckBus } from "@rocklobster42195/streamdeck-kit/bus";
-import { panorama, panoramaRows, shareActionsTo, socActions } from "../effects/panorama";
+import { panorama, panoramaRows, shareActionsTo, socActions, textRuns } from "../effects/panorama";
 import { isInvisibleSatellite, onDevicesChanged, safeDevices } from "../sonos/sonos-discovery";
 import { sonosDeviceManager } from "../sonos/SonosDeviceManager";
 
@@ -40,6 +40,7 @@ export async function startSocBus(): Promise<void> {
     // One Panorama with other plugins' dials next to SO-C's (stays local while nobody is there)
     panorama.connect(b);
     panoramaRows.connect(b);
+    textRuns.connect(b);
     // The speakers for every plugin: cover colours for Panorama rows, players for keys
     socCovers.connect(b);
     socPlayers.connect(b, { allow: () => othersMayControlPlayers() });
