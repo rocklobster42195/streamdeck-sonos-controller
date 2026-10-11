@@ -20,6 +20,9 @@ logs/
 # Local docs
 docs/
 
+# Local working notes (grills, not part of the repo)
+notes/
+
 # Local scratch/WIP files (prototype assets, generator scripts not yet wired in)
 local/
 
