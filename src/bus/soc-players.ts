@@ -79,6 +79,8 @@ type Group = {
     color?: string;
     coverFor?: string;
     playing: boolean;
+    /** A STOPPED right after playing waits here: a skip passes through it and must not look like a pause. */
+    stopTimer?: ReturnType<typeof setTimeout>;
     since: number;
     title?: string;
     artist?: string;
@@ -95,6 +97,9 @@ type Group = {
     /** It plays its own media (not Music Assistant's stream), from the last track it reported. */
     ownMedia?: boolean;
 };
+
+/** How long a STOPPED after playing waits before it counts (a skip, a new stream starting). */
+const STOP_GRACE_MS = 1500;
 
 /** Battery readings of watched speakers that have one (Roam, Move), by IP. */
 const batteries = new Map<string, SonosBatteryStatus | undefined>();
@@ -130,11 +135,24 @@ export function watchPlayers(controller: SonosDeviceController): void {
     });
     controller.registerTransportStateCallback(CALLBACK, (ts) => {
         const g = groupOf(controller);
-        const playing = ts === "PLAYING";
-        if (playing && !g.playing) g.since = Date.now();
-        g.playing = playing;
-        void refreshPosition(controller, g);
-        publish();
+        const apply = (playing: boolean) => {
+            if (playing && !g.playing) g.since = Date.now();
+            g.playing = playing;
+            void refreshPosition(controller, g);
+            publish();
+        };
+        clearTimeout(g.stopTimer);
+        g.stopTimer = undefined;
+        // A skip goes through TRANSITIONING (and often a short STOPPED): the key keeps showing "playing"
+        // and the next cover fades in; only a STOPPED that stays counts as stopped
+        if (ts === "STOPPED" && g.playing) {
+            g.stopTimer = setTimeout(() => {
+                g.stopTimer = undefined;
+                apply(false);
+            }, STOP_GRACE_MS);
+            return;
+        }
+        apply(ts === "PLAYING" || ts === "TRANSITIONING");
     });
     controller.registerTrackInfoCallback(CALLBACK, (ti) => {
         const g = groupOf(controller);
@@ -167,7 +185,7 @@ export function watchPlayers(controller: SonosDeviceController): void {
     const ts = controller.transportState;
     if (ts) {
         const g = groupOf(controller);
-        g.playing = ts === "PLAYING";
+        g.playing = ts === "PLAYING" || ts === "TRANSITIONING";
         if (g.playing) g.since = Date.now();
     }
     publish();

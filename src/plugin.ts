@@ -1,5 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
-import { setKitLogger } from "@rocklobster42195/streamdeck-kit";
+import { configureCoverCache, coverResizer, setKitLogger } from "@rocklobster42195/streamdeck-kit";
 import "./sonos/sonos-discovery"; // This will start the discovery process
 // Diagnostic-heartbeat imports — see the disabled block at the bottom of this file.
 // import { sonosDeviceManager } from "./sonos/SonosDeviceManager";
@@ -25,6 +25,8 @@ import { startSocBus } from "./bus/soc-bus";
 streamDeck.logger.setLevel("info");
 // The kit reports into the plugin's log (transport routes, covers that failed to load, a throwing effect)
 setKitLogger(streamDeck.logger);
+// A cover as served may be 640 px and 200 KB; keys and strips need a quarter of that
+configureCoverCache({ resize: coverResizer(256) });
 
 // Register the actions that this plugin supports.
 initPiBridge();
