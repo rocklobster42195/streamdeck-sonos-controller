@@ -64,7 +64,7 @@ body:
     id: logs
     attributes:
       label: Relevant logs
-      description: Open Stream Deck software → right-click the plugin → "View Logs". Remove sensitive data (IP addresses etc.).
+      description: "Easiest: open the plugin's settings window (\"More settings …\" in the settings of a key or dial) and use **Diagnostics** at the end. The copy icon copies a report with the versions and the end of the log (tokens, passwords and e-mail addresses are hidden), \"Report an issue\" copies it and opens this page. Or: Stream Deck software → right-click the plugin → \"View Logs\". Remove sensitive data (IP addresses etc.)."
       render: shell
 
   - type: textarea
