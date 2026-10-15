@@ -1,5 +1,7 @@
 <!-- NEXT -->
 
+- **Play/Pause key: double tap = next, triple tap = previous** (a request from GitHub #4, switch it on in the key's settings; the tap speed is adjustable). With it on, a single tap waits a moment (0.3 s by default) before it plays or pauses; with it off the key reacts at once, as before. The key shows the skip symbol for a moment.
+
 - **Panorama Effects dial:** "Show track info" now runs across the dials of other plugins too (a title can start on Music Assistant's Panorama dial and end on this one), and the dial's player is chosen from every player on deckbus ("Active player" by default), not only Sonos speakers.
 - An unreachable speaker address is logged once instead of every few seconds; the cover guess is skipped for `x-rincon:` track URIs (it answered 404).
 - **Diagnostics in the settings window:** a collapsed field at the end with the end of the plugin's log (warnings and errors marked, a filter), a small copy icon at the top right that copies a report (versions of the plugin, Stream Deck and the other plugins, then the log; tokens, passwords and e-mail addresses hidden), "Show log file" (opens the file manager) and "Report an issue" (copies the report and opens the issue page).
