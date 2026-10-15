@@ -36,9 +36,16 @@ const changelogPath = path.join(repoRoot, 'CHANGELOG.md');
 
 const bumpType = process.argv[2];
 const dryRun = process.argv.includes('--dry-run');
+// beta from a stable base normally targets the next PATCH; `--target 0.5.0` names the line instead
+const targetArg = process.argv.find((x) => x.startsWith('--target='))?.slice('--target='.length);
+const target = targetArg && /^\d+\.\d+\.\d+$/.test(targetArg) ? targetArg.split('.').map(Number) : undefined;
+if (targetArg && !target) {
+    console.error('  ❌ --target=<A.B.C> expects a version like 0.5.0');
+    process.exit(1);
+}
 
 if (!['patch', 'minor', 'major', 'beta'].includes(bumpType)) {
-    console.error('Usage: node tools/bump-version.mjs <patch|minor|major|beta> [--dry-run]');
+    console.error('Usage: node tools/bump-version.mjs <patch|minor|major|beta> [--dry-run] [--target=A.B.C (beta only)]');
     process.exit(1);
 }
 
@@ -66,6 +73,7 @@ const wasMidBeta = d > 0;
 let newA = a, newB = b, newC = c, newD = d;
 if (bumpType === 'beta') {
     if (wasMidBeta) newD = d + 1;
+    else if (target) { [newA, newB, newC] = target; newD = 1; }
     else { newC = c + 1; newD = 1; }
 } else if (wasMidBeta) {
     newD = 0; // promote the active beta line, ignore the requested bump type
