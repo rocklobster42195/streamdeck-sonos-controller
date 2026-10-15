@@ -297,6 +297,8 @@ SONOS Controller talks to other Stream Deck plugins on your computer through **d
 
 **Only with your permission:** nothing.
 
+**Coming next to your deck.** SONOS Controller is the first of a small family of Stream Deck plugins that find each other this way: **Music Assistant Controller** (your Music Assistant server and its players), **System Audio Controller** (music and calls on your PC), **Home Assistant Controller** (your smart home) and **X-Air Controller** (Behringer X-Air and Midas mixers). They aren't released yet; where they run next to this plugin, the features above already work with them. More here when they are ready.
+
 deckbus stays on your computer. It uses local pipes (Windows) or sockets (macOS), plugins must know a key stored in your user profile, and nothing goes over the network. The protocol is open: [deckbus protocol](https://github.com/rocklobster42195/streamdeck-kit/blob/main/docs/deckbus-protocol.md).
 
 ## Requirements
