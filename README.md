@@ -34,7 +34,7 @@ Available on the [Elgato Marketplace](https://marketplace.elgato.com/product/son
 
 Toggles playback on your Sonos speaker. While playing, the key displays the current album or radio station cover art. A scrolling marquee shows track title and artist. Works correctly for a speaker that's grouped with others, following the group's actual playback rather than the joined speaker's own idle state.
 
-<img src="assets/play-pause_toggle_demo.gif" width="100" alt="Play / Pause Key showing cover art"/>
+<img src="assets/play-pause_toggle_demo.gif" width="100" alt="Play / Pause Key showing cover art"/> <img src="assets/readme/multi-tap.gif" width="100" alt="Double tap skips to the next track, triple tap back to the previous one"/>
 
 | Setting | Description |
 |---------|-------------|
@@ -104,7 +104,7 @@ Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim a
 
 ### Queue *(Stream Deck+ only)*
 
-<img src="assets/readme/dial-queue.png" width="200" alt="Queue dial as a scrolling list"/>
+<img src="assets/readme/list-scroll.gif" width="404" alt="The Queue and Favorites dials turned a few clicks: the lists glide one entry per click"/>
 
 The queue as a list that scrolls smoothly, one track per click of the dial, with the selected track in the middle. It rests on the track that is playing (green, with a small wave) and follows it when the next one starts. Push plays the selected track; touch, or a few seconds without input, glides back to the playing one. When the speaker doesn't play from its own queue — a radio station, or music another app streams to it (e.g. Music Assistant) — the dial shows only the row's Panorama effect.
 

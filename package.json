@@ -9,6 +9,7 @@
         "pi:preview": "node tools/pi-preview.mjs",
         "showcase": "node tools/sd-sim/showcase.mjs sim-out",
         "readme-images": "node tools/readme-images.mjs",
+        "readme-gifs": "node tools/sd-sim/readme-gifs.mjs",
         "store-images": "node tools/generate-store-images.mjs",
         "diagnose": "node tools/diagnose-lag.mjs",
         "diagnose:stereo": "node tools/diagnose-stereo-pairs.mjs",

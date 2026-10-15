@@ -44,4 +44,5 @@ Normal entry point: `npm run ship:patch` / `ship:minor` / `ship:major` / `ship:b
 - `sd-sim/fake-sonos.mjs`: a stand-in Sonos system on loopback (127.0.0.2–4, port 1400) — invented rooms, queue, favorites, generated covers, its own household (pinned by the simulator, so the plugin never adopts a real system).
 - `npm run showcase` (`sd-sim/showcase.mjs [outDir] [scene]`): staged deck pictures into `sim-out/showcase/`. Plays nothing, touches no real speaker.
 - `npm run readme-images` (`readme-images.mjs`): README pictures (dial rows, strips, keys) cut from the showcase scenes into `assets/readme/`.
+- `npm run readme-gifs` (`sd-sim/readme-gifs.mjs [scene]`): animated README pictures (`list-scroll`, `multi-tap`) sampled from the simulator into `assets/readme/`.
 - `npm run store-images` (`generate-store-images.mjs`): Marketplace thumbnail, showcases and banner from the scenes into `store/` (the icon still comes from `generate-store-assets.mjs`).
