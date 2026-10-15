@@ -89,7 +89,7 @@ const scenes = {
     async "list-scroll"(sim) {
         const queue = sim.add("queue-dial", { deviceIp: LIVING, panoramaMember: false }, { column: 0, controller: "Encoder" });
         await sim.sleep(9000);
-        await record(path.join(OUT, "list-scroll.gif"), {
+        await record(path.join(OUT, "queue-scroll.gif"), {
             slots: [sim.state.slots.get(queue)],
             size: [200, 100],
             settle: 500,
