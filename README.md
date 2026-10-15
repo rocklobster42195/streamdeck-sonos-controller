@@ -104,7 +104,7 @@ Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim a
 
 ### Queue *(Stream Deck+ only)*
 
-<img src="assets/readme/list-scroll.gif" width="200" alt="The Queue and Favorites dials turned a few clicks: the lists glide one entry per click"/>
+<img src="assets/readme/list-scroll.gif" width="200" alt="The Queue dial turned a few clicks: the list glides one entry per click"/>
 
 The queue as a list that scrolls smoothly, one track per click of the dial, with the selected track in the middle. It rests on the track that is playing (green, with a small wave) and follows it when the next one starts. Push plays the selected track; touch, or a few seconds without input, glides back to the playing one. When the speaker doesn't play from its own queue — a radio station, or music another app streams to it (e.g. Music Assistant) — the dial shows only the row's Panorama effect.
 
