@@ -21,16 +21,16 @@ fs.mkdirSync(OUT, { recursive: true });
 const LIVING = "127.0.0.2";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** The picture a slot shows now (key image or strip pixmap) as a PNG buffer at w × h. */
-async function pictureOf(slot, w, h) {
+/** The picture a slot shows now (key image or strip pixmap) as a PNG buffer at w × h; SVGs are drawn at that size, not scaled up afterwards. */
+async function pictureOf(slot, w, h, scale = 1) {
     const fb = slot.feedback ?? {};
     const key = Object.keys(fb).find((k) => typeof fb[k] === "string" && fb[k].startsWith("data:image"));
     const nested = Object.values(fb).find((v) => v && typeof v === "object" && typeof v.value === "string" && v.value.startsWith("data:image"));
     const uri = slot.controller === "Encoder" ? (key ? fb[key] : nested?.value) : slot.image;
     const m = uri && /^data:([^;,]+)(;base64)?,(.*)$/s.exec(uri);
-    if (!m) return sharp({ create: { width: w, height: h, channels: 4, background: "#111" } }).png().toBuffer();
+    if (!m) return sharp({ create: { width: w * scale, height: h * scale, channels: 4, background: "#111" } }).png().toBuffer();
     const buf = m[2] ? Buffer.from(m[3], "base64") : Buffer.from(decodeURIComponent(m[3]));
-    return sharp(buf, { density: 144 }).resize(w, h).png().toBuffer();
+    return sharp(buf, { density: 72 * scale }).resize(w * scale, h * scale).png().toBuffer();
 }
 
 /** The picture string a slot shows now (key image or strip pixmap), to see when it changes. */
@@ -46,7 +46,7 @@ function uriOf(slot) {
  * (polled every few ms), each kept as long as it was on screen, so a gliding list is as smooth as
  * on the device. Then writes the GIF.
  */
-async function record(file, { slots, size, gap = 4, scale = 2, settle = 0, during }) {
+async function record(file, { slots, size, gap = 4, scale = 3, settle = 0, during }) {
     const [w, h] = size;
     const totalW = slots.length * w + (slots.length - 1) * gap;
     const frames = [];
@@ -58,10 +58,9 @@ async function record(file, { slots, size, gap = 4, scale = 2, settle = 0, durin
             if (now !== last) {
                 last = now;
                 const at = Date.now();
-                const parts = await Promise.all(slots.map((s) => pictureOf(s, w, h)));
-                const composite = parts.map((input, i) => ({ input, left: i * (w + gap), top: 0 }));
-                const png = await sharp({ create: { width: totalW, height: h, channels: 4, background: "#000000" } }).composite(composite).png().toBuffer();
-                const raw = await sharp(png).resize(totalW * scale, h * scale, { kernel: "lanczos3" }).ensureAlpha().raw().toBuffer();
+                const parts = await Promise.all(slots.map((s) => pictureOf(s, w, h, scale)));
+                const composite = parts.map((input, i) => ({ input, left: i * (w + gap) * scale, top: 0 }));
+                const raw = await sharp({ create: { width: totalW * scale, height: h * scale, channels: 4, background: "#000000" } }).composite(composite).ensureAlpha().raw().toBuffer();
                 frames.push({ raw, at });
             } else await sleep(5);
         }
@@ -72,7 +71,7 @@ async function record(file, { slots, size, gap = 4, scale = 2, settle = 0, durin
     await sampler;
     const enc = new GIFEncoder(totalW * scale, h * scale, "neuquant", true, frames.length);
     enc.setRepeat(0);
-    enc.setQuality(10);
+    enc.setQuality(1);
     enc.start();
     frames.forEach((f, i) => {
         enc.setDelay(Math.max(20, Math.min(1500, (frames[i + 1]?.at ?? f.at + 500) - f.at)));
