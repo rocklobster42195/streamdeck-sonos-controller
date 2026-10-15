@@ -9,6 +9,8 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 Available on the [Elgato Marketplace](https://marketplace.elgato.com/product/sonos-controller-083f868f-c0b5-43bc-8db5-ba287254fce5) (reviewed, stable) — or grab the [latest GitHub release](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases/latest) for new features and beta builds first.
 
+> **Beta:** [`0.5.0-beta.1`](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases/tag/v0.5.0-beta.1) is out as a GitHub pre-release: keys and dials rebuilt on a new foundation, double and triple tap on Play/Pause, seek with Next/Previous, key colours, lists that scroll smoothly and new settings panels. It needs **Stream Deck 7.1 or later**. The Marketplace stays on 0.4.10 until the beta is over, and you can go back to it any time; your settings are kept.
+
 > **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
 
 <img src="assets/readme/dials-everyday.png" width="800" alt="Track, Volume, Queue and Favorites dials with a Panorama effect across the row"/>
