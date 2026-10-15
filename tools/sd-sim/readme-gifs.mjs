@@ -1,6 +1,6 @@
 // Animated README pictures from the simulator: the real plugin against the stand-in Sonos system
 // (fake-sonos.mjs, nothing is played anywhere), frames sampled while a dial turns or a key is tapped.
-//   node tools/sd-sim/readme-gifs.mjs [scene]        scenes: list-scroll, multi-tap
+//   node tools/sd-sim/readme-gifs.mjs [scene]        scenes: list-scroll (the Queue dial), multi-tap (the Play/Pause key)
 // Writes assets/readme/<scene>.gif.
 import fs from "node:fs";
 import path from "node:path";
@@ -33,21 +33,37 @@ async function pictureOf(slot, w, h) {
     return sharp(buf, { density: 144 }).resize(w, h).png().toBuffer();
 }
 
-/** Samples `slots` side by side every `every` ms while `during()` runs, then writes the GIF. */
-async function record(file, { slots, size, gap = 4, scale = 2, every = 60, settle = 0, during }) {
+/** The picture string a slot shows now (key image or strip pixmap), to see when it changes. */
+function uriOf(slot) {
+    const fb = slot.feedback ?? {};
+    const key = Object.keys(fb).find((k) => typeof fb[k] === "string" && fb[k].startsWith("data:image"));
+    const nested = Object.values(fb).find((v) => v && typeof v === "object" && typeof v.value === "string" && v.value.startsWith("data:image"));
+    return slot.controller === "Encoder" ? (key ? fb[key] : nested?.value) : slot.image;
+}
+
+/**
+ * Records `slots` side by side while `during()` runs: one frame for every picture the plugin sends
+ * (polled every few ms), each kept as long as it was on screen, so a gliding list is as smooth as
+ * on the device. Then writes the GIF.
+ */
+async function record(file, { slots, size, gap = 4, scale = 2, settle = 0, during }) {
     const [w, h] = size;
     const totalW = slots.length * w + (slots.length - 1) * gap;
     const frames = [];
     let running = true;
+    let last = "";
     const sampler = (async () => {
         while (running) {
-            const t = Date.now();
-            const parts = await Promise.all(slots.map((s) => pictureOf(s, w, h)));
-            const composite = parts.map((input, i) => ({ input, left: i * (w + gap), top: 0 }));
-            const png = await sharp({ create: { width: totalW, height: h, channels: 4, background: "#000000" } }).composite(composite).png().toBuffer();
-            const raw = await sharp(png).resize(totalW * scale, h * scale, { kernel: "lanczos3" }).ensureAlpha().raw().toBuffer();
-            frames.push({ raw, at: t });
-            await sleep(Math.max(0, every - (Date.now() - t)));
+            const now = slots.map(uriOf).join("|");
+            if (now !== last) {
+                last = now;
+                const at = Date.now();
+                const parts = await Promise.all(slots.map((s) => pictureOf(s, w, h)));
+                const composite = parts.map((input, i) => ({ input, left: i * (w + gap), top: 0 }));
+                const png = await sharp({ create: { width: totalW, height: h, channels: 4, background: "#000000" } }).composite(composite).png().toBuffer();
+                const raw = await sharp(png).resize(totalW * scale, h * scale, { kernel: "lanczos3" }).ensureAlpha().raw().toBuffer();
+                frames.push({ raw, at });
+            } else await sleep(5);
         }
     })();
     await sleep(settle);
@@ -59,7 +75,7 @@ async function record(file, { slots, size, gap = 4, scale = 2, every = 60, settl
     enc.setQuality(10);
     enc.start();
     frames.forEach((f, i) => {
-        enc.setDelay(Math.max(20, (frames[i + 1]?.at ?? f.at + every) - f.at));
+        enc.setDelay(Math.max(20, Math.min(1500, (frames[i + 1]?.at ?? f.at + 500) - f.at)));
         enc.addFrame(new Uint8ClampedArray(f.raw));
     });
     enc.finish();
@@ -69,22 +85,20 @@ async function record(file, { slots, size, gap = 4, scale = 2, every = 60, settl
 }
 
 const scenes = {
-    // The Queue and Favorites dials turned a few clicks: the list glides one entry per click
+    // The Queue dial turned a few clicks: the list glides one entry per click
     async "list-scroll"(sim) {
-        const queue = sim.add("queue-dial", { deviceIp: LIVING, panoramaMember: false }, { column: 2, controller: "Encoder" });
-        const fav = sim.add("favorites-dial", { deviceIp: LIVING, panoramaMember: false }, { column: 3, controller: "Encoder" });
+        const queue = sim.add("queue-dial", { deviceIp: LIVING, panoramaMember: false }, { column: 0, controller: "Encoder" });
         await sim.sleep(9000);
         await record(path.join(OUT, "list-scroll.gif"), {
-            slots: [sim.state.slots.get(queue), sim.state.slots.get(fav)],
+            slots: [sim.state.slots.get(queue)],
             size: [200, 100],
-            settle: 600,
+            settle: 500,
             during: async () => {
-                for (const ticks of [1, 1, 1, -1, -1]) {
+                for (const ticks of [1, 1, 1, -1, -1, -1]) {
                     sim.rotate(queue, ticks);
-                    sim.rotate(fav, ticks);
-                    await sleep(750);
+                    await sleep(900);
                 }
-                await sleep(500);
+                await sleep(300);
             },
         });
     },

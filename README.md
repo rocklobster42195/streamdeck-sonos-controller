@@ -34,7 +34,7 @@ Available on the [Elgato Marketplace](https://marketplace.elgato.com/product/son
 
 Toggles playback on your Sonos speaker. While playing, the key displays the current album or radio station cover art. A scrolling marquee shows track title and artist. Works correctly for a speaker that's grouped with others, following the group's actual playback rather than the joined speaker's own idle state.
 
-<img src="assets/play-pause_toggle_demo.gif" width="100" alt="Play / Pause Key showing cover art"/> <img src="assets/readme/multi-tap.gif" width="100" alt="Double tap skips to the next track, triple tap back to the previous one"/>
+<img src="assets/play-pause_toggle_demo.gif" width="100" alt="Play / Pause Key showing cover art"/>
 
 | Setting | Description |
 |---------|-------------|
@@ -104,7 +104,7 @@ Next, previous, shuffle, or repeat — each as a dedicated key. All four **dim a
 
 ### Queue *(Stream Deck+ only)*
 
-<img src="assets/readme/list-scroll.gif" width="404" alt="The Queue and Favorites dials turned a few clicks: the lists glide one entry per click"/>
+<img src="assets/readme/list-scroll.gif" width="200" alt="The Queue and Favorites dials turned a few clicks: the lists glide one entry per click"/>
 
 The queue as a list that scrolls smoothly, one track per click of the dial, with the selected track in the middle. It rests on the track that is playing (green, with a small wave) and follows it when the next one starts. Push plays the selected track; touch, or a few seconds without input, glides back to the playing one. When the speaker doesn't play from its own queue — a radio station, or music another app streams to it (e.g. Music Assistant) — the dial shows only the row's Panorama effect.
 
@@ -220,7 +220,7 @@ With **Fade out** enabled on Line-In, the currently playing music fades down acr
 
 ### Favorites *(Stream Deck+ only)*
 
-<img src="assets/readme/dial-favorites-list.png" width="200" alt="Favorites dial while browsing"/> <img src="assets/readme/dial-favorites-idle.png" width="200" alt="Favorites dial when idle: the heart over the Panorama effect"/>
+<img src="assets/readme/dial-favorites-list.png" width="200" alt="Favorites dial while browsing"/>
 
 Browse and play your saved Sonos favorites. Rotate and the favorites become a list that scrolls smoothly, one entry per click of the dial, the selected one in the middle and the playing favorite in green with a small wave. When idle, the dial shows a card with what is playing and where it comes from: the favorite, or the playlist, album or station Sonos reports (e.g. "Playlist · Spotify"). When nothing is known about it — for example music Music Assistant streams to the speaker — it shows a heart, filled while playing. With a Panorama effect in the row, the card and the heart sit on top of it.
 
