@@ -61,6 +61,12 @@ if (!isBeta) {
         console.warn(`  ⚠️  No CHANGELOG entry for ${publicVersion} — release notes will be empty`);
     }
 }
+// A beta may carry curated notes: notes/beta-notes.md (written by hand, replaces the commit list)
+const betaNotes = path.join(repoRoot, 'notes', 'beta-notes.md');
+if (isBeta && fs.existsSync(betaNotes)) {
+    releaseNotes = fs.readFileSync(betaNotes, 'utf8').replace(/\r\n/g, '\n').trim();
+    console.log('  ✅ Curated beta notes (notes/beta-notes.md)');
+}
 if (!releaseNotes) {
     const prevTag = findPreviousTag(!isBeta);
     const log = prevTag

@@ -89,7 +89,11 @@
         "-- No function available for this device --": "-- No function available for this device --",
         "Line-In": "Line-In",
         "Battery": "Battery",
-        "no_function_available_hint": "No Multi-Control function is available for this device.",
+        "no_function_available_hint": "No Multi-Control function is available for this device.",
+        "kit": {
+            "call_hint": "Calls in Teams, Discord, Zoom … are reported on this computer by the companion plugin System Audio Controller. After the call, what was paused plays again and the volume comes back (unless you changed it).",
+            "panorama_color_none": "No plugin offers a cover colour right now; the effect uses its own colour until one does."
+        },
         "pi": {
             "sonos_device": "Sonos device",
             "device_any": "Device",

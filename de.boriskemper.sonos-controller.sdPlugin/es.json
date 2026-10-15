@@ -88,7 +88,11 @@
         "-- Select Function --": "-- Seleccionar función --",
         "-- No function available for this device --": "-- Ninguna función disponible para este dispositivo --",
         "Line-In": "Line-In",
-        "Battery": "Batería",
+        "Battery": "Batería",
+        "kit": {
+            "call_hint": "Las llamadas de Teams, Discord, Zoom … las avisa en este ordenador el plugin complementario System Audio Controller. Después, lo pausado sigue sonando y el volumen vuelve (salvo que lo hayas cambiado).",
+            "panorama_color_none": "Ahora ningún plugin ofrece un color de portada; hasta entonces el efecto usa su propio color."
+        },
         "pi": {
             "sonos_device": "Dispositivo SONOS",
             "device_any": "Dispositivo",

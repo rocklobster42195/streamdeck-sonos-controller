@@ -88,7 +88,11 @@
         "-- Select Function --": "-- Funktion wählen --",
         "-- No function available for this device --": "-- Keine Funktion für dieses Gerät verfügbar --",
         "Line-In": "Line-In",
-        "Battery": "Akku",
+        "Battery": "Akku",
+        "kit": {
+            "call_hint": "Anrufe in Teams, Discord, Zoom … meldet das Begleit-Plugin System Audio Controller auf diesem Computer. Nach dem Anruf spielt Pausiertes weiter und die Lautstärke kommt zurück (außer du hast sie geändert).",
+            "panorama_color_none": "Gerade bietet kein Plugin eine Coverfarbe an; bis dahin nimmt der Effekt seine eigene Farbe."
+        },
         "pi": {
             "sonos_device": "SONOS-Gerät",
             "device_any": "Gerät",

@@ -38,6 +38,18 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 
 | Setting | Description |
 |---------|-------------|
+| Device | A Sonos speaker, **Active player** (the speaker that started playing last) or a player of another plugin |
+| Show cover art | Display album art on the key while playing |
+| Show track title | Scroll the track title and artist across the key |
+| Progress bar | Thin bar at the bottom of the key showing track position, tinted to the cover's dominant color |
+| Show device name | The speaker's name as the key's Stream Deck title (size and colour are set in Stream Deck's title settings) |
+| Double and triple tap | Off by default. Two taps skip to the next track, three go back to the previous one. A single tap then waits a moment before it plays or pauses. The key shows the skip symbol for a moment |
+| Tap speed | With double and triple tap on: how quickly taps must follow each other, `Fast`, `Normal` or `Slow` |
+| Icons at the top | Left and right corner: your own icon, the music service, the battery (Roam, Move) or nothing |
+| Colour | `Grey` (as before), `Cover`, `Like Panorama` or `Fixed`: the play icon, and the progress bar instead of the cover's own colour |
+| When a call starts | `Nothing`, `Pause` or `Lower`, per speaker (needs the companion plugin System Audio Controller). Off by default |
+
+---------|-------------|
 | Device | Which Sonos speaker to control |
 | Show device name | Display the speaker's zone name as the key title |
 | Show cover art | Display album art on the key while playing |
@@ -54,13 +66,13 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 
 The LCD panel shows the album or station cover art, a scrolling track title, artist name, and a progress bar — tinted to match the cover art palette. If the selected speaker is grouped with others, it correctly reflects the whole group's playback (cover, title, play/pause state) rather than the joined speaker's own idle state.
 
-Also handy for quickly auditioning a playlist: rotate to scrub within the current track, press to jump to the next one.
+Also handy for quickly auditioning a playlist: rotate to scrub within the current track, press to jump to the next one, tap to play or pause.
 
 <img src="assets/track_dial_eq.gif" alt="Track Control showing cover art and EQ Effect"/>
 
 | Interaction | Effect |
 |-------------|--------|
-| Rotate | Seek ±5% in the current track |
+| Rotate | Seek in the current track, by 5, 10, 15 or 30 seconds per tick (setting) |
 | Press | Skip to next track |
 | Touch | Toggle play / pause |
 
