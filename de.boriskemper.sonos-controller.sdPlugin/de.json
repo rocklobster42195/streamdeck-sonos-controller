@@ -99,6 +99,7 @@
             "choose_device": "Gerät wählen",
             "preset_volume": "Lautstärke-Preset",
             "preset_long_press_hint": "Taste eine halbe Sekunde halten für diese Lautstärke.",
+            "volume_group_hint": "Bei einer Gruppe (auch \"Aktiver Player\") ändert das die Lautstärke der ganzen Gruppe. Wähle einen einzelnen Lautsprecher, um nur dessen eigene zu ändern.",
             "vol_step": "Schritt",
             "show_text": "Text anzeigen",
             "alignment": "Ausrichtung",

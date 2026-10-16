@@ -100,6 +100,7 @@
             "choose_device": "Choose a speaker",
             "preset_volume": "Preset volume",
             "preset_long_press_hint": "Hold the key half a second for this volume.",
+            "volume_group_hint": "With a group (also \"Active player\"), this changes the volume of the whole group. Pick a single speaker to change only its own.",
             "vol_step": "Step",
             "show_text": "Show text",
             "alignment": "Alignment",

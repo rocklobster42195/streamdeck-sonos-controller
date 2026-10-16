@@ -99,6 +99,7 @@
             "choose_device": "Elegir dispositivo",
             "preset_volume": "Volumen preestablecido",
             "preset_long_press_hint": "Mantén la tecla medio segundo para este volumen.",
+            "volume_group_hint": "Con un grupo (también \"Reproductor activo\") cambia el volumen de todo el grupo. Elige un solo altavoz para cambiar solo el suyo.",
             "vol_step": "Paso",
             "show_text": "Mostrar texto",
             "alignment": "Alineación",

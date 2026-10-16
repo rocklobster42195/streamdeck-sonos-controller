@@ -1,6 +1,7 @@
 <!-- NEXT -->
 
 - **Fixed: a slow skip or play no longer puts the hourglass on every key** (seen with TIDAL, which answers in about 1.4 s): the hourglass now only shows on the keys the command is about (a slow skip on the Play/Pause, Playback Control and Track keys, a slow volume command on the volume keys and dial) and only after 2 seconds for a speaker.
+- **Volume key and Volume dial: a hint that "Active player" (a group) changes the volume of the whole group;** pick a single speaker to change only its own.
 - **Fixed: "Grey" is grey on the Play/Pause key** (the paused symbol and the progress bar took the cover's colour), and **the Volume key's louder and quieter symbols take the key colour** (Cover, Like Panorama, Fixed) like the other keys.
 - **Fixed: the settings window's tab bar jumped from the first tab to the last while scrolling.** "Like Panorama" is not offered on a Stream Deck without dials.
 

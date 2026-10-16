@@ -14,6 +14,7 @@
 <body hidden>
   <pi-section title="pi.sonos_device" data-player-section>
     <pi-select setting="player" source="players" placeholder="kit.player_active"></pi-select>
+    <div class="pi-hint" data-show-when="player=" data-i18n="pi.volume_group_hint"></div>
   </pi-section>
   <pi-section title="pi.command">
     <pi-choice setting="command" default="up" columns="4" data-options='[
