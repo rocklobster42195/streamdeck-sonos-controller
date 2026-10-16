@@ -1,5 +1,9 @@
 <!-- NEXT -->
 
+- **Fixed: a slow skip or play no longer puts the hourglass on every key** (seen with TIDAL, which answers in about 1.4 s): the hourglass now only shows on the keys the command is about (a slow skip on the Play/Pause, Playback Control and Track keys, a slow volume command on the volume keys and dial) and only after 2 seconds for a speaker.
+- **Fixed: "Grey" is grey on the Play/Pause key** (the paused symbol and the progress bar took the cover's colour), and **the Volume key's louder and quieter symbols take the key colour** (Cover, Like Panorama, Fixed) like the other keys.
+- **Fixed: the settings window's tab bar jumped from the first tab to the last while scrolling.** "Like Panorama" is not offered on a Stream Deck without dials.
+
 - **Play/Pause key: double tap = next, triple tap = previous** (a request from GitHub #4, switch it on in the key's settings; the tap speed is adjustable). With it on, a single tap waits a moment (0.3 s by default) before it plays or pauses; with it off the key reacts at once, as before. The key shows the skip symbol for a moment.
 
 - **Panorama Effects dial:** "Show track info" now runs across the dials of other plugins too (a title can start on Music Assistant's Panorama dial and end on this one), and the dial's player is chosen from every player on deckbus ("Active player" by default), not only Sonos speakers.

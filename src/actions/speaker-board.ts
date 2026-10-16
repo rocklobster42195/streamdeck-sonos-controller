@@ -66,5 +66,5 @@ export const speakerBoard: Pick<PlayerBoard, "resolve" | "send" | "onChange" | "
         throw new Error(`speaker: ${command} is not a speaker command`);
     },
     onChange: (fn) => deckPlayers.onChange(fn),
-    status: (p, now) => deckPlayers.status(p, now),
+    status: (p, now, scope) => deckPlayers.status(p, now, scope),
 };

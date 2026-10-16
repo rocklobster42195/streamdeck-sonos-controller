@@ -22,6 +22,6 @@ export const deckPlayers: Pick<typeof socPlayers, "resolve" | "send" | "onChange
     },
     send: (target, command, value) => socPlayers.send(target, command, value),
     onChange: (fn) => socPlayers.onChange(fn),
-    status: (p, now) => socPlayers.status(p, now),
+    status: (p, now, scope) => socPlayers.status(p, now, scope),
 };
 

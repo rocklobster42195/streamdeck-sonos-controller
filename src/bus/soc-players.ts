@@ -13,7 +13,10 @@ import type { SonosBatteryStatus } from "../sonos/SonosBattery";
 import { getAccentColor, knownCoverColor, setKnownCoverColor } from "../utils/color-extract";
 
 export const socCovers = new CoverBoard("SO-C");
-export const socPlayers = new PlayerBoard("SO-C");
+// A Sonos speaker answers a skip or play in about 1.4 s with TIDAL: that is not "loading" for the keys
+/** How long a command may take before the keys show the hourglass. */
+const SLOW_COMMAND_MS = 2000;
+export const socPlayers = new PlayerBoard("SO-C", { loadingAfterMs: SLOW_COMMAND_MS });
 
 /** Per coordinator: the title/cover last handed to its controllers as the external track. */
 const externalShown = new Map<string, string>();
