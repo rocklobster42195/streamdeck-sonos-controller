@@ -1,5 +1,5 @@
 // MDI paths for <pi-choice data-options='[{"icon":"alignLeft",…}]'> tiles (same icons as on the keys).
-import { mdiAllInclusive, mdiCardTextOutline, mdiChartDonut, mdiCircleSlice3, mdiEqualizer, mdiFormatAlignCenter, mdiFormatAlignLeft, mdiFormatAlignRight, mdiGauge, mdiRepeat, mdiShuffleVariant, mdiSkipNext, mdiSkipPrevious, mdiTransition, mdiVolumeMedium, mdiVolumeMinus, mdiVolumeOff, mdiVolumePlus } from "@mdi/js";
+import { mdiAllInclusive, mdiCardTextOutline, mdiChartDonut, mdiCircleSlice3, mdiEqualizer, mdiFormatAlignCenter, mdiFormatAlignLeft, mdiFormatAlignRight, mdiGauge, mdiRepeat, mdiShuffle, mdiSkipNext, mdiSkipPrevious, mdiTransition, mdiVolumeMedium, mdiVolumeMinus, mdiVolumeOff, mdiVolumePlus } from "@mdi/js";
 
 export const CHOICE_ICONS: Record<string, string> = {
     alignLeft: mdiFormatAlignLeft,
@@ -7,7 +7,7 @@ export const CHOICE_ICONS: Record<string, string> = {
     alignRight: mdiFormatAlignRight,
     next: mdiSkipNext,
     previous: mdiSkipPrevious,
-    shuffle: mdiShuffleVariant,
+    shuffle: mdiShuffle,
     repeat: mdiRepeat,
     crossfade: mdiTransition,
     dontStop: mdiAllInclusive,

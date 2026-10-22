@@ -1,9 +1,8 @@
 // SVG icon generators — 24×24 viewBox, returned as base64 data URIs.
 // Paths are pulled directly from @mdi/js (pictogrammers.com), MIT licensed.
 
-import { arc, openRing } from "@rocklobster42195/streamdeck-kit";
+import { arc, openRing, KEY_ICON, keyCaption, keyIcon, keyOfflineBadge, keySvg } from "@rocklobster42195/streamdeck-kit";
 import {
-    mdiPlay,
     mdiPlayCircle,
     mdiTimerSand,
     mdiSkipNext,
@@ -44,8 +43,6 @@ import {
     mdiBatteryCharging80,
     mdiBatteryCharging90,
     mdiAudioInputRca,
-    mdiFastForward,
-    mdiRewind,
 } from '@mdi/js';
 
 function svgUri(path: string, color: string): string {
@@ -69,22 +66,6 @@ export function wrapImageWithBadge(imageDataUri: string, overlay: string, size =
     if (!overlay) return imageDataUri;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
         `<image href="${imageDataUri}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice"/>${overlay}</svg>`;
-    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-}
-
-// Paused/stopped Play/Pause key: the cover stays, dimmed, with a play badge in the middle —
-// instead of dropping to the bare play icon, so the key still shows what's loaded. Ported from
-// Music Assistant Controller (same geometry at half its 144 px size).
-export function renderPausedCover(imageDataUri: string, color = '#CCCCCC', overlay = '', size = 72): string {
-    const c = size / 2;
-    const r = size * 30 / 144;
-    const icon = size / 3;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
-        `<image href="${imageDataUri}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice"/>` +
-        `<rect width="${size}" height="${size}" fill="#000" opacity="0.55"/>` +
-        `<circle cx="${c}" cy="${c}" r="${r}" fill="#000" opacity="0.55"/>` +
-        `<path transform="translate(${c - icon / 2} ${c - icon / 2}) scale(${icon / 24})" fill="${color}" d="${mdiPlay}"/>` +
-        `${overlay}</svg>`;
     return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
@@ -155,20 +136,6 @@ export function generatePlaybackIcon(
     }
 }
 
-// --- Seek mode (Next/Previous held) ---
-
-/** The Next/Previous key in seek mode: ⏩/⏪ in the key colour and a line below ("+0:30" or "1:23"). */
-export function generateSeekIcon(direction: 'forward' | 'back', color: string, text: string): string {
-    const path = direction === 'forward' ? mdiFastForward : mdiRewind;
-    const safe = text.replace(/[<>&]/g, '');
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">`
-        + `<rect width="144" height="144" fill="#000"/>`
-        + `<path transform="translate(22 2) scale(4.167)" fill="${color}" d="${path}"/>`
-        + `<text x="72" y="130" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="32" fill="#FFFFFF">${safe}</text>`
-        + `</svg>`;
-    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-}
-
 // --- Volume Key ---
 
 export function generateVolumeButtonIcon(type: 'up' | 'down' | 'preset', color = '#CCCCCC'): string {
@@ -182,7 +149,7 @@ export function generateVolumeButtonIcon(type: 'up' | 'down' | 'preset', color =
 // --- Line-In (MultiControlKey "Line-In" function) ---
 
 export function generateLineInIcon(color = '#CCCCCC'): string {
-    return svgUri(mdiAudioInputRca, color);
+    return keySvg([keyIcon(mdiAudioInputRca, KEY_ICON.full, color)]);
 }
 
 // --- Volume level (Dial Volume icon field) ---
@@ -249,22 +216,10 @@ export function renderBatteryBadge(
 // Dedicates the whole key face to the reading, unlike renderBatteryBadge's small corner overlay.
 // Reuses pickBatteryIcon's color/glyph decision — always 'full' mode here, since a whole key given
 // over to battery should show the real level, not just a low-battery warning glyph.
-export function generateBatteryKeyIcon(battery: { percent: number; charging: boolean } | undefined, size = 72): string {
+export function generateBatteryKeyIcon(battery: { percent: number; charging: boolean } | undefined): string {
     if (!battery) return generateUnreachableKeyIcon();
     const { path, color } = pickBatteryIcon('full', battery);
-    const iconSize = Math.round(size * 0.5);
-    const iconX = (size - iconSize) / 2;
-    const iconY = size * 0.12;
-    const scale = iconSize / 24;
-    const fontSize = Math.round(size * 0.19);
-    const textY = size * 0.86;
-    const svg = [
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`,
-        `<g transform="translate(${iconX},${iconY}) scale(${scale})"><path fill="${color}" d="${path}"/></g>`,
-        `<text x="${size / 2}" y="${textY}" fill="${color}" font-family="Arial,sans-serif" font-size="${fontSize}" font-weight="bold" text-anchor="middle">${Math.round(battery.percent)}%</text>`,
-        '</svg>',
-    ].join('');
-    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+    return keySvg([keyIcon(path, KEY_ICON.withCaption, color), keyCaption(`${Math.round(battery.percent)}%`, color)]);
 }
 
 // --- "Not available" states (unconfigured / unreachable / disabled control) ---
@@ -326,7 +281,7 @@ export function buildUnreachableCenterFragment(label?: string): string {
 
 // Key-sized variant for the button actions (Play/Pause, Volume, Playback Control, Favorite).
 export function generateUnreachableKeyIcon(): string {
-    return svgUri(mdiSpeakerOff, INACTIVE_ICON_COLOR);
+    return keySvg([keyIcon(mdiSpeakerOff, KEY_ICON.full, INACTIVE_ICON_COLOR), keyOfflineBadge()]);
 }
 
 // --- Volume fader pie (Volume Control Key's 'mute' command) ---
