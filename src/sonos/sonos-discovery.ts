@@ -2,7 +2,7 @@ import streamDeck from "@elgato/streamdeck";
 import { SonosManager, SonosEventListener, SonosDevice, SonosDeviceDiscovery } from "@svrooij/sonos";
 import { sonosFavoritesCache } from "./SonosFavoritesCache";
 import { withTimeout } from "../utils/with-timeout";
-import { applyListenerHost, eventsBlocked, watchListenerHost } from "./event-listener-host";
+import { applyListenerHost, eventsBlocked, guardEventParsing, watchListenerHost } from "./event-listener-host";
 
 // A cached IP that's gone stale (device replaced, moved networks) can otherwise hang for the
 // OS-level TCP connect timeout instead of failing fast — same reasoning as every other
@@ -32,6 +32,8 @@ const HOUSEHOLD_PROBE_MS = 4_000;
 // case) resolves the moment any device answers; its value is just an upper bound.
 const SSDP_SEARCH_SECONDS = 8;
 const SSDP_SEARCH_ONE_SECONDS = 10;
+
+guardEventParsing();
 
 export const sonosManager = new SonosManager();
 

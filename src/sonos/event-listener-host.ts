@@ -49,6 +49,27 @@ function wrapSubscribe(): void {
     };
 }
 
+// The lib parses an incoming event inside the HTTP 'end' handler with no try/catch around the
+// AVTransport/RenderingControl LastChange path, so one malformed payload (Sonos sends a valueless
+// attribute in `<res x-rincon-stream>` when a line-in source loads, svrooij/node-sonos-ts#229)
+// becomes an uncaughtException — and the SDK only survives the first one. Drop that single event
+// instead; the poll loops cover the state. Remove once the lib recovers from this itself (#230).
+let parseGuarded = false;
+
+export function guardEventParsing(): void {
+    if (parseGuarded) return;
+    parseGuarded = true;
+    const proto = BaseService.prototype as unknown as { ParseEvent(xml: string): void };
+    const original = proto.ParseEvent;
+    proto.ParseEvent = function (this: unknown, xml: string): void {
+        try {
+            original.call(this, xml);
+        } catch (e) {
+            streamDeck.logger.warn("[events] Dropped a malformed UPnP event — polling covers it.", e);
+        }
+    };
+}
+
 function activeServices(): Service[] {
     const registry = (SonosEventListener.DefaultInstance as unknown as { subscriptions: Record<string, Service> }).subscriptions;
     return [...new Set(Object.values(registry))];
