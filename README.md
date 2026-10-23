@@ -268,6 +268,14 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 ![Matrix Rain effect across 4 LCD panels](assets/preview-matrix-rain.gif)
 
+**Colour**
+One calm colour across the whole row: the row's colour (the cover that is playing, a fixed colour or the default), optionally fading to dark from the first dial to the last.
+
+**Image**
+Your own picture across the whole row, cut into one piece per dial. Choose a **file** (JPEG, PNG, GIF or WebP), or a **web address**: for example your own webcam's snapshot (`http://…/snapshot.jpg`, with an optional user and password). A web picture is fetched again every 10 s to 10 min (60 s by default), only while the dials are shown, and the last good picture stays when the camera is not reachable. **Animated GIFs** play (up to 60 frames; a longer one shows its first frame). Choose how the picture fits (fill the row, fit inside, stretch), which part stays when it has to be cut, and how much to darken it. With **Slow zoom** or **Slow pan** the picture stands still most of the time and now and then makes one very slow move to a new view.
+
+> The rights to a picture, and the terms of the site it comes from, are yours. A web picture's password is stored as plain text in your Stream Deck profile (it never leaves your computer except to the camera, and other plugins do not get it).
+
 | Interaction | Effect |
 |-------------|--------|
 | Rotate | Change the effect's value (particle density or speed, rain density, ball/globe speed) — for the whole row; a badge at the top shows which one and how far |
@@ -283,7 +291,7 @@ Cascading columns of code rain down the panels, Matrix-style.
 
 <img src="assets/readme/dials-panorama.png" width="800" alt="Four Panorama Effects dials with Particles and the track across them"/>
 
-All dials of a Stream Deck form a row with **one** effect and one set of settings. Choose it in any dial's Panorama section (short line in the panel, everything else in "More settings …"): the effect, which dials of the row show it (a tick per dial), its **colour** — **Cover** (the colour of what the active speaker plays, or of one chosen speaker), a **fixed** colour, or the effect's own — and its settings. A dial without a tick shows its normal view; the effect runs on behind it. Sonos Controller shares its speakers' cover colours with the other plugins, so a row of only other plugins' dials can follow the cover too. The row also spans the dials of other plugins that use it (see [Works with other plugins](#works-with-other-plugins-deckbus)): for example Music Assistant Controller's dials next to yours share the effect.
+All dials of a Stream Deck form a row with **one** effect and one set of settings. Choose it in any dial's Panorama section (short line in the panel, everything else in "More settings …"): the effect, which dials of the row show it (a tick per dial), its **colour** — **Cover** (the colour of what the active speaker plays, or of one chosen speaker), a **fixed** colour, or the effect's own — and its settings. A dial without a tick shows its normal view; the effect runs on behind it. Sonos Controller shares its speakers' cover colours with the other plugins, so a row of only other plugins' dials can follow the cover too. The row also spans the dials of other plugins that use it (see [Works with other plugins](#works-with-other-plugins-deckbus)): for example Music Assistant Controller's dials next to yours share the effect. The row also has a switch **"Soft backing behind ring and text"** (on by default): off draws the dials flat, without the dark discs and boxes behind the ring and the text.
 
 > **Note on background CPU usage:** an active effect renders continuously for as long as it's running — Stream Deck panels have no animation hardware of their own, so the plugin has to keep pushing a freshly-drawn frame for every tick. That's inherent to how the SDK works, not a bug. Expect a modest but constant background CPU cost while any Panorama Effects group is active (roughly 10–20% of one CPU core for a 4-panel group in our own testing, depending on the effect and your hardware) — it drops back to near zero once no group is running. Particles and Matrix Rain run at 10 fps; Boing Ball and Boing Globe run at 20 fps (their bounce motion needs the extra smoothness).
 
