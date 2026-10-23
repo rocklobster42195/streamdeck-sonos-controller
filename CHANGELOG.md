@@ -1,5 +1,7 @@
 <!-- NEXT -->
 
+- **Keys with a name look less lost** (kit 0.1.0-alpha.39): the symbol has the one symbol size (72 px) and the name sits close under it; a long name with a space breaks onto two lines, then the symbol is smaller and higher.
+
 - **Fixed: a fixed Panorama colour could not be picked** (kit 0.1.0-alpha.38): the colour swatch under "Fixed" had no size and was invisible. The Colour effect's own colour is the family's sage green now.
 
 - **Panorama: Colour and Image** (an idea from GitHub #6, kit 0.1.0-alpha.37). *Colour* takes the row's colour (Cover, Fixed or the effect's own) and can fade to dark across the row. *Image* spreads a picture across the whole row, cut into one piece per dial: from a file or a web address (a webcam: http(s), an optional user and password, a refresh from 10 s to 10 min, the last good picture stays), animated GIFs play (up to 60 frames), Fill / Fit / Stretch, which part stays, and "Darken the picture". **Slow zoom and pan:** now and then one very slow move to a new view, otherwise the picture stands still. New switch **"Soft backing behind ring and text"** in the Panorama section (on as before; off draws the dials flat).
