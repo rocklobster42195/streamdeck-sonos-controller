@@ -164,6 +164,14 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
                 state.queueItems = await controller.getQueue();
             }
             state.liveTrackIndex = await controller.getCurrentQueuePosition();
+            // The queue can be replaced without us noticing: its URI stays x-rincon-queue:… and the
+            // track count may even match, and UPnP events may never arrive (e.g. across VLANs).
+            // So check that the playing track really is the one our list holds at that position;
+            // if not, the list is stale — refetch once.
+            if (!fullRefetch && !this.queueMatchesTrack(state)) {
+                state.queueItems = await controller.getQueue();
+                state.liveTrackIndex = await controller.getCurrentQueuePosition();
+            }
         } catch (e) {
             streamDeck.logger.warn('refreshQueueContext failed', e);
         }
@@ -174,6 +182,16 @@ export class QueueDial extends PanoramaCapableDialAction<QueueDialSettings> {
             }
         }
         void this.renderDial(context);
+    }
+
+    // True when the list's item at the live position is the playing track (or when we can't tell).
+    private queueMatchesTrack(state: QueueDialState): boolean {
+        const track = state.trackInfo;
+        if (!track || state.liveTrackIndex < 0) return true;
+        const item = state.queueItems[state.liveTrackIndex];
+        if (!item) return false;
+        if (item.TrackUri && track.TrackUri) return item.TrackUri === track.TrackUri || item.Title === track.Title;
+        return item.Title === track.Title;
     }
 
     private stopBrowsing(state: QueueDialState): void {
