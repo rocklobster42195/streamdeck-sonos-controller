@@ -1,5 +1,7 @@
 <!-- NEXT -->
 
+- **Fixed: the Queue dial no longer shows the old album's tracks after another Favorite starts** (GitHub #7). The speaker keeps the same queue address when its queue is replaced, so the dial only noticed a new queue when the track count changed or an event arrived (events may never arrive across VLANs). It now also checks that the playing track is the one its list holds at that position, and reloads the queue if not.
+
 - **Keys with a name look less lost** (kit 0.1.0-alpha.39): the symbol has the one symbol size (72 px) and the name sits close under it; a long name with a space breaks onto two lines, then the symbol is smaller and higher.
 
 - **Fixed: a fixed Panorama colour could not be picked** (kit 0.1.0-alpha.38): the colour swatch under "Fixed" had no size and was invisible. The Colour effect's own colour is the family's sage green now.
