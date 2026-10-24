@@ -3,6 +3,7 @@ import streamDeck from "@elgato/streamdeck";
 import { SonosEventListener, ServiceEvents } from "@svrooij/sonos";
 import BaseService from "@svrooij/sonos/lib/services/base-service";
 import { pickListenerHost } from "./listener-host";
+import { pickListenerPort } from "./listener-port";
 
 // Keeps the GENA callback address the speakers get pointed at in step with the network the PC is
 // actually on (see listener-host.ts for why the lib's own pick is dangerous). Three states:
@@ -28,6 +29,39 @@ const WATCH_INTERVAL_MS = 30_000;
 
 let wrapped = false;
 let blocked = false;
+let noPort = false;
+let portReady: Promise<void> | undefined;
+
+/**
+ * Makes sure the port the speakers send their events to can be listened on, before the lib tries it (the lib
+ * calls listen() without handling an error: a port Windows has reserved gives "listen EACCES" as an uncaught
+ * exception and no event ever arrives). Takes the wanted port, else the first free one of a fixed ladder (see
+ * listener-port.ts); with none free the plugin polls only. SONOS_LISTENER_PORT overrides all of it.
+ */
+function prepareListenerPort(): Promise<void> {
+    portReady ??= (async () => {
+        if (process.env.SONOS_LISTENER_PORT) return;
+        const listener = SonosEventListener.DefaultInstance;
+        const status = listener.GetStatus();
+        if (status.isListening) return;
+        const picked = await pickListenerPort(status.port);
+        if (!picked) {
+            noPort = true;
+            streamDeck.logger.warn("[events] No port is free for the UPnP events — polling only.");
+            return;
+        }
+        if (picked.port !== status.port) {
+            listener.UpdateSettings({ port: picked.port });
+            streamDeck.logger.warn(
+                `[events] Port ${status.port} cannot be used (${picked.skipped[0]?.code}, probably reserved by Windows) — ` +
+                `the UPnP events use port ${picked.port} now. A firewall rule for the speakers has to allow that port.`);
+        }
+        // A later error of the listener must not end the plugin
+        (listener as unknown as { server: { on(event: string, fn: (e: Error) => void): void } }).server.on("error", (e) =>
+            streamDeck.logger.warn("[events] The UPnP event listener reported an error — polling covers it.", e));
+    })();
+    return portReady;
+}
 const parked = new Set<Service>();
 let watchTimer: NodeJS.Timeout | undefined;
 
@@ -41,6 +75,8 @@ function wrapSubscribe(): void {
             parked.add(this); // remembered so it can subscribe once the speakers can reach us again
             return false;
         }
+        await prepareListenerPort();
+        if (noPort) return false;
         // cancelSubscription() clears the renew timer but doesn't reset the field, and the lib
         // only starts a new renew timer while the field is undefined — without this a
         // resubscribed service would silently expire after the 1 h GENA timeout.

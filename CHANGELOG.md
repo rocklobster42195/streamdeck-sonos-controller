@@ -1,5 +1,8 @@
 <!-- NEXT -->
 
+- **Fixed: the plugin did not receive UPnP events when Windows had reserved port 6329** ("listen EACCES"; Hyper-V, WSL and Docker reserve ranges that change with every reboot). The port is tried first now and the first free one of a fixed list (52329 and up) is taken; the log says which. An explicit `SONOS_LISTENER_PORT` still wins.
+- **Panorama: Colour and Image no longer slow down the other dials of a row** (kit 0.1.0-alpha.40): they ticked once a second, and the dials of a row redraw on that tick. Image without a picture shows a dark panel with a faint picture symbol.
+
 - **Fixed: the Queue dial no longer shows the old album's tracks after another Favorite starts** (GitHub #7). The speaker keeps the same queue address when its queue is replaced, so the dial only noticed a new queue when the track count changed or an event arrived (events may never arrive across VLANs). It now also checks that the playing track is the one its list holds at that position, and reloads the queue if not.
 
 - **Keys with a name look less lost** (kit 0.1.0-alpha.39): the symbol has the one symbol size (72 px) and the name sits close under it; a long name with a space breaks onto two lines, then the symbol is smaller and higher.
