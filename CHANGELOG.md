@@ -1,5 +1,7 @@
 <!-- NEXT -->
 
+- **The key symbols are 96 px, as in the mock-up** (kit 0.1.0-alpha.41): beta 4 made all symbols one size, but at 72 px, clearly smaller than the 96 px proposed in GitHub #4. With a name under them they are 80 px; the loading hourglass is bigger to match.
+
 - **Fixed: the plugin did not receive UPnP events when Windows had reserved port 6329** ("listen EACCES"; Hyper-V, WSL and Docker reserve ranges that change with every reboot). The port is tried first now and the first free one of a fixed list (52329 and up) is taken; the log says which. An explicit `SONOS_LISTENER_PORT` still wins.
 - **Panorama: Colour and Image no longer slow down the other dials of a row** (kit 0.1.0-alpha.40): they ticked once a second, and the dials of a row redraw on that tick. Image without a picture shows a dark panel with a faint picture symbol.
 
