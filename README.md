@@ -4,12 +4,13 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 [![Elgato Marketplace](https://img.shields.io/badge/Marketplace-black?logo=elgato&logoColor=white)](https://marketplace.elgato.com/product/sonos-controller-083f868f-c0b5-43bc-8db5-ba287254fce5)
 [![GitHub release](https://img.shields.io/github/v/release/rocklobster42195/streamdeck-sonos-controller)](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases/latest)
+[![Latest, beta included](https://img.shields.io/github/v/release/rocklobster42195/streamdeck-sonos-controller?include_prereleases&label=latest&color=87AE73)](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases)
 [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/rocklobster42195)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Available on the [Elgato Marketplace](https://marketplace.elgato.com/product/sonos-controller-083f868f-c0b5-43bc-8db5-ba287254fce5) (reviewed, stable) — or grab the [latest GitHub release](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases/latest) for new features and beta builds first.
+**Status:** stable on the [Elgato Marketplace](https://marketplace.elgato.com/product/sonos-controller-083f868f-c0b5-43bc-8db5-ba287254fce5) (0.4.10, reviewed). **0.5.0 is in beta** on GitHub: see the [releases](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases).
 
-> **Beta:** [`0.5.0-beta.1`](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases/tag/v0.5.0-beta.1) is out as a GitHub pre-release: keys and dials rebuilt on a new foundation, double and triple tap on Play/Pause, seek with Next/Previous, key colours, lists that scroll smoothly and new settings panels. It needs **Stream Deck 7.1 or later**. The Marketplace stays on 0.4.10 until the beta is over, and you can go back to it by uninstalling the beta first (Stream Deck won't install an older version over a newer one); the beta keeps the settings 0.4.10 reads.
+> **Beta:** the newest [pre-release](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases) is the beta of 0.5.0: keys and dials rebuilt on a new foundation, double and triple tap on Play/Pause, seek with Next/Previous, key colours, lists that scroll smoothly, new settings panels, a Panorama with your own picture, a webcam or a GIF, and bigger key symbols. It needs **Stream Deck 7.1 or later**. The Marketplace stays on 0.4.10 until the beta is over. To go back, uninstall the beta first (Stream Deck won't install an older version over a newer one); the beta keeps the settings 0.4.10 reads.
 
 > **Disclaimer:** This is an independent, community-made plugin. It is not affiliated with, endorsed by, or officially connected to Sonos, Inc. or Elgato in any way. Sonos is a trademark of Sonos, Inc.
 
@@ -307,7 +308,7 @@ SONOS Controller talks to other Stream Deck plugins on your computer through **d
 
 **Only with your permission:** nothing.
 
-**Next to your deck.** SONOS Controller is the first of a small family of Stream Deck plugins that find each other this way. **[Music Assistant Controller](https://github.com/rocklobster42195/streamdeck-music-assistant-controller)** (your Music Assistant server and its players) and **[System Audio Controller](https://github.com/rocklobster42195/streamdeck-system-audio-controller)** (music and calls on your PC) are available as betas now. **Home Assistant Controller** (your smart home) and **X-Air Controller** (Behringer X-Air and Midas mixers) aren't released yet. Where they run next to this plugin, the features above already work with them. More here when they are ready.
+**Next to your deck.** SONOS Controller is one of a family of plugins that find each other this way, see [Part of a family](#part-of-a-family). Where they run next to this plugin, the features above already work with them.
 
 deckbus stays on your computer. It uses local pipes (Windows) or sockets (macOS), plugins must know a key stored in your user profile, and nothing goes over the network. The protocol is open: [deckbus protocol](https://github.com/rocklobster42195/streamdeck-kit/blob/main/docs/deckbus-protocol.md).
 
@@ -368,6 +369,35 @@ deckbus stays on your computer. It uses local pipes (Windows) or sockets (macOS)
 - Subscriptions are automatically renewed to maintain the connection.
 - **No cloud connection** — the plugin only communicates with Sonos devices on your local network.
 - **VLANs** — only the initial device *discovery* (SSDP, multicast) is blocked by VLAN boundaries; once one speaker is reachable, all actual control traffic is regular unicast HTTP and crosses VLANs fine as long as your router routes between them. See the manual IP fallback in [Troubleshooting](#troubleshooting).
+
+---
+
+## Part of a family
+
+Sonos Controller is one of a small family of Stream Deck plugins. They are built on the same open foundation, **[streamdeck-kit](https://github.com/rocklobster42195/streamdeck-kit)** (MIT, on npm), so they look and feel the same and share what is worth sharing.
+
+| | Plugin | For | Status |
+|---|---|---|---|
+| ![Sonos Controller](https://img.shields.io/badge/%20%20%20-87AE73?style=flat-square) | **Sonos Controller** (this plugin) | Sonos speakers | on the Marketplace, 0.5.0 in beta |
+| ![Music Assistant Controller](https://img.shields.io/badge/%20%20%20-009FDF?style=flat-square) | [Music Assistant Controller](https://github.com/rocklobster42195/streamdeck-music-assistant-controller) | your Music Assistant server and its players | alpha |
+| ![System Audio Controller](https://img.shields.io/badge/%20%20%20-E14190?style=flat-square) | [System Audio Controller](https://github.com/rocklobster42195/streamdeck-system-audio-controller) | your computer's sound: volume, apps, microphone | beta |
+| ![X-Air Controller](https://img.shields.io/badge/%20%20%20-00ACA8?style=flat-square) | [X-Air Controller](https://github.com/rocklobster42195/streamdeck-xair-controller) | Behringer X-Air and Midas mixers | alpha |
+| ![Home Assistant Controller](https://img.shields.io/badge/%20%20%20-005DA0?style=flat-square) | [Home Assistant Controller](https://github.com/rocklobster42195/streamdeck-home-assistant-controller) | your smart home, also over MQTT | alpha |
+
+What they have in common:
+
+- **The same look and feel.** Keys and dials are drawn by the same kit: one symbol size, the same colours, errors always in the same place, and a settings window in one style with diagnostics, in English, German and Spanish.
+- **One Panorama across plugins.** Dials of different plugins in one row share an effect (particles, a picture, a webcam, …) as if they were one display.
+- **They find each other.** Through [deckbus](#works-with-other-plugins-deckbus) the plugins share players and colours without any setup, on your computer only.
+- **Reusable.** The kit is open, MIT licensed and on npm as [`@rocklobster42195/streamdeck-kit`](https://www.npmjs.com/package/@rocklobster42195/streamdeck-kit). If you build Stream Deck plugins yourself, take what helps.
+
+## Ideas and feedback
+
+Ideas from outside are very welcome: they show what I stopped seeing on my own deck. Please open an [issue](https://github.com/rocklobster42195/streamdeck-sonos-controller/issues/new/choose) with your idea or problem. Small fixes as pull requests are welcome too; for bigger things, please start with an issue. Code that every plugin could use (drawing, effects, the settings window) belongs in [streamdeck-kit](https://github.com/rocklobster42195/streamdeck-kit).
+
+## Support
+
+This plugin started as a tool for my own Stream Deck. It is free and MIT licensed, and everyone is welcome to use it. If you like it, a coffee and a beer are always welcome: **[ko-fi.com/rocklobster42195](https://ko-fi.com/rocklobster42195)**.
 
 ---
 
