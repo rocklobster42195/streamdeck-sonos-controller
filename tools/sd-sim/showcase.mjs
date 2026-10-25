@@ -3,7 +3,10 @@
 // favorites, generated covers, no lyrics. Plays nothing anywhere, never touches real speakers.
 // Writes deck overviews to sim-out/showcase/.
 //   node tools/sd-sim/showcase.mjs [outDir]
+import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { startFakeSonos } from "./fake-sonos.mjs";
 import { startSim } from "./sim.mjs";
 
@@ -70,6 +73,22 @@ const scenes = {
         keys(sim);
         for (let c = 0; c < 4; c++) dial(sim, "panorama-effects-dial", { deviceIp: LIVING, showTrackInfo: true, effectId: "particles" }, c);
     }, 10000),
+    // The Panorama's Image effect: a public-domain picture across the row (served from this machine like a webcam)
+    "05-panorama-image": async () => {
+        const file = path.join(path.dirname(fileURLToPath(import.meta.url)), "assets", "panorama-sunset.jpg");
+        const server = http.createServer((_req, res) => { res.setHeader("content-type", "image/jpeg"); res.end(fs.readFileSync(file)); });
+        await new Promise((done) => server.listen(0, "127.0.0.1", done));
+        const url = `http://127.0.0.1:${server.address().port}/panorama-sunset.jpg`;
+        const panorama = { effect: "image", settings: { source: { kind: "url", url, intervalSec: 600 }, fit: "fill", posY: 50 }, stamp: 1 };
+        try {
+            await scene("05-panorama-image", (sim) => {
+                keys(sim);
+                for (let c = 0; c < 4; c++) dial(sim, "panorama-effects-dial", { deviceIp: LIVING, showTrackInfo: true, panorama }, c);
+            }, 10000);
+        } finally {
+            server.close();
+        }
+    },
     // The volume looks side by side
     "04-volume-looks": () => scene("04-volume-looks", (sim) => {
         keys(sim);

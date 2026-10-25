@@ -264,6 +264,10 @@ One calm colour across the whole row: the row's colour (the cover that is playin
 **Image**
 Your own picture across the whole row, cut into one piece per dial. Choose a **file** (JPEG, PNG, GIF or WebP), or a **web address**: for example a webcam's snapshot (`http://…/snapshot.jpg`, with an optional user and password). A web picture is fetched again every 10 s to 10 min (60 s by default), only while the dials are shown, and the last good picture stays when the camera is not reachable. **Animated GIFs** play (up to 60 frames; a longer one shows its first frame). Choose how the picture fits (fill the row, fit inside, stretch), which part stays when it has to be cut, and how much to darken it. With **Slow zoom** or **Slow pan** the picture stands still most of the time and now and then makes one very slow move to a new view.
 
+<img src="assets/readme/dials-panorama-image.png" width="800" alt="Four Panorama Effects dials showing one picture of a sunset across them, with the track on top"/>
+
+*The picture: ["Panorama of rocky beach sunset at Freycinet Peninsula"](https://commons.wikimedia.org/wiki/File:Panorama_of_rocky_beach_sunset_at_Freycinet_Peninsula.jpg) by JustinH, public domain (CC0).*
+
 > The rights to a picture, and the terms of the site it comes from, are yours. A web picture's password is stored as plain text in your Stream Deck profile (it never leaves your computer except to the camera, and other plugins do not get it).
 
 | Interaction | Effect |

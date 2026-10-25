@@ -29,6 +29,7 @@ async function single(file, input, w, h) {
 
 await row("dials-everyday.png", "01-everyday", [0, 1, 2, 3]);
 await row("dials-panorama.png", "03-panorama", [0, 1, 2, 3]);
+await row("dials-panorama-image.png", "05-panorama-image", [0, 1, 2, 3]);
 await row("dials-volume-looks.png", "04-volume-looks", [0, 1, 2, 3]);
 await single("dial-queue.png", part("02-lists", "E", 2), 200, 100);
 await single("dial-favorites-list.png", part("02-lists", "E", 3), 200, 100);
