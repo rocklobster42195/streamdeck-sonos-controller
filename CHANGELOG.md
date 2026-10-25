@@ -1,5 +1,7 @@
 <!-- NEXT -->
 
+- **Fixed: a Favorite started while Music Assistant was playing on the group only stopped the music.** The speaker dropped to stopped half a second after the start and moved to a new, empty session, while the loaded queue stayed. The plugin now watches the speaker for a few seconds after a start and starts the queue again if it stopped by itself (up to twice), as a second press did before.
+
 - **Fixed: a lyrics line next to Music Assistant Controller's Panorama dial appeared at once while its half faded in a moment later.** The text of a Panorama row now crossfades on this plugin's dials too, at the same time as on the other plugin's (kit 0.1.0-alpha.43).
 
 - **The key symbols are 96 px, as in the mock-up** (kit 0.1.0-alpha.41): beta 4 made all symbols one size, but at 72 px, clearly smaller than the 96 px proposed in GitHub #4. With a name under them they are 80 px; the loading hourglass is bigger to match.

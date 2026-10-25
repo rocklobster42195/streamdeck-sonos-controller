@@ -257,6 +257,55 @@ export class SonosFavoritePlayer {
   }
 
   async playFavorite(favorite: SonosFavorite): Promise<void> {
+    await this.startFavorite(favorite);
+    // In the background: the key is done (and a fade restores the volume) without waiting for the check
+    void this.keepPlaying(`[PlayFavorite] [${favorite.Title}]`);
+  }
+
+  /**
+   * Music Assistant can hold the group in its own playback session (a Spotify playlist started
+   * there). Taking the group over with our queue then "succeeds", but the speaker drops to STOPPED
+   * about half a second later and moves to a new, empty session — reproduced 2026-10-25 (a 90s
+   * playlist from Music Assistant, then a Spotify favorite: playback just ended, while the queue
+   * we had loaded stayed). Selecting the favorite again worked, because the session was gone by
+   * then. So after a start we watch the speaker for a few seconds and start the loaded queue
+   * again if it stopped by itself.
+   */
+  private async keepPlaying(logPrefix: string): Promise<void> {
+    const WATCH_MS = 5000;
+    // Playing this long without a stop means nobody took the group over (it happened within ~1 s)
+    const STABLE_MS = 2000;
+    const POLL_MS = 400;
+    const MAX_RESTARTS = 2;
+    try {
+      const device = this.resolveDevice();
+      let restarts = 0;
+      let playingSince = 0;
+      for (const started = Date.now(); Date.now() - started < WATCH_MS; ) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+        const { CurrentTransportState: state } = await device.AVTransportService.GetTransportInfo({ InstanceID: 0 });
+        if (state === 'PLAYING' || state === 'TRANSITIONING') {
+          playingSince ||= Date.now();
+          if (Date.now() - playingSince >= STABLE_MS) return;
+          continue;
+        }
+        playingSince = 0;
+        if (state !== 'STOPPED' || restarts >= MAX_RESTARTS) continue;
+        // Only a queue we loaded ourselves can be restarted; a stopped radio stream has no queue to go back to
+        const queue = await device.ContentDirectoryService.Browse({ ObjectID: 'Q:0', BrowseFlag: 'BrowseDirectChildren', Filter: '', StartingIndex: 0, RequestedCount: 1, SortCriteria: '' });
+        if (!(Number(queue.TotalMatches) > 0)) return;
+        restarts++;
+        streamDeck.logger.warn(`${logPrefix} stopped right after starting (another controller took the group over?) — starting the queue again (${restarts}/${MAX_RESTARTS}).`);
+        await device.SwitchToQueue();
+        await device.Play();
+      }
+    } catch (error) {
+      // The favorite itself was started; a failing check must not turn that into an error
+      streamDeck.logger.warn(`${logPrefix} could not check that playback kept going: ${error}`);
+    }
+  }
+
+  private async startFavorite(favorite: SonosFavorite): Promise<void> {
     const logPrefix = `[PlayFavorite] [${favorite.Title}]`;
     streamDeck.logger.info(`${logPrefix} START.`);
     
