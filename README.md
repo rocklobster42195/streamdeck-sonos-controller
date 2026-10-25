@@ -4,7 +4,7 @@ Full Sonos playback control for your Stream Deck — cover art, track info, volu
 
 [![Elgato Marketplace](https://img.shields.io/badge/Marketplace-black?logo=elgato&logoColor=white)](https://marketplace.elgato.com/product/sonos-controller-083f868f-c0b5-43bc-8db5-ba287254fce5)
 [![GitHub release](https://img.shields.io/github/v/release/rocklobster42195/streamdeck-sonos-controller)](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases/latest)
-[![Latest, beta included](https://img.shields.io/github/v/release/rocklobster42195/streamdeck-sonos-controller?include_prereleases&label=latest&color=87AE73)](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases)
+[![Latest, beta included](https://img.shields.io/github/v/release/rocklobster42195/streamdeck-sonos-controller?include_prereleases&label=latest&color=A5A5A5)](https://github.com/rocklobster42195/streamdeck-sonos-controller/releases)
 [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/rocklobster42195)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -367,7 +367,7 @@ Sonos Controller is one of a small family of Stream Deck plugins. They are built
 
 | | Plugin | For | Status |
 |---|---|---|---|
-| ![Sonos Controller](https://img.shields.io/badge/%20%20%20-87AE73?style=flat-square) | **Sonos Controller** (this plugin) | Sonos speakers | on the Marketplace, 0.5.0 in beta |
+| ![Sonos Controller](https://img.shields.io/badge/%20%20%20-A5A5A5?style=flat-square) | **Sonos Controller** (this plugin) | Sonos speakers | on the Marketplace, 0.5.0 in beta |
 | ![Music Assistant Controller](https://img.shields.io/badge/%20%20%20-009FDF?style=flat-square) | [Music Assistant Controller](https://github.com/rocklobster42195/streamdeck-music-assistant-controller) | your Music Assistant server and its players | alpha |
 | ![System Audio Controller](https://img.shields.io/badge/%20%20%20-E14190?style=flat-square) | [System Audio Controller](https://github.com/rocklobster42195/streamdeck-system-audio-controller) | your computer's sound: volume, apps, microphone | beta |
 | ![X-Air Controller](https://img.shields.io/badge/%20%20%20-00ACA8?style=flat-square) | [X-Air Controller](https://github.com/rocklobster42195/streamdeck-xair-controller) | Behringer X-Air and Midas mixers | alpha |
