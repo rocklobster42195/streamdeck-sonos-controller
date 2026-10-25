@@ -52,17 +52,6 @@ Toggles playback on your Sonos speaker. While playing, the key displays the curr
 | Colour | `Grey` (as before), `Cover`, `Like Panorama` or `Fixed`: the play icon, and the progress bar instead of the cover's own colour |
 | When a call starts | `Nothing`, `Pause` or `Lower`, per speaker (needs the companion plugin System Audio Controller). Off by default |
 
----------|-------------|
-| Device | Which Sonos speaker to control |
-| Show device name | Display the speaker's zone name as the key title |
-| Show cover art | Display album art on the key while playing |
-| Progress bar | Thin bar at the bottom of the key showing track position, tinted to the cover's dominant color |
-| Show track title | Scroll the track title and artist across the key |
-| Font color | Color for the scrolling title text |
-| Font size | Size of the title text (px) |
-| Colour | `Grey` (as before), `Cover`, `Like Panorama` or `Fixed`: the play icon, and the progress bar instead of the cover's own colour |
-| Battery | `Off`, `Warning` (icon only when the battery is low), or `Always` — mini battery icon for battery-powered speakers (Sonos Roam, Move). Only shown when the selected device actually reports battery data. |
-
 ---
 
 ### Track Control *(Stream Deck+ only)*
