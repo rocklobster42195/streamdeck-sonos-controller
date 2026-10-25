@@ -9,7 +9,7 @@ import streamDeck, {
     WillDisappearEvent,
 } from "@elgato/streamdeck";
 import { mdiScatterPlotOutline, mdiSpeedometer, mdiWeatherPouring } from "@mdi/js";
-import { lyricsOverlay, measureArialWidth, ROW_COLOR_KEY, trackOverlay, type RunText } from "@rocklobster42195/streamdeck-kit";
+import { measureArialWidth, ROW_COLOR_KEY, RunTextOverlay, type RunText } from "@rocklobster42195/streamdeck-kit";
 import { panorama, panoramaRows, socRowState, textRuns } from "../effects/panorama";
 import { deckPlayers } from "./deck-players";
 import { SONOS_IP_PREFIX } from "./play-pause-migrate";
@@ -61,6 +61,8 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
     private readonly instances = new Map<string, Instance>();
     private readonly lastImage = new Map<string, string>();
     private readonly lastTitle = new Map<string, string>();
+    /** The run's text with the kit's crossfade, in step with the other plugins' dials. */
+    private readonly textOverlay = new RunTextOverlay();
     private readonly offPlayers: () => void;
 
     constructor() {
@@ -224,7 +226,7 @@ export class PanoramaEffectsDial extends SingletonAction<PanoramaEffectsSettings
         // its dials; every display cuts its own window of it, so the string is the same on each
         const view = textRuns.run(id);
         const run = view ? { width: view.width, offset: view.offset } : undefined;
-        const overlay = !run || !view?.text ? "" : view.text.kind === "track" ? trackOverlay(run, view.text) : lyricsOverlay(run, view.text.current, view.text.next, undefined);
+        const overlay = view && run ? this.textOverlay.render(view.key, run, view.text, Date.now(), view.at) : "";
 
         const svg = [
             '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">',
