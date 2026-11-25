@@ -1,5 +1,9 @@
 <!-- NEXT -->
 
+---
+
+## [0.5.0] — 2026-11-25
+
 **A big update:** the keys and dials are rebuilt on a shared foundation with the other Rocklobster plugins, the settings panels are new, lists scroll, and the Panorama spans the dials of other plugins.
 
 ### Before you update
